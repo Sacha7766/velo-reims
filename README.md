@@ -10,7 +10,7 @@ Before pairing, quit Zwift and Zwift Companion. A trainer accepts only one contr
 
 ## Riding
 
-- **Routes:** 14 baked presets in four kinds. Climbs: Großglockner, Gaisberg, Kitzbüheler Horn, Alpe d'Huez, Stelvio, Ventoux, Sa Calobra. Rolling: Wolfgangsee, Cap de Formentor. Flat: Wachau, Neusiedler See. City loops: Central Park, Sydney coast, Wiener Ringstraße. Drop any `.gpx` from Komoot/Strava/Garmin on the home screen, or use **Draw a route** (map + BRouter bike routing) to ride a local hill. Loops lap; point-to-point routes turn around at the end.
+- **Routes:** 14 baked presets in four kinds. Climbs: Großglockner, Gaisberg, Kitzbüheler Horn, Alpe d'Huez, Stelvio, Ventoux, Sa Calobra. Rolling: Wolfgangsee, Cap de Formentor. Flat: Wachau, Neusiedler See. City loops: Central Park, Sydney coast, Wiener Ringstraße. Drop any `.gpx` from Komoot/Strava/Garmin on the home screen, or use **Draw a route** (map + BRouter bike routing) to ride a local hill. Loops lap; point-to-point routes turn around at the end. Gaisberg starts with an easy 2.9 km lead-in from Gnigl up the B158 (switch it off under the route): the trainer stays light while you warm up, and the climb and its timer start in Guggenthal.
 - **Training:** 20 built-in workouts grouped by type and length, an FTP ramp test that sets your FTP, four multi-week plans (Base builder, Climbing build, FTP builder, Keep fit) with today's workout on the home screen, a workout builder, and Zwift `.zwo` import/export.
 - **Segments:** each route gets timed segments (full climb, steepest kilometre, hills, a sprint) with live delta to your record.
 - **Pacers:** ride with bots at 2.0–4.0 W/kg; sitting in their draft cuts your drag by 30 %. With ERG on, the trainer holds the target power while you still move through the world. Without ERG, the real gradient drives the resistance.
@@ -113,7 +113,11 @@ python scripts/bake-foliage.py <assets dir>                  # foliage atlas fro
 node scripts/bake-osm.mjs gaisberg --from=<overpass dump>    # rich OSM bake from a local dump
 ```
 
-`?ride=<preset>&sim=1&workout=<id>&at=<metres>&cam=drone&time=golden` starts a ride directly (used for screenshots).
+A lead-in is baked in four steps: `python3 -I scripts/bake-leadin.py gaisberg` (follows the B158 in OSM),
+`node scripts/bake-osm.mjs gaisberg --lead-in`, `python scripts/bake-trees.py gaisberg <chm.tif> <dlt.tif> --lead-in`
+(a canopy crop that covers the lead-in) and `node scripts/bake-turnarounds.mjs gaisberg`.
+
+`?ride=<preset>&sim=1&workout=<id>&at=<metres>&cam=drone&time=golden` starts a ride directly (used for screenshots). It skips the lead-in so `at` stays in route metres; add `&leadin=1` to ride it.
 
 Layout: `src/geo` (projection, DEM, imagery, OSM, routes), `src/engine` (Three.js terrain LOD, road, trees, buildings, rider, sky, camera), `src/devices` (Web Bluetooth), `src/workouts`, `src/sim` (physics, session, stats, FIT, storage), `src/ui`.
 

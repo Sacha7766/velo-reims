@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { TIMES } from '../../engine/atmosphere.ts';
+import { leadInLength } from '../../geo/leadIn.ts';
 import { getActivePlan, type AppSettings, type RideSummary } from '../../sim/storage.ts';
 import { entryFor, isoDate, templateById } from '../../training/plans.ts';
 import type { Workout } from '../../workouts/types.ts';
@@ -94,7 +95,15 @@ export function RideTab(p: RideTabProps) {
       </aside>
 
       <main className="ride-pane">
-        {p.route && <RouteHero entry={p.route} rides={p.rides} onDelete={p.route.custom ? () => p.onDeleteRoute(p.route!.data.id) : undefined} />}
+        {p.route && (
+          <RouteHero
+            entry={p.route}
+            rides={p.rides}
+            onDelete={p.route.custom ? () => p.onDeleteRoute(p.route!.data.id) : undefined}
+            leadIn={p.settings.leadIn}
+            onLeadIn={(on) => p.set('leadIn', on)}
+          />
+        )}
 
         <section className="how" aria-label="How to ride">
           <div className="pane-head">
@@ -236,10 +245,15 @@ export function RideTab(p: RideTabProps) {
   );
 }
 
-function RouteHero({ entry, rides, onDelete }: { entry: RouteEntry; rides: RideSummary[]; onDelete?: () => void }) {
+function RouteHero({
+  entry, rides, onDelete, leadIn, onLeadIn,
+}: { entry: RouteEntry; rides: RideSummary[]; onDelete?: () => void; leadIn: boolean; onLeadIn: (on: boolean) => void }) {
   const s = useRouteStats(entry)!;
+  const lead = useMemo(() => leadInLength(entry.data), [entry]);
   const mine = useMemo(() => rides.filter((r) => r.routeId === entry.data.id), [rides, entry]);
-  const best = mine.filter((r) => r.summitTime !== null).sort((a, b) => a.summitTime! - b.summitTime!)[0];
+  // times to the top include the lead-in when it was ridden: compare like with like
+  const withLead = leadIn && lead > 0;
+  const best = mine.filter((r) => r.summitTime !== null && !!r.leadIn === withLead).sort((a, b) => a.summitTime! - b.summitTime!)[0];
   const cat = entry.data.category ?? (entry.custom ? undefined : 'climb');
   return (
     <section className="hero" aria-label="Selected route">
@@ -285,6 +299,14 @@ function RouteHero({ entry, rides, onDelete }: { entry: RouteEntry; rides: RideS
             <dd>{best ? fmtTime(best.summitTime!) : mine.length ? `${mine.length}×` : 'Not yet'}</dd>
           </div>
         </dl>
+        {lead > 0 && (
+          <label className="toggle lead-in-toggle">
+            <input type="checkbox" checked={leadIn} onChange={(e) => onLeadIn(e.target.checked)} />
+            <span>
+              Start with an easy {km(lead)} km lead-in from {entry.data.leadIn!.name} to warm up
+            </span>
+          </label>
+        )}
       </div>
       <RouteShape entry={entry} size={168} />
       <Profile entry={entry} height={120} bins={70} className="hero-profile" />

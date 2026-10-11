@@ -24,6 +24,16 @@ export interface RouteData {
    */
   turnEnd?: number[][];
   turnStart?: number[][];
+  /**
+   * An easy approach on real roads (scripts/bake-leadin.py): it replaces coords[0..join] and has
+   * its own turnaround at its first point. Ridden only when withLeadIn() puts it in front.
+   */
+  leadIn?: { name: string; coords: number[][]; join: number; turnStart?: number[][] };
+  /**
+   * Set by withLeadIn(): coords[index] is where the route proper starts; `cut` is how many metres
+   * of the original route (haversine) the lead-in replaced.
+   */
+  climbFrom?: { index: number; name: string; cut: number };
 }
 
 /**
@@ -75,6 +85,11 @@ export interface Route {
   tunnels: [number, number][];
   turnEnd: TurnPath | null;
   turnStart: TurnPath | null;
+  /** Metres of easy lead-in before the route proper (0 without one) and where it starts. */
+  leadIn: number;
+  leadInFrom?: string;
+  /** Add to a distance measured along the route without its lead-in (Strava segments). */
+  leadInShift: number;
 }
 
 export const ROUTE_STEP = 4;
@@ -110,11 +125,15 @@ export async function buildRoute(data: RouteData): Promise<Route> {
   const px: number[] = [];
   const pz: number[] = [];
   const pe: number[] = [];
-  for (const c of raw) {
+  let climbAt = 0;
+  for (let k = 0; k < raw.length; k++) {
+    const c = raw[k];
     const [mx, my] = lonLatToMerc(c[0], c[1]);
     const [wx, wz] = mercToWorld(frame, mx, my);
     const last = px.length - 1;
+    if (k === data.climbFrom?.index) climbAt = Math.max(0, last);
     if (last >= 0 && Math.hypot(wx - px[last], wz - pz[last]) < 0.5) continue;
+    if (k === data.climbFrom?.index) climbAt = last + 1;
     px.push(wx);
     pz.push(wz);
     pe.push(c[2] ?? NaN);
@@ -122,6 +141,7 @@ export async function buildRoute(data: RouteData): Promise<Route> {
   const cum = [0];
   for (let i = 1; i < px.length; i++) cum.push(cum[i - 1] + Math.hypot(px[i] - px[i - 1], pz[i] - pz[i - 1]));
   const length = cum[cum.length - 1];
+  const leadIn = data.climbFrom ? cum[climbAt] : 0;
   const step = ROUTE_STEP;
   const n = Math.max(2, Math.floor(length / step) + 1);
 
@@ -250,6 +270,9 @@ export async function buildRoute(data: RouteData): Promise<Route> {
     bounds: [minX, minZ, maxX, maxZ],
     tunnels,
     ...turns(data, frame, { x, z, ele, n, step }, demZ),
+    leadIn,
+    leadInFrom: data.climbFrom?.name,
+    leadInShift: data.climbFrom ? leadIn - data.climbFrom.cut : 0,
   };
 }
 

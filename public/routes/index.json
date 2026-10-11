@@ -19,7 +19,8 @@
     "lengthKm": 10.03,
     "gain": 704,
     "startEle": 571.8,
-    "endEle": 1275.5
+    "endEle": 1275.5,
+    "leadInKm": 3.04
   },
   {
     "id": "kitzbueheler-horn",

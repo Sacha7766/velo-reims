@@ -1,6 +1,7 @@
 // Bakes OSM corridor data (forests, buildings, roads, water, land cover, barriers, landmarks)
 // for preset routes into public/osm/<id>.json so presets load instantly.
 // Run: node scripts/bake-osm.mjs [id] [--from=<overpass dump.json>]  (a local dump skips Overpass)
+//      node scripts/bake-osm.mjs <id> --lead-in   adds only the lead-in corridor to the existing file
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const CORRIDOR = 420;
@@ -106,11 +107,16 @@ mkdirSync('public/osm', { recursive: true });
 const index = JSON.parse(readFileSync('public/routes/index.json', 'utf8'));
 const only = process.argv.slice(2).find((a) => !a.startsWith('--'));
 const dump = process.argv.slice(2).find((a) => a.startsWith('--from='))?.slice(7);
+const leadInOnly = process.argv.includes('--lead-in');
 for (const { id } of index) {
   if (only && id !== only) continue;
   const route = JSON.parse(readFileSync(`public/routes/${id}.json`, 'utf8'));
-  const bs = boxes(route.coords, CORRIDOR_OVERRIDE[id] ?? CORRIDOR);
+  // the lead-in (scripts/bake-leadin.py) is ridden before the route, so its corridor is part of the world
+  const line = leadInOnly ? (route.leadIn?.coords ?? []) : [...(route.leadIn?.coords ?? []), ...route.coords];
+  if (line.length < 2) continue;
+  const bs = boxes(line, CORRIDOR_OVERRIDE[id] ?? CORRIDOR);
   const seen = new Map();
+  if (leadInOnly) for (const el of JSON.parse(readFileSync(`public/osm/${id}.json`, 'utf8'))) seen.set(el.type + el.id, el);
   if (dump) for (const el of fromDump(dump, bs)) seen.set(el.type + el.id, el);
   for (let i = 0; !dump && i < bs.length; i += 3) {
     const els = await overpass(query(bs.slice(i, i + 3)));
@@ -118,7 +124,7 @@ for (const { id } of index) {
     process.stdout.write('.');
   }
   // city skylines: tall buildings well beyond the corridor
-  if (route.category === 'city') {
+  if (route.category === 'city' && !leadInOnly) {
     let s = 90, w = 180, n = -90, e = -180;
     for (const [lon, lat] of route.coords) { s = Math.min(s, lat); n = Math.max(n, lat); w = Math.min(w, lon); e = Math.max(e, lon); }
     const dLat = 2500 / 111320, dLon = 2500 / (111320 * Math.cos(((s + n) / 2) * Math.PI / 180));

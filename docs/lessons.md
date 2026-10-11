@@ -44,6 +44,11 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
 - **Dark smears on slopes in drone views (Formentor).** Shadows are baked into the PNOA orthophotos. De-lighting
   dark photo pixels helps only partly; the real fix needs another imagery source or a ground shader that ignores
   the photo on steep shaded faces.
+- **The route started on a side street.** BRouter snapped the Gaisberg start to a service road beside the B158, so a
+  lead-in along the B158 never reached `coords[0]`. Fix: the lead-in joins at the first route point on the same road
+  and replaces the route before it (`leadIn.join`). Where: `scripts/bake-leadin.py`, `src/geo/leadIn.ts`.
+- **BRouter cuts switchbacks.** On the B158 at Obergnigl it took a side street and a cycle path. Fix: follow the OSM
+  ways of one `ref` with a shortest path instead. Where: `scripts/bake-leadin.py`.
 - **Commons titles lie.** "meadow-kuehberg-autumn-01" is a trail signpost. Check reference photos by eye before
   they go on a board or into a brief.
 
@@ -64,5 +69,9 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
 - **A slight rise in the road needed far more watts.** At 100 % difficulty the physics is right, but a trainer
   flywheel carries far less momentum than 85 kg of rider and bike. Fix: gradient increases ease in (tau 4 s); new
   riders start at 50 %. Where: `session.ts`, `profiles.ts`.
+- **An easy lead-in on a real 6–7 % road.** No flat road leads to the Gaisberg; Gnigl to Guggenthal climbs 150 m.
+  Fix: in the lead-in the felt gradient (trainer, speed and pacers) is a third of the real one, at most 2 %, blending
+  into the real one over the last 200 m; the climb segment gets its own id so old times stay honest. Ghosts and
+  "your best" compare only rides with the same lead-in setting. Where: `session.ts` `feltGrade`, `segments.ts`.
 - **Number fields jumped to 500 W, 150 kg or 20 kg.** Clamping on every keystroke. Fix: `NumberInput` applies
   in-range values live and clamps on blur. Where: `src/ui/home/shared.tsx`.

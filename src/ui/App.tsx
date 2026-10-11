@@ -5,6 +5,7 @@ import type { CameraMode } from '../engine/CameraRig.ts';
 import { RideAudio } from '../audio/RideAudio.ts';
 import { sourcesFor } from '../geo/imagery.ts';
 import { prefetchRoute } from '../geo/prefetch.ts';
+import { withLeadIn } from '../geo/leadIn.ts';
 import { buildRoute, findHairpins, type RouteData } from '../geo/route.ts';
 import { findSegments, stravaToSegments, type Segment } from '../sim/segments.ts';
 import { fetchStravaSegments, getStravaStatus } from '../sim/stravaApi.ts';
@@ -98,20 +99,26 @@ export function App() {
     saveSettings(s);
   };
 
-  const start = async (req: StartRequest, debug?: { at?: number; cam?: CameraMode; go?: boolean }) => {
+  const start = async (req: StartRequest, debug?: { at?: number; cam?: CameraMode; go?: boolean; leadIn?: boolean }) => {
     if (!engine) return;
     const cfg = settingsRef.current;
     lastStart.current = req;
+    // test starts (?ride=…&at=…) keep the route's own distances unless they ask for the lead-in
+    const data = (debug ? debug.leadIn : cfg.leadIn) ? withLeadIn(req.route) : req.route;
     setError(null);
     setProgress(null);
-    setLoadInfo({ name: req.route.name, profile: profileFromCoords(req.route.coords) });
+    setLoadInfo({ name: req.route.name, profile: profileFromCoords(data.coords) });
     setScreen('loading');
     try {
-      const route = await buildRoute(req.route);
+      const route = await buildRoute(data);
       // Strava segments for preset routes: fetched while the world loads, never waited on for more than 4 s
+      const shift = (g: Segment): Segment => ({ ...g, start: g.start + route.leadInShift, end: g.end + route.leadInShift });
       const stravaSegs: Promise<Segment[]> =
         req.route.source === 'brouter'
-          ? Promise.race([fetchStravaSegments(route.id).then(stravaToSegments), new Promise<Segment[]>((r) => setTimeout(() => r([]), 4000))]).catch(() => [])
+          ? Promise.race([
+              fetchStravaSegments(route.id).then((l) => stravaToSegments(l).map(shift).filter((g) => g.start >= route.leadIn)),
+              new Promise<Segment[]>((r) => setTimeout(() => r([]), 4000)),
+            ]).catch(() => [])
           : Promise.resolve([]);
       engine.setTime(cfg.time);
       engine.paused = false;
@@ -119,7 +126,7 @@ export function App() {
       engine.setCameraMode('cinematic');
       const halfWidth = route.category === 'city' ? 4.2 : route.category === 'flat' ? 3.2 : 3.1;
       await engine.loadWorld(route, { kit: cfg.kit, accent: cfg.accent, bike: cfg.bike }, setProgress, halfWidth);
-      const best = cfg.ghost ? await bestRideFor(route.id) : null;
+      const best = cfg.ghost ? await bestRideFor(route.id, route.leadIn > 0) : null;
       const history = await listRides();
       const segmentBests: Record<string, number> = {};
       for (const r of history) {
@@ -233,7 +240,7 @@ export function App() {
     const rec = ride.session.finish();
     engine.setOnFrame(undefined);
     const stats = rideStats(rec.samples, rec.ftp);
-    const prev = await bestRideFor(rec.routeId);
+    const prev = await bestRideFor(rec.routeId, !!rec.leadIn);
     const summitTime = ride.session.summitTime;
     if (rec.samples.length >= 30) {
       await saveRide(rec, {
@@ -254,6 +261,7 @@ export function App() {
         avgHr: stats.avgHr,
         bestEfforts: stats.bestEfforts,
         segments: rec.segments,
+        leadIn: rec.leadIn,
       });
     }
     setSummary({ record: rec, stats, summitTime, previousBest: prev?.summary.summitTime ?? null });
@@ -280,14 +288,14 @@ export function App() {
   const openRide = async (id: string) => {
     const record = await getRide(id);
     if (!record) return;
-    const others = (await listRides()).filter((r) => r.routeId === record.routeId && r.id !== id && r.summitTime !== null);
     const mine = (await listRides()).find((r) => r.id === id);
+    const others = (await listRides()).filter((r) => r.routeId === record.routeId && r.id !== id && r.summitTime !== null && !!r.leadIn === !!mine?.leadIn);
     const prevBest = others.length ? Math.min(...others.map((r) => r.summitTime!)) : null;
     setSummary({ record, stats: rideStats(record.samples, record.ftp), summitTime: mine?.summitTime ?? null, previousBest: prevBest });
     setScreen('detail');
   };
 
-  // ?ride=<preset>&sim=1&workout=<id>&at=<m>&cam=<mode>&time=<id> — direct start for testing
+  // ?ride=<preset>&sim=1&workout=<id>&at=<m>&cam=<mode>&time=<id>&leadin=1 — direct start for testing
   useEffect(() => {
     if (!engine) return;
     const q = new URLSearchParams(location.search);
@@ -305,7 +313,7 @@ export function App() {
       const workout = LIBRARY.find((w) => w.id === q.get('workout')) ?? null;
       await start(
         { route: { ...data, source: 'brouter' }, workout, holdWatts: q.get('hold') ? Number(q.get('hold')) : null },
-        { at: Number(q.get('at') ?? 0), cam: (q.get('cam') as CameraMode) ?? 'chase', go: q.get('go') !== '0' },
+        { at: Number(q.get('at') ?? 0), cam: (q.get('cam') as CameraMode) ?? 'chase', go: q.get('go') !== '0', leadIn: q.get('leadin') === '1' },
       );
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps

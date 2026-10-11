@@ -30,6 +30,8 @@ export interface AppSettings extends RiderSettings {
   stravaPr: boolean;
   /** Strava segment id the ghosts race, null = the longest one on the route. */
   stravaPacerSegment: number | null;
+  /** Start preset routes that have one on their easy lead-in (src/geo/leadIn.ts). */
+  leadIn: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -54,6 +56,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   stravaKom: false,
   stravaPr: false,
   stravaPacerSegment: null,
+  leadIn: true,
 };
 
 const SETTINGS_KEY = 'serpentine.settings';
@@ -98,6 +101,8 @@ export interface RideSummary {
   bestEfforts?: { 5: number; 60: number; 300: number; 1200: number };
   /** Rider profile id; rides from before profiles belong to the main profile. */
   profile?: string;
+  /** Started with the route's lead-in: times to the top only compare with rides that did too. */
+  leadIn?: number;
 }
 
 const mine = (r: RideSummary) => (r.profile ?? MAIN) === activeProfile();
@@ -199,9 +204,9 @@ export async function openRidesFolder() {
 }
 
 /** Fastest summit on a route — the ghost you race. */
-export async function bestRideFor(routeId: string): Promise<{ summary: RideSummary; ride: RideRecord } | null> {
+export async function bestRideFor(routeId: string, leadIn = false): Promise<{ summary: RideSummary; ride: RideRecord } | null> {
   const best = (await listRides())
-    .filter((r) => r.routeId === routeId && r.summitTime !== null)
+    .filter((r) => r.routeId === routeId && r.summitTime !== null && !!r.leadIn === leadIn)
     .sort((a, b) => a.summitTime! - b.summitTime!)[0];
   if (!best) return null;
   const ride = await getRide(best.id);

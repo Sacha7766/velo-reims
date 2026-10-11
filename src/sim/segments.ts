@@ -38,11 +38,14 @@ export function findSegments(r: Route): Segment[] {
   const out: Segment[] = [];
   const L = r.length;
   if (r.category === 'climb') {
-    out.push({ id: 'full', name: `${r.name} climb`, start: 0, end: L, kind: 'climb', avgGrade: avgGrade(r, 0, L) });
-    if (L > 2500) {
-      let best = 0;
+    // after a lead-in the climb starts where it joins, a little further up: its own record
+    const a0 = r.leadIn;
+    const id = a0 > 0 ? 'climb' : 'full';
+    out.push({ id, name: `${r.name} climb`, start: a0, end: L, kind: 'climb', avgGrade: avgGrade(r, a0, L) });
+    if (L - a0 > 2500) {
+      let best = a0;
       let bestG = -Infinity;
-      for (let a = 0; a + 1000 <= L; a += 50) {
+      for (let a = a0; a + 1000 <= L; a += 50) {
         const g = avgGrade(r, a, a + 1000);
         if (g > bestG) {
           bestG = g;

@@ -25,4 +25,6 @@ export interface RideRecord {
   segments?: { id: string; name: string; time: number; power: number }[];
   rampFtp?: number;
   weight: number;
+  /** Metres of easy lead-in ridden before the route proper (src/geo/leadIn.ts). */
+  leadIn?: number;
 }

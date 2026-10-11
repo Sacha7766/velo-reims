@@ -5,6 +5,8 @@ height-dependent search window; species come from the Copernicus Dominant Leaf T
 Writes public/trees/<id>.bin, read by src/engine/Vegetation.ts.
 
   python scripts/bake-trees.py gaisberg <chm.tif> <dlt.tif> [--corridor 550]
+  python scripts/bake-trees.py gaisberg <chm.tif> <dlt.tif> --lead-in   adds the lead-in corridor
+      (scripts/bake-leadin.py) to the existing bin, keeping every tree already in it
 
 Needs rasterio, numpy, scipy, pyproj (use a venv; nothing here runs in the app).
 
@@ -29,7 +31,8 @@ min_h = float(sys.argv[sys.argv.index('--min-height') + 1]) if '--min-height' in
 win = float(sys.argv[sys.argv.index('--window') + 1]) if '--window' in sys.argv else 1.0
 
 route = json.load(open(f'public/routes/{route_id}.json'))
-coords = route['coords']
+lead_in_only = '--lead-in' in sys.argv
+lines = [route['leadIn']['coords']] if lead_in_only else [route['coords']] + ([route['leadIn']['coords']] if 'leadIn' in route else [])
 
 with rasterio.open(chm_path) as src:
     chm = src.read(1).astype(np.float32)
@@ -39,8 +42,8 @@ px = abs(T.a)  # metres per pixel
 
 # corridor mask: distance (m) from the route polyline
 to_utm = Transformer.from_crs('EPSG:4326', crs, always_xy=True)
-line = [to_utm.transform(c[0], c[1]) for c in coords]
-route_px = rasterize([({'type': 'LineString', 'coordinates': line}, 1)], out_shape=chm.shape, transform=T, all_touched=True)
+geom = {'type': 'MultiLineString', 'coordinates': [[to_utm.transform(c[0], c[1]) for c in ln] for ln in lines]}
+route_px = rasterize([(geom, 1)], out_shape=chm.shape, transform=T, all_touched=True)
 dist = ndimage.distance_transform_edt(route_px == 0) * px
 inside = dist <= corridor
 
@@ -134,19 +137,40 @@ conifer = np.where(leaf == 2, u < 0.86, np.where(leaf == 1, u < 0.12, u < 0.22))
 # tall narrow tops in closed forest above ~900 m are mostly spruce on the Gaisberg; leave as DLT says
 kind = np.where(conifer, 1, 2).astype(np.uint8)
 
-lon0, lat0 = float(np.mean(lon)), float(np.mean(lat))
-n = len(lon)
-buf = bytearray(b'TRE1' + struct.pack('<Idd', n, lon0, lat0))
-rec = np.zeros(n, dtype=[('dlon', '<f4'), ('dlat', '<f4'), ('h', 'u1'), ('cr', 'u1'), ('k', 'u1'), ('f', 'u1')])
+REC = [('dlon', '<f4'), ('dlat', '<f4'), ('h', 'u1'), ('cr', 'u1'), ('k', 'u1'), ('f', 'u1')]
+lon, lat = np.asarray(lon), np.asarray(lat)
+old = None
+if lead_in_only:
+    # the existing bake already covers the route corridor: add only trees outside it
+    dense = []
+    for main in (route.get('originalCoords', []), route['coords']):
+        for a, b in zip(main, main[1:]):
+            ax, ay = to_utm.transform(a[0], a[1])
+            bx, by = to_utm.transform(b[0], b[1])
+            k = max(1, int(np.hypot(bx - ax, by - ay) // 4))
+            dense += [(ax + (bx - ax) * t / k, ay + (by - ay) * t / k) for t in range(k)]
+    keep = cKDTree(np.asarray(dense)).query(np.c_[xs, ys])[0] > corridor
+    lon, lat, heights, crown, kind, open_ground = (v[keep] for v in (lon, lat, heights, crown, kind, open_ground))
+    blob = open(f'public/trees/{route_id}.bin', 'rb').read()
+    n_old, lon0, lat0 = struct.unpack('<Idd', blob[4:24])
+    old = np.frombuffer(blob[24:24 + n_old * 12], dtype=REC)
+    print(f'lead-in: {int(keep.sum())} new trees outside the existing corridor ({n_old} kept)')
+else:
+    lon0, lat0 = float(np.mean(lon)), float(np.mean(lat))
+rec = np.zeros(len(lon), dtype=REC)
 rec['dlon'] = lon - lon0
 rec['dlat'] = lat - lat0
 rec['h'] = np.clip(np.round(heights), 0, 255)
 rec['cr'] = np.clip(np.round(crown * 10), 0, 255)
 rec['k'] = kind
 rec['f'] = open_ground.astype(np.uint8)
+if old is not None:
+    rec = np.concatenate([old, rec])
+n = len(rec)
+buf = bytearray(b'TRE1' + struct.pack('<Idd', n, lon0, lat0))
 buf += rec.tobytes()
 import os
 os.makedirs('public/trees', exist_ok=True)
 open(f'public/trees/{route_id}.bin', 'wb').write(buf)
-print(f'{route_id}: {n} trees ({int((kind == 1).sum())} conifer, {int((kind == 2).sum())} broadleaf, '
-      f'{int(open_ground.sum())} open-ground), mean height {heights.mean():.1f} m, {len(buf) / 1e6:.2f} MB')
+print(f'{route_id}: {n} trees ({int((rec["k"] == 1).sum())} conifer, {int((rec["k"] == 2).sum())} broadleaf, '
+      f'{int(rec["f"].sum())} open-ground), mean height {rec["h"].mean():.1f} m, {len(buf) / 1e6:.2f} MB')

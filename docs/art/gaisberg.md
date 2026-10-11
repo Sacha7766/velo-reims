@@ -4,6 +4,13 @@ Salzburg's home mountain. The route climbs 9.8 km from Koppl Professorfeld (572 
 Gaisberg Höhenstraße (L108) to the summit loop at about 1275 m. The rider goes round the summit roundabout (202 m)
 and back down, endlessly. Facts and sources: `research/gaisberg/visual-reference.md` and `research/gaisberg/geodata.md`.
 
+**Lead-in** (on by default, `scripts/bake-leadin.py`): 2.9 km of easy riding from Gnigl in Salzburg up the B158
+through the two Obergnigl switchbacks to Guggenthal, where it joins the route on the B158 about 350 m after the
+route's own start (which sits on a side street). The trainer stays easy (a third of the gradient, at most 2 %);
+the climb, its timer and its record start at the join. With the lead-in on, the endless turnaround at the bottom
+is a 676 m block in Gnigl (Linzer Bundesstraße, Franz-Hattinger-Straße, Versorgungshausstraße). Km below are
+route km without the lead-in (the `?ride=` test URLs use them); lead-in km are marked L.
+
 **Mood:** a clear October day on the city's own mountain. Valley farmland and villages, then mixed forest, alm
 meadows with cows, and an open summit plateau looking over the Salzburg basin and the Alps. The signature is the
 **Nebelmeer** (`time=inversion`): fog lies over the basin while the summit is in sun.
@@ -24,6 +31,9 @@ meadows with cows, and an open summit plateau looking over the Salzburg basin an
 
 | km | Elevation | What's there |
 |---|---|---|
+| L0–0.4 | 443–455 m | Gnigl, Minnesheimstraße (B158): Bildungscampus Gnigl stop, Schloss Minnesheim at L0.3, Obergnigl stop at L0.34, Hotel Hofmann |
+| L0.5–1.6 | 455–515 m | Obergnigl switchbacks on the Grazer Bundesstraße: open meadows, Luggaukapelle at L0.8, Gästehaus Prähauser |
+| L1.6–2.9 | 515–586 m | Wooded Alterbach valley: Wasserschloss at L1.57, Salzburg Kühberg stop at L1.83, Koppl Professorfeld stop at L2.65, joins the route at L2.87 (route km 0.35) |
 | 0–1.2 | 572–610 m | Koppl valley: farm buildings, Guggenthal streams, Biogena building near 0.65, paraglider landing meadow at 1.2 |
 | 1.3–1.8 | 610–650 m | Guggenthal: school, Pfarrkirche Guggenthal and cemetery at 1.67, Gut and Villa Guggenthal |
 | 1.8–4 | 650–730 m | Gentle climb (2.5–4 %) through meadows and forest edges; Gersbergalm at 2.6–2.8 (H1) |
@@ -102,6 +112,9 @@ From `research/gaisberg/qa-sweep.md` (2026-10-11). Each needs re-checking in the
 - Rocks evenly scattered.
 - Placeholder buildings: a box at 1.3 km, a tower-like building at 7.3 km.
 - Inversion fog flat on the chase view.
+- Lead-in (Gnigl to Guggenthal) has no reference photos on the board yet and was built from OSM and the canopy
+  model only. First frames (2026-10-11): suburban Gnigl buildings are the generic Alpine set; a rectangular pond near
+  the switchbacks reads as bright as a pool.
 - Fixed since: the grey shoulder smear (road shoulder alpha), floating trunks (placed on `groundHeight`). The
   square summit shadow is the real transmitter platform, with shadow edges now faded.
 
@@ -112,6 +125,7 @@ From `research/gaisberg/qa-sweep.md` (2026-10-11). Each needs re-checking in the
 | 2026-10-10 | "insane! refine even more" | First flyover landed; push detail further | Round 2 done |
 | 2026-10-11 | The summit roundabout must be ridden; the road can't just end | The real road has a loop at the top | Done (202 m loop) |
 | 2026-10-11 | The rider should be more detailed and higher-res | Close camera shows the low-poly rider | Done (Blender rider, 71k tris) |
+| 2026-10-11 | "can we get for gaisberg like 5-10 min easy lead in route?" | Warm up before the climb starts | Done: 2.9 km from Gnigl on the B158, easy resistance, about 7–10 min |
 
 ## Status
 

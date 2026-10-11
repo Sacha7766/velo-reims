@@ -2,7 +2,8 @@
 // the road network (a summit loop, roundabout or block) and comes back, endlessly. Where OSM has
 // no loop near the end, a turning circle is synthesised. Writes `turnEnd` / `turnStart`
 // ([lon, lat] polylines from the end point around and back to it) into public/routes/<id>.json
-// and trims dead-end spurs beyond the loop entry.
+// and trims dead-end spurs beyond the loop entry. A lead-in (scripts/bake-leadin.py) gets its own
+// `leadIn.turnStart` at its first point.
 //   node scripts/bake-turnarounds.mjs [id]
 import { readFileSync, writeFileSync } from 'node:fs';
 
@@ -225,6 +226,16 @@ for (const { id } of index) {
   route.turnEnd = end.turn;
   route.turnStart = start.turn;
   route.tunnels = tunnels(route.coords, osm);
+  let lead = '';
+  if (route.leadIn) {
+    const li = route.leadIn;
+    const from = li.originalCoords ?? li.coords;
+    const t = turnaround(from, osm, false);
+    li.originalCoords = from;
+    li.coords = t.coords;
+    li.turnStart = t.turn;
+    lead = `, lead-in start ${t.kind} (trimmed ${t.trimmedBy} m)`;
+  }
   writeFileSync(file, JSON.stringify(route));
-  console.log(`${id}: end ${end.kind} (trimmed ${end.trimmedBy} m), start ${start.kind} (trimmed ${start.trimmedBy} m), tunnels ${JSON.stringify(route.tunnels)}`);
+  console.log(`${id}: end ${end.kind} (trimmed ${end.trimmedBy} m), start ${start.kind} (trimmed ${start.trimmedBy} m)${lead}, tunnels ${JSON.stringify(route.tunnels)}`);
 }

@@ -182,6 +182,7 @@ export function Hud({
   const wkg = st.power3s / settings.weight;
   const toTop = st.dir === 1 ? Math.max(0, route.length - st.s) : null;
   const hmToTop = st.dir === 1 ? Math.max(0, route.maxEle - st.ele) : null;
+  const toClimb = st.dir === 1 && route.leadIn > 0 && st.s < route.leadIn ? route.leadIn - Math.max(0, st.s) : null;
   const passed = hairpins.filter((d) => (st.dir === 1 ? d < st.s : d > st.s)).length;
   const ws = st.workout;
   const message = ws?.message;
@@ -253,6 +254,7 @@ export function Hud({
           <span className="ele">
             <b>{int(st.ele)}</b> m
           </span>
+          {toClimb !== null && <span className="lead-in">Easy lead-in, climb in {km(toClimb)} km</span>}
           {route.category === 'climb' && toTop !== null && hmToTop !== null && (
             <span>
               {km(toTop)} km and {int(hmToTop)} hm to the top

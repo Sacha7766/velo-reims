@@ -131,6 +131,11 @@ export interface LiveState {
 
 const tmp: Partial<RoutePoint> = {};
 
+/** Lead-in: at most this gradient (%) on the way up, a third of the real one below it. */
+const LEAD_IN_MAX_GRADE = 2;
+/** Metres before the climb over which the lead-in gradient blends into the real one. */
+const LEAD_IN_BLEND = 200;
+
 export class RideSession {
   readonly route: Route;
   readonly workout: Workout | null;
@@ -278,8 +283,26 @@ export class RideSession {
     if (this.st.status !== 'ready') return;
     this.start = Date.now();
     this.st.status = 'riding';
-    this.banner(this.route.name, this.workout ? this.workout.name : `${(this.route.length / 1000).toFixed(1)} km with ${Math.round(this.route.gain)} m of climbing`, 5);
+    const r = this.route;
+    const km = (m: number) => (m / 1000).toFixed(1);
+    const sub = r.leadIn > 0
+      ? `${km(r.leadIn)} km easy lead-in from ${r.leadInFrom}, then ${km(r.length - r.leadIn)} km and ${Math.round(r.maxEle - pointAt(r, r.leadIn).ele)} m up`
+      : `${km(r.length)} km with ${Math.round(r.gain)} m of climbing`;
+    this.banner(r.name, this.workout ? this.workout.name : sub, 5);
     this.emit();
+  }
+
+  /**
+   * The gradient the rider feels at s (already signed for the direction of travel). On the way
+   * up a lead-in it stays easy so the legs can warm up: a third of the real gradient, at most
+   * LEAD_IN_MAX_GRADE, blending into the real one just before the climb starts.
+   */
+  private feltGrade(s: number, grade: number): number {
+    const li = this.route.leadIn;
+    if (li <= 0 || grade <= 0 || s >= li) return grade;
+    const easy = Math.min(grade / 3, LEAD_IN_MAX_GRADE);
+    const t = Math.min(1, Math.max(0, (s - (li - LEAD_IN_BLEND)) / LEAD_IN_BLEND));
+    return easy + (grade - easy) * t;
   }
 
   togglePause() {
@@ -334,7 +357,7 @@ export class RideSession {
     // physics along the route (drafting a pacer cuts drag by 30 %)
     const route = this.route;
     const p = pointAt(route, st.s, tmp);
-    const grade = p.grade * st.dir;
+    const grade = this.feltGrade(st.s, p.grade * st.dir);
     st.drafting = st.bots.some((b) => !b.segmentId && b.gap > 0.5 && b.gap < 7 && b.dir === st.dir);
     const phys = st.drafting ? { ...this.physics, cda: this.physics.cda * 0.7 } : this.physics;
     const prevS = st.s;
@@ -394,7 +417,7 @@ export class RideSession {
       this.hub.setMode({ kind: 'erg', watts: target });
       st.trainerMode = 'erg';
     } else {
-      const ahead = pointAt(route, st.s + 4 * st.dir, tmp).grade * st.dir;
+      const ahead = this.feltGrade(st.s + 4 * st.dir, pointAt(route, st.s + 4 * st.dir, tmp).grade * st.dir);
       const factor = ahead >= 0 ? this.settings.difficulty : this.settings.difficulty * 0.7;
       // momentum: on the road ~85 kg of bike and rider carry you a few seconds into a ramp, a trainer's
       // flywheel far less, so steeper gradient eases in over ~4 s (and lets go faster when it flattens)
@@ -448,7 +471,7 @@ export class RideSession {
     st.bots = st.bots.map((b) => {
       if (b.segmentId) return this.stepPacer(b, dt);
       const p = pointAt(this.route, b.s, tmp);
-      const speed = stepSpeed(b.speed, b.wkg * this.settings.weight, p.grade * b.dir, p.ele, dt, this.physics);
+      const speed = stepSpeed(b.speed, b.wkg * this.settings.weight, this.feltGrade(b.s, p.grade * b.dir), p.ele, dt, this.physics);
       const { s, dir } = advance(this.route, b.s, b.dir, speed * dt);
       const distance = b.distance + speed * dt;
       return { ...b, s, dir, speed, distance, gap: distance - st.distance };
@@ -592,6 +615,7 @@ export class RideSession {
       weight: this.settings.weight,
       segments: this.efforts,
       rampFtp: this.st.rampFtp ?? undefined,
+      leadIn: this.route.leadIn > 0 ? Math.round(this.route.leadIn) : undefined,
     };
   }
 
