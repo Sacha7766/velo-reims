@@ -390,17 +390,27 @@ export class Terrain extends THREE.Group {
   /** Blend raw terrain towards the road: embankments below, cuts above; untouched over tunnels. */
   private flatten(x: number, z: number, h: number): number {
     const { routeIndex, roadHalfWidth, route } = this.opts;
-    const near = routeIndex.nearest(x, z, roadHalfWidth + 17);
+    // steep cuts carve up to ~40 m into the hillside; the bank must meet the natural slope
+    // inside the search radius so the surface stays continuous
+    const near = routeIndex.nearest(x, z, roadHalfWidth + (this.opts.cutWidth < 8 ? 42 : 17));
     if (near.index < 0) return h;
     const s = near.f * route.step;
     if (!near.turn) for (const [a, b] of route.tunnels) if (s > a + 4 && s < b - 4) return h;
     const road = near.ele - 0.45;
     const cut = h > road + 0.5;
-    // a cut is a steep face only a few metres high; above that the bank lies back (~60°)
+    if (cut && this.opts.cutWidth < 8) {
+      // a real road cut: a near-vertical rock face of a few metres right at the verge, then a
+      // ~50° bank up to the natural slope (the min() carves it into the hillside)
+      const dd = Math.max(0, near.dist - roadHalfWidth - 0.8);
+      const faceH = 4.5 + 2.5 * Math.sin(s * 0.013) * Math.sin(s * 0.0071 + 1.3);
+      const faceW = faceH * 0.22;
+      const profile = dd < faceW ? road + (faceH * dd) / faceW : road + faceH + (dd - faceW) * 1.15;
+      return Math.min(h, Math.max(road, profile));
+    }
+    if (near.dist > roadHalfWidth + 17) return h;
+    // fills ease out into the slope over 14 m
     const width = cut ? Math.max(this.opts.cutWidth, (h - road) * 0.6) : 14;
-    // cuts rise as a straight, steep face from the road edge; fills ease out into the slope
-    const t = (near.dist - roadHalfWidth - (cut ? 0.6 : 2.5)) / width;
-    const w = cut && width < 8 ? 1 - Math.min(Math.max(t, 0), 1) : 1 - smooth01(t);
+    const w = 1 - smooth01((near.dist - roadHalfWidth - (cut ? 0.6 : 2.5)) / width);
     return h + (road - h) * w;
   }
 

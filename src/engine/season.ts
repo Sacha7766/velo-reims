@@ -60,5 +60,5 @@ export function evergreenBroadTint(rand: number, out: THREE.Color): THREE.Color 
 
 /** Aleppo pine: light grey-green needles. */
 export function pineTint(rand: number, out: THREE.Color): THREE.Color {
-  return out.setRGB(0.42, 0.5, 0.36).multiplyScalar(0.85 + rand * 0.25);
+  return out.setRGB(0.3, 0.37, 0.25).multiplyScalar(0.85 + rand * 0.25);
 }

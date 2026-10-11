@@ -149,7 +149,36 @@ def cushion():
         if y < 505:
             d.ellipse([x - 3, y - 3, x + 3, y + 3], fill=(180, 190, 228, 255))
     return t
-atlas.alpha_composite(cushion(), (1024, 1536))
+# ---------- isolated Aleppo pine needle tufts (right, bottom row): 4×2 cells of 256², each a
+# round "pom-pom" with a dense core so cards read as soft clumps, never as squares ----------
+def pine_tuft(seed_off):
+    t = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
+    cx, cy = 128, 128
+    d = ImageDraw.Draw(t)
+    d.ellipse([cx - 34, cy - 30, cx + 34, cy + 30], fill=(150, 170, 140, 255))   # dense core
+    for layer in range(3):
+        for k in range(70):
+            sp = needle_sprites[rng.integers(len(needle_sprites))]
+            ang = rng.uniform(0, 360)
+            L = rng.uniform(0.2, 0.32)
+            s2 = sp.resize((max(1, int(sp.width * L)), max(1, int(sp.height * L))), Image.LANCZOS)
+            s2 = shade(s2, 0.62 + 0.16 * layer + rng.uniform(-0.06, 0.06))
+            s2 = s2.rotate(ang, resample=Image.BICUBIC, expand=True)
+            r = s2.width * 0.22
+            x = cx + math.cos(math.radians(-ang)) * r * 0.5
+            y = cy + math.sin(math.radians(-ang)) * r * 0.5
+            t.alpha_composite(s2, (int(x - s2.width / 2), int(y - s2.height / 2)))
+    # keep everything inside a circle with a soft edge (no square silhouettes after mipmapping)
+    a = np.asarray(t).astype(np.float32)
+    yy, xx = np.mgrid[0:256, 0:256]
+    rr = np.hypot(xx - 128, yy - 128)
+    a[..., 3] *= np.clip((118 - rr) / 14, 0, 1)
+    return Image.fromarray(a.clip(0, 255).astype(np.uint8), 'RGBA')
+
+tufts = Image.new('RGBA', (1024, 512), (0, 0, 0, 0))
+for i in range(8):
+    tufts.alpha_composite(pine_tuft(i), ((i % 4) * 256, (i // 4) * 256))
+atlas.alpha_composite(tufts, (1024, 1536))
 
 arr = np.asarray(atlas).astype(np.float32)
 alpha = arr[..., 3] > 8

@@ -223,9 +223,11 @@ export class Vegetation extends THREE.Group {
     const atlas = treeAtlas(biome.atlas);
     const nearMat = preserveCoverage(
       patchMaterial(new THREE.MeshLambertMaterial({ map: atlas, alphaTest: 0.5, side: THREE.DoubleSide, vertexColors: true }), {
-        key: 'treecard2',
+        key: `treecard2:${biome.id}`,
         wind: true,
       }),
+      2048,
+      biome.conifer === 'pine' ? 0.15 : 0.3,
     );
     nearMat.alphaToCoverage = true;
     const blank = new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1);

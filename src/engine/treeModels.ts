@@ -59,16 +59,16 @@ export function treeAtlasReady(url = '/textures/foliage.png'): Promise<THREE.Tex
  * Alpha-tested foliage loses coverage in the mip chain, so distant trees turn into see-through
  * skeletons. Scale alpha up with the mip level (Ben Golus' trick) to keep crowns dense.
  */
-export function preserveCoverage<T extends THREE.Material>(mat: T, texSize = 2048): T {
+export function preserveCoverage<T extends THREE.Material>(mat: T, texSize = 2048, boost = 0.3): T {
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (shader, renderer) => {
     prev?.call(mat, shader, renderer);
-    // the per-instance tint is the foliage colour: bark (atlas v < 0.5) keeps its own colour
+    // the per-instance tint is the foliage colour: bark (atlas u < 0.5, v 0.25–0.5) keeps its own colour
     shader.vertexShader = shader.vertexShader.replace(
       '#include <color_vertex>',
       `#include <color_vertex>
 #if defined( USE_INSTANCING_COLOR ) && defined( USE_MAP )
-if (uv.y < 0.5) vColor.xyz /= max(instanceColor.xyz, vec3(0.05));
+if (uv.y > 0.25 && uv.y < 0.5 && uv.x < 0.5) vColor.xyz /= max(instanceColor.xyz, vec3(0.05));
 #endif`,
     );
     shader.fragmentShader = shader.fragmentShader.replace(
@@ -78,7 +78,7 @@ if (uv.y < 0.5) vColor.xyz /= max(instanceColor.xyz, vec3(0.05));
   vec2 tc = vMapUv * ${texSize.toFixed(1)};
   vec2 ddx = dFdx(tc), ddy = dFdy(tc);
   float mip = max(0.0, 0.5 * log2(max(dot(ddx, ddx), dot(ddy, ddy))));
-  diffuseColor.a *= 1.0 + mip * 0.3;
+  diffuseColor.a *= 1.0 + mip * ${boost.toFixed(3)};
 }
 #endif
 #include <alphatest_fragment>`,
@@ -257,9 +257,6 @@ export function spruceGeometry(seed = 1, crownBase = 0.35): THREE.BufferGeometry
 }
 
 // single needle tufts in the Mediterranean atlas BRANCH region (centre u,v), half size 0.05
-const PINE_TUFTS: [number, number][] = [
-  [0.16, 0.835], [0.295, 0.8925], [0.44, 0.885], [0.43, 0.715], [0.19, 0.705],
-];
 
 /**
  * Aleppo pine (Pinus halepensis), height 1: a tall, often leaning or forked trunk that stays bare
@@ -300,8 +297,11 @@ export function pineGeometry(seed = 3, crownBase = 0.45, width = 1): THREE.Buffe
 
   // needle tuft = a flat sprig seen from above/below plus two upright crossed ones
   const tuft = (c: THREE.Vector3, size: number, ao: number, upwards: number) => {
-    const [tu, tv] = PINE_TUFTS[Math.floor(r() * PINE_TUFTS.length)];
-    const reg: Region = { u0: tu - 0.05, u1: tu + 0.05, v0: tv - 0.05, v1: tv + 0.05 };
+    // isolated round tufts baked into the Mediterranean atlas (FLOWERS region, 4×2 cells)
+    const cell = Math.floor(r() * 8);
+    const cu = 0.5 + (cell % 4) * 0.125, cv = cell < 4 ? 0.125 : 0;
+    const reg: Region = { u0: cu, u1: cu + 0.125, v0: cv, v1: cv + 0.125 };
+    size *= 1.45;
     const spin = r() * Math.PI * 2;
     const ex = new THREE.Vector3(Math.cos(spin), 0, Math.sin(spin));
     const ez = new THREE.Vector3(-Math.sin(spin), 0, Math.cos(spin));
@@ -354,10 +354,12 @@ export function pineGeometry(seed = 3, crownBase = 0.45, width = 1): THREE.Buffe
       const ao = 0.55 + 0.45 * hRel;
       tuft(end.clone().add(new THREE.Vector3(0, 0.012, 0)), 0.11 + r() * 0.05, ao, 1);
       tuft(mid.clone().add(new THREE.Vector3((r() - 0.5) * 0.03, 0.01 + r() * 0.015, (r() - 0.5) * 0.03)), 0.085 + r() * 0.04, ao * 0.9, 0.5);
-      // an occasional extra clump off the limb, so the silhouette is lumpy rather than a disc
-      if (r() < 0.55) {
-        const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar((r() - 0.5) * 0.09);
-        tuft(end.clone().addScaledVector(dir, 0.04).add(side).add(new THREE.Vector3(0, 0.03 * r(), 0)), 0.08 + r() * 0.04, ao, 1);
+      // a cluster of clumps round the limb end, so crowns are full but lumpy, with sky between limbs
+      const extra = 3 + Math.floor(r() * 3);
+      for (let q = 0; q < extra; q++) {
+        const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar((r() - 0.5) * 0.12);
+        const along = (r() - 0.3) * 0.08;
+        tuft(end.clone().addScaledVector(dir, along).add(side).add(new THREE.Vector3(0, (r() - 0.3) * 0.05, 0)), 0.07 + r() * 0.05, ao * (0.85 + r() * 0.15), r() < 0.5 ? 1 : 0.5);
       }
     }
     // crown top of this leader

@@ -48,6 +48,8 @@ for (const e of manifest) {
     eng.camera.fov = fov;
     eng.camera.updateProjectionMatrix();
     eng.cameraOverride = (cam) => {
+      // the dashcam view: hide our own rider
+      eng.world.rider.visible = false;
       cam.position.set(x, y + 1.45, z);
       cam.lookAt(x + Math.sin(h) * 100, y + 1.45 - 2, z - Math.cos(h) * 100);
     };

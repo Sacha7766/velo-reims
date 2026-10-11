@@ -227,7 +227,8 @@ float tBump = 0.0;
   base = mix(base, base * min(1.0, 0.62 / max(bL, 1e-3)) * vec3(1.0, 0.97, 0.88), uKarst * limestone);
   // rock faces and cuts near the road: photographed fractured limestone, ochre to grey
   float cliffNear = 1.0 - smoothstep(35.0, 110.0, camD);
-  float cliffW = uKarst * smoothstep(0.28, 0.48, slope) * (1.0 - smoothstep(900.0, 1600.0, camD)) * mix(0.75, 1.0, cliffNear);
+  // rock only on steep faces; ~50° banks above road cuts stay garrigue
+  float cliffW = uKarst * smoothstep(0.42, 0.62, slope) * (1.0 - smoothstep(900.0, 1600.0, camD)) * mix(0.75, 1.0, cliffNear);
   if (cliffW > 0.001) {
     vec3 cw = pow(abs(wn), vec3(5.0));
     cw /= cw.x + cw.y + cw.z;
@@ -246,6 +247,11 @@ float tBump = 0.0;
   }
   // under pines the Mediterranean floor is dry needle litter, not dark mould
   base = mix(base, mix(base * 0.7, vec3(0.36, 0.29, 0.22) * (0.8 + 0.4 * tNoise(p * 0.5)), 0.65), canopy * uKarst);
+  // Mediterranean soil is mid grey-brown (terra rossa, needle litter); the orthophoto's
+  // sun-bleached open ground photographs far brighter than it looks from the road
+  float soilL = dot(base, vec3(0.3, 0.55, 0.15));
+  float soilCap = mix(0.36, 0.5, max(limestone, steep));
+  base = mix(base, base * min(1.0, soilCap / max(soilL, 1e-3)) * vec3(1.0, 0.95, 0.88), uKarst);
   // road verges: grey-brown dirt with pale rubble (not the orthophoto's grey asphalt)
   float rubble = smoothstep(0.72, 0.8, tNoise(p * 2.3)) * 0.5 + smoothstep(0.78, 0.86, tNoise(p * 6.1 + 3.0)) * 0.5;
   vec3 dirt = mix(vec3(0.42, 0.36, 0.3), vec3(0.62, 0.59, 0.52), rubble) * (0.82 + 0.3 * tNoise(p * 0.9));

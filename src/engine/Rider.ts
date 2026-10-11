@@ -284,22 +284,25 @@ export class Rider extends THREE.Group {
     hd.rotation.x = 0.12;
     p.head.add(hd);
     // limbs keep their IK; only the shape changes. Each limb becomes a group holding the model.
-    const swapLimb = (limb: Limb, name: string) => {
+    // parts are authored for the +X side (lateral = +X); the -X limb mirrors them
+    const swapLimb = (limb: Limb, name: string, side: number) => {
       const g = cloneOf(name);
       const holder = limb.mesh;
       holder.geometry = new THREE.BufferGeometry();
       holder.add(g);
-      g.scale.setScalar(1);
+      g.scale.set(side, 1, 1);
     };
     for (const l of this.legs) {
-      swapLimb(l.thigh, 'thigh');
-      swapLimb(l.shin, 'shin');
+      swapLimb(l.thigh, 'thigh', l.side);
+      swapLimb(l.shin, 'shin', l.side);
       l.foot.geometry = new THREE.BufferGeometry();
-      l.foot.add(cloneOf('shoe'));
+      const shoe = cloneOf('shoe');
+      shoe.scale.x = l.side;
+      l.foot.add(shoe);
     }
     for (const a of this.arms) {
-      swapLimb(a.upper, 'upperarm');
-      swapLimb(a.fore, 'forearm');
+      swapLimb(a.upper, 'upperarm', a.side);
+      swapLimb(a.fore, 'forearm', a.side);
     }
   }
 
@@ -374,7 +377,7 @@ export class Rider extends THREE.Group {
     for (const arm of this.arms) {
       const sh = new THREE.Vector3(0.19 * arm.side, 1.34, 0.12).sub(hip0).applyQuaternion(q).add(hip);
       // seated: tops/hoods; standing: hands forward on the hoods, gripping the rocking bike
-      const handB = new THREE.Vector3(0.2 * arm.side, THREE.MathUtils.lerp(0.99, 0.97, st), THREE.MathUtils.lerp(0.52, 0.55, st));
+      const handB = new THREE.Vector3(0.2 * arm.side, THREE.MathUtils.lerp(0.99, 0.97, st), THREE.MathUtils.lerp(0.53, 0.545, st));
       const hand = handB.applyMatrix4(bikeM);
       const elbow = twoBone(sh, hand, 0.29, 0.29, new THREE.Vector3(0.6 * arm.side, -0.3 - st * 0.2, -0.6));
       arm.upper.set(sh, elbow);
