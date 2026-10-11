@@ -24,6 +24,9 @@ from scipy import ndimage
 
 route_id, chm_path, dlt_path = sys.argv[1:4]
 corridor = float(sys.argv[sys.argv.index('--corridor') + 1]) if '--corridor' in sys.argv else 550.0
+# Mediterranean woodland is lower and denser than Alpine forest: --min-height 2.5 --window 0.6
+min_h = float(sys.argv[sys.argv.index('--min-height') + 1]) if '--min-height' in sys.argv else 3.0
+win = float(sys.argv[sys.argv.index('--window') + 1]) if '--window' in sys.argv else 1.0
 
 route = json.load(open(f'public/routes/{route_id}.json'))
 coords = route['coords']
@@ -44,13 +47,62 @@ inside = dist <= corridor
 # smooth a little to merge multi-peak crowns, then find tops with a height-dependent window
 sm = ndimage.gaussian_filter(chm, sigma=1.1 / px)
 tops = np.zeros(chm.shape, bool)
-for lo, hi, radius_m in ((3, 10, 1.8), (10, 18, 2.6), (18, 26, 3.3), (26, 99, 4.0)):
-    size = int(round(2 * radius_m / px)) | 1
+for lo, hi, radius_m in ((min_h, 10, 1.8), (10, 18, 2.6), (18, 26, 3.3), (26, 99, 4.0)):
+    size = int(round(2 * radius_m * win / px)) | 1
     peak = sm == ndimage.maximum_filter(sm, size=size)
     tops |= peak & (sm >= lo) & (sm < hi)
-tops &= inside & (chm >= 3)
+tops &= inside & (chm >= min_h)
 rows, cols = np.nonzero(tops)
 heights = sm[rows, cols]
+
+# --fill: satellite canopy models blur neighbouring crowns into blobs, so peaks alone give far
+# too few trees in closed woodland. Plant more trees through the canopy pixels at a spacing
+# that grows with tree height (Poisson-disk style, grid-hashed), so the cover matches the CHM.
+if '--fill' in sys.argv:
+    cell = 4.0  # metres per hash cell
+    grid = {}
+    def key(x, y):
+        return (int(x // cell), int(y // cell))
+    pts_x = list(cols * px)
+    pts_y = list(rows * px)
+    for x, y in zip(pts_x, pts_y):
+        grid.setdefault(key(x, y), []).append((x, y))
+    rng_f = np.random.default_rng(3)
+    step = max(1, int(round(1.5 / px)))
+    cand_r, cand_c = np.nonzero((sm[::step, ::step] >= min_h) & inside[::step, ::step])
+    cand_r = cand_r * step + rng_f.integers(0, step, len(cand_r))
+    cand_c = cand_c * step + rng_f.integers(0, step, len(cand_c))
+    cand_r = np.clip(cand_r, 0, sm.shape[0] - 1)
+    cand_c = np.clip(cand_c, 0, sm.shape[1] - 1)
+    order = rng_f.permutation(len(cand_r))
+    add_r, add_c = [], []
+    for k in order:
+        r_, c_ = cand_r[k], cand_c[k]
+        h_ = sm[r_, c_]
+        if h_ < min_h:
+            continue
+        rad = max(2.8, 0.36 * h_ + 0.8)
+        x, y = c_ * px, r_ * px
+        kx, ky = key(x, y)
+        ok = True
+        for gx in (kx - 1, kx, kx + 1):
+            for gy in (ky - 1, ky, ky + 1):
+                for (ox, oy) in grid.get((gx, gy), ()):
+                    if (ox - x) ** 2 + (oy - y) ** 2 < rad * rad:
+                        ok = False
+                        break
+                if not ok:
+                    break
+            if not ok:
+                break
+        if ok:
+            grid.setdefault((kx, ky), []).append((x, y))
+            add_r.append(r_)
+            add_c.append(c_)
+    print(f'fill: +{len(add_r)} trees in canopy gaps')
+    rows = np.concatenate([rows, np.array(add_r, dtype=rows.dtype)])
+    cols = np.concatenate([cols, np.array(add_c, dtype=cols.dtype)])
+    heights = sm[rows, cols]
 
 xs, ys = rasterio.transform.xy(T, rows, cols)
 xs, ys = np.asarray(xs), np.asarray(ys)

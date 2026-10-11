@@ -631,7 +631,7 @@ export class Engine {
     if (w) {
       const { route } = w;
       this.placeRider(w.rider, this.riderS, this.riderDir, route);
-      w.rider.update(dt, this.riderSpeed, this.riderCadence, this.riderEffort);
+      w.rider.update(dt, this.riderSpeed, this.riderCadence, this.riderEffort, pointAt(route, this.riderS, tmp).grade * this.riderDir);
       if (this.ghostS !== null) {
         w.ghost.visible = true;
         this.placeRider(w.ghost, this.ghostS, this.ghostDir, route);
@@ -642,7 +642,9 @@ export class Engine {
         rider.visible = !!b;
         if (!b) return;
         this.placeRider(rider, b.s, b.dir, route, this.lateral - 1.1 - (i % 2) * 0.9);
-        rider.update(dt, b.speed, b.speed > 0.5 ? 88 : 0, 0.6);
+        // pacers stand up on the steep ramps too
+        const g = pointAt(route, b.s, tmp).grade * b.dir;
+        rider.update(dt, b.speed, b.speed > 0.5 ? (g > 9 ? 66 : 88) : 0, g > 9 ? 1.0 : 0.6, g);
       });
       const inTunnel = w.tunnels.contains(this.riderS);
       this.rig.update(this.camera, dt, route, this.riderS, this.riderDir, this.lateral, (x, z) => (inTunnel ? NaN : w.terrain.heightAt(x, z)), inTunnel);

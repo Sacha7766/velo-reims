@@ -253,6 +253,7 @@ export function App() {
     if (q.get('sim')) {
       hub.setSimulator(true);
       hub.simulator.setEffort(Number(q.get('watts') ?? 230));
+      if (q.get('rpm')) hub.simulator.setCadence?.(Number(q.get('rpm')));
     }
     if (q.get('time')) settingsRef.current = { ...settingsRef.current, time: q.get('time')! };
     if (q.get('bots')) settingsRef.current = { ...settingsRef.current, bots: q.get('bots')!.split(',').map(Number) };

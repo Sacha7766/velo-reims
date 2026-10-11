@@ -195,7 +195,7 @@ export class Roadside extends THREE.Group {
     const uv: number[] = [];
     const idx: number[] = [];
     const T = 0.25; // half thickness
-    const H = 0.92;
+    const H = 0.74;
     // cross-section (outward offset from the inner face, height): inner face, rounded cap, outer face
     const prof: [number, number, number][] = [
       [0, -0.6, 0], [0, H - 0.08, 0.45], [0.05, H, 0.52], [T, H + 0.06, 0.6], [2 * T - 0.05, H, 0.68], [2 * T, H - 0.08, 0.75], [2 * T, -2.0, 1.0],

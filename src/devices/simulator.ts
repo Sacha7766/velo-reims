@@ -16,6 +16,7 @@ export function stepSimulator(
   effortWatts: number,
   dt: number,
   rand: () => number = Math.random,
+  cadence = 88,
 ): Metrics {
   const target = mode.kind === 'erg' ? mode.watts : effortWatts;
   const noise = mode.kind === 'erg' ? 0.02 : 0.03;
@@ -25,7 +26,7 @@ export function stepSimulator(
   s.hr += (hrTarget - s.hr) * (1 - Math.exp(-dt / 25));
   return {
     power,
-    cadence: power > 0 ? Math.round(88 + (rand() * 2 - 1) * 3) : 0,
+    cadence: power > 0 ? Math.round(cadence + (rand() * 2 - 1) * 3) : 0,
     heartRate: Math.round(Math.min(195, s.hr)),
   };
 }
@@ -39,6 +40,7 @@ export interface Simulator {
 
 export function createSimulator(emit: (m: Metrics) => void): Simulator {
   let effort = 180;
+  let cadence = 88;
   let mode: TrainerMode = { kind: 'idle' };
   let state = newSimState();
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -54,11 +56,14 @@ export function createSimulator(emit: (m: Metrics) => void): Simulator {
       setEffort(w) {
         effort = clampEffort(w);
       },
+      setCadence(rpm) {
+        cadence = rpm === null ? 88 : Math.min(140, Math.max(30, rpm));
+      },
     },
     start() {
       if (timer) return;
       state = newSimState();
-      timer = setInterval(() => emit(stepSimulator(state, mode, effort, 0.25)), 250);
+      timer = setInterval(() => emit(stepSimulator(state, mode, effort, 0.25, Math.random, cadence)), 250);
     },
     stop() {
       if (timer) clearInterval(timer);

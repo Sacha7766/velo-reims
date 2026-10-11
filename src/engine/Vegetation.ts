@@ -202,8 +202,8 @@ export class Vegetation extends THREE.Group {
         ? {
           spruceF: pineGeometry(1, 0.7, 0.85),
           spruceO: pineGeometry(5, 0.52, 1.05),
-          beechF: broadleafGeometry(2, 0.3, 1.0),
-          beechO: broadleafGeometry(9, 0.12, 1.25),
+          beechF: broadleafGeometry(2, 0.34, 1.0),
+          beechO: broadleafGeometry(9, 0.24, 1.2),
         }
         : {
           spruceF: spruceGeometry(1, 0.36),

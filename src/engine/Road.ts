@@ -89,7 +89,8 @@ float rn(vec2 p) {
   // gravel shoulder
   float sh = smoothstep(uHalf - 0.02, uHalf + 0.06, a);
   vec3 gravel = mix(vec3(0.3, 0.29, 0.27), vec3(0.42, 0.41, 0.38), rn(p * 14.0));
-  gravel = mix(gravel, vec3(0.5, 0.46, 0.4) * (0.8 + 0.3 * rn(p * 9.0)), uMed);
+  // Mallorca: the asphalt crumbles into the red-brown dusty verge
+  gravel = mix(gravel, vec3(0.42, 0.33, 0.25) * (0.8 + 0.3 * rn(p * 9.0)), uMed);
   col = mix(col, gravel, sh);
   diffuseColor.rgb = col;
   diffuseColor.a = 1.0 - smoothstep(uHalf + 0.25, uHalf + ${SHOULDER.toFixed(2)}, a);

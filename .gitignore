@@ -10,3 +10,4 @@ research/*/data
 research/*/assets
 research/*/streetlevel
 *.fit
+.claude/

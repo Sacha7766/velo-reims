@@ -233,7 +233,9 @@ float tBump = 0.0;
     tDetail = mix(tDetail, 1.0, cliffW); // the scan carries its own detail
   }
   // under pines the Mediterranean floor is dry needle litter, not dark mould
-  base = mix(base, mix(base, vec3(0.5, 0.42, 0.32) * (0.85 + 0.3 * tNoise(p * 0.5)), 0.55), canopy * uKarst);
+  base = mix(base, mix(base, vec3(0.5, 0.4, 0.3) * (0.85 + 0.3 * tNoise(p * 0.5)), 0.6), canopy * uKarst);
+  // and the verges of the road are dusty terra rossa
+  base = mix(base, vec3(0.52, 0.4, 0.3) * (0.8 + 0.35 * tNoise(p * 0.9)), uKarst * near * (1.0 - smoothstep(0.0, 0.6, slope)) * 0.35);
   tc = base * tDetail;
 
   // water: OSM mask, or sea level

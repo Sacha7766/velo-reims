@@ -69,8 +69,13 @@ export class Rider extends THREE.Group {
   private arms: { upper: Limb; fore: Limb; side: number }[] = [];
   private crankAngle = 0;
   private wheelAngle = 0;
-  private sway = 0;
   private body = new THREE.Group();
+  private bike!: THREE.Group;
+  /** 0 = seated, 1 = out of the saddle (blended). */
+  stand = 0;
+  private standing = false;
+  private wantFor = 0;
+  private sitFor = 0;
   private parts: {
     bike: THREE.Object3D[];
     head: THREE.Group;
@@ -165,6 +170,7 @@ export class Rider extends THREE.Group {
     }
     bike.add(this.crankArm);
     this.add(bike);
+    this.bike = bike;
     const bikeProcedural = [...bike.children].filter((c) => !this.wheels.includes(c) && c !== this.crankArm);
 
     // rider
@@ -297,32 +303,80 @@ export class Rider extends THREE.Group {
     }
   }
 
-  /** Advance animation. speed m/s, cadence rpm, dt s. */
-  update(dt: number, speed: number, cadence: number, effort = 0.5) {
+  /**
+   * Out of the saddle like a real rider: grinding a low cadence at high effort or on a steep
+   * ramp, and sprinting. Hysteresis so the rider doesn't bob up and down at the threshold.
+   */
+  private updateStanding(dt: number, speed: number, cadence: number, effort: number, grade: number) {
+    const pedalling = cadence > 20;
+    const grind = pedalling && cadence < 68 && effort > 0.85;
+    const ramp = pedalling && grade > 8.5 && cadence < 76 && effort > 0.7;
+    const sprint = pedalling && effort > 1.6 && cadence > 85 && speed > 8;
+    const want = grind || ramp || sprint;
+    if (want) {
+      this.wantFor += dt;
+      this.sitFor = 0;
+    } else {
+      this.sitFor += dt;
+      this.wantFor = 0;
+    }
+    if (!this.standing && this.wantFor > 1.0) this.standing = true;
+    if (this.standing && (this.sitFor > 1.8 || !pedalling)) this.standing = false;
+    const target = this.standing ? 1 : 0;
+    this.stand += (target - this.stand) * (1 - Math.exp(-dt / 0.35));
+  }
+
+  /** Advance animation. speed m/s, cadence rpm, dt s, effort = power / FTP, grade %. */
+  update(dt: number, speed: number, cadence: number, effort = 0.5, grade = 0) {
     this.wheelAngle += (speed * dt) / WHEEL_R;
     for (const w of this.wheels) w.rotation.x = this.wheelAngle;
-    const rpm = cadence > 5 ? cadence : speed > 0.5 ? 0 : 0;
+    const rpm = cadence > 5 ? cadence : 0;
     this.crankAngle += (rpm / 60) * Math.PI * 2 * dt;
     this.crankArm.rotation.x = this.crankAngle;
-    this.sway += dt * (rpm / 60) * Math.PI * 2;
-    const rock = rpm > 0 ? Math.sin(this.sway) * 0.012 * (0.6 + effort) : 0;
-    this.torso.rotation.z = rock;
+    this.updateStanding(dt, speed, rpm, effort, grade);
+    const st = this.stand;
+    const push = Math.sin(this.crankAngle); // +1: the +x leg is mid-downstroke
+
+    // the bike rocks under a standing rider, away from the pushing leg
+    this.bike.rotation.z = st * 0.11 * push * Math.min(1, rpm / 40);
+    this.bike.updateMatrix();
+    const bikeM = this.bike.matrix;
+
+    // pelvis: seated on the saddle → up and forward over the bottom bracket when standing;
+    // it drops onto each downstroke and swings towards the pushing leg
+    const hip = new THREE.Vector3(
+      st * 0.035 * push,
+      THREE.MathUtils.lerp(HIP_Y, 1.065, st) - st * 0.022 * Math.abs(push),
+      THREE.MathUtils.lerp(HIP_Z, -0.11, st),
+    );
+    const shoulder = new THREE.Vector3(st * 0.02 * push, THREE.MathUtils.lerp(1.36, 1.34, st), THREE.MathUtils.lerp(0.14, 0.29, st));
+    // torso group: authored for the seated pose; rotate about the seated hip into the current pose
+    const hip0 = new THREE.Vector3(0, HIP_Y, HIP_Z);
+    const sh0 = new THREE.Vector3(0, 1.36, 0.14);
+    const q = new THREE.Quaternion().setFromUnitVectors(sh0.clone().sub(hip0).normalize(), shoulder.clone().sub(hip).normalize());
+    const seatedRock = rpm > 0 ? Math.sin(this.crankAngle) * 0.012 * (0.6 + effort) : 0;
+    q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), seatedRock * (1 - st) - st * 0.05 * push));
+    this.torso.quaternion.copy(q);
+    this.torso.position.copy(hip).sub(hip0.clone().applyQuaternion(q));
 
     for (const leg of this.legs) {
       const a = this.crankAngle + (leg.side > 0 ? 0 : Math.PI);
-      const pedal = new THREE.Vector3(0.12 * leg.side, BB.y + Math.cos(a) * CRANK, BB.z + Math.sin(a) * CRANK);
-      const hip = new THREE.Vector3(0.1 * leg.side, HIP_Y - 0.03, HIP_Z + 0.02);
+      const pedalB = new THREE.Vector3(0.12 * leg.side, BB.y + Math.cos(a) * CRANK, BB.z + Math.sin(a) * CRANK);
+      const pedal = pedalB.clone().applyMatrix4(bikeM);
+      const legHip = new THREE.Vector3(0.1 * leg.side, -0.03, 0.02).applyQuaternion(q).add(hip);
       const ankle = pedal.clone().add(new THREE.Vector3(0, 0.07, -0.03));
-      const knee = twoBone(hip, ankle, THIGH, SHIN, new THREE.Vector3(0.04 * leg.side, 0.3, 1));
-      leg.thigh.set(hip, knee);
+      const knee = twoBone(legHip, ankle, THIGH, SHIN, new THREE.Vector3(0.04 * leg.side, 0.3, 1));
+      leg.thigh.set(legHip, knee);
       leg.shin.set(knee, ankle);
       leg.foot.position.copy(pedal).add(new THREE.Vector3(0, 0.035, 0.02));
-      leg.foot.rotation.x = -0.15 + Math.sin(a) * 0.2;
+      leg.foot.rotation.set(-0.15 + Math.sin(a) * 0.2 - st * 0.12, 0, this.bike.rotation.z);
     }
     for (const arm of this.arms) {
-      const sh = new THREE.Vector3(0.19 * arm.side, 1.34, 0.12);
-      const hand = new THREE.Vector3(0.2 * arm.side, 0.99, 0.52);
-      const elbow = twoBone(sh, hand, 0.29, 0.29, new THREE.Vector3(0.6 * arm.side, -0.3, -0.6));
+      const sh = new THREE.Vector3(0.19 * arm.side, 1.34, 0.12).sub(hip0).applyQuaternion(q).add(hip);
+      // seated: tops/hoods; standing: hands forward on the hoods, gripping the rocking bike
+      const handB = new THREE.Vector3(0.2 * arm.side, THREE.MathUtils.lerp(0.99, 0.97, st), THREE.MathUtils.lerp(0.52, 0.55, st));
+      const hand = handB.applyMatrix4(bikeM);
+      const elbow = twoBone(sh, hand, 0.29, 0.29, new THREE.Vector3(0.6 * arm.side, -0.3 - st * 0.2, -0.6));
       arm.upper.set(sh, elbow);
       arm.fore.set(elbow, hand);
     }

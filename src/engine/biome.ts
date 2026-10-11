@@ -70,7 +70,7 @@ export const MEDITERRANEAN: Biome = {
   // carritx: olive green bases, straw tips in autumn
   grass: [new THREE.Color(0.78, 0.86, 0.66), new THREE.Color(1.0, 0.94, 0.74), new THREE.Color(0.9, 0.9, 0.8)],
   tussocks: true,
-  shrubs: 0.1,
+  shrubs: 0.045,
   shrubTint: new THREE.Color(0.42, 0.55, 0.34),
   palms: 0.035,
   ferns: false,

@@ -45,6 +45,8 @@ export interface DeviceInfo {
 }
 
 export interface SimulatorControls {
+  /** Fixed virtual cadence (rpm), null = the default ~88 rpm. */
+  setCadence?(rpm: number | null): void;
   /** Rider effort used in SIM/idle mode (ERG mode follows the target). */
   readonly effortWatts: number;
   nudge(deltaWatts: number): void;

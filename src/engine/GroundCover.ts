@@ -350,10 +350,11 @@ export class GroundCover extends THREE.Group {
               cushions.push(x, y - 0.2, z, 1.1 + r() * 1.5, r() * 6.28, 1);
               continue;
             }
-            // carritx grows in clumps with bare ground between
+            // carritx grows in clumps with bare ground between; under pines the floor is open
             const clump = Math.sin(x * 0.23 + Math.sin(z * 0.19) * 2.0) * Math.cos(z * 0.21 + x * 0.07);
-            if (clump < -0.1 && r() < 0.8) continue;
-            if (r() < 0.45) continue;
+            if (clump < -0.1 && r() < 0.85) continue;
+            // open slopes are covered in carritx; under the pines it thins out
+            if (r() < (canopy > 0.4 ? 0.85 : 0.25)) continue;
             const v = d < halfWidth + 1.2 ? 0.6 + r() * 0.3 : 0.9 + r() * 0.8;
             grass.push(x, y - 0.03, z, v, r() * 6.28, 0);
             continue;
