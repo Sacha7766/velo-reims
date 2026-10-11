@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>RideAudio test</title>
+<style>
+  body { font: 14px system-ui; background: #111; color: #ddd; padding: 20px; max-width: 520px }
+  label { display: grid; grid-template-columns: 90px 1fr 60px; gap: 8px; margin: 6px 0 }
+  button { margin: 4px 4px 0 0 }
+</style>
+<button id="start">Start audio</button> <button id="mute">Mute</button>
+<div id="sliders"></div>
+<label><input type="checkbox" id="desc" /> descending</label>
+<div id="shots"></div>
+<script type="module">
+  import { RideAudio } from '/src/audio/RideAudio.ts';
+  const a = new RideAudio();
+  const s = { speed: 8, power: 180, cadence: 85, grade: 3, altitude: 600, forest: 0.6, urban: 0, descending: false };
+  const defs = { speed: [0, 25, 0.1], power: [0, 400, 1], cadence: [0, 120, 1], altitude: [0, 3000, 10], forest: [0, 1, 0.01], urban: [0, 1, 0.01], volume: [0, 1, 0.01] };
+  const box = document.getElementById('sliders');
+  for (const [k, [lo, hi, step]] of Object.entries(defs)) {
+    const l = document.createElement('label');
+    const v = k === 'volume' ? 0.6 : s[k];
+    l.innerHTML = `${k}<input type=range min=${lo} max=${hi} step=${step} value=${v}><span>${v}</span>`;
+    const r = l.querySelector('input'), o = l.querySelector('span');
+    r.oninput = () => { const n = +r.value; o.textContent = n; if (k === 'volume') a.setVolume(n); else s[k] = n; };
+    box.append(l);
+  }
+  document.getElementById('desc').onchange = (e) => (s.descending = e.target.checked);
+  document.getElementById('start').onclick = () => a.resume();
+  let m = false;
+  document.getElementById('mute').onclick = () => a.setMuted((m = !m));
+  const shots = { 'shift up': () => a.shift(1), 'shift down': () => a.shift(-1), limit: () => a.shiftLimit(), summit: () => a.summit(), 'seg start': () => a.segmentStart(), 'seg end': () => a.segmentEnd(false), 'seg end PR': () => a.segmentEnd(true), countdown: () => a.countdown() };
+  for (const [n, f] of Object.entries(shots)) {
+    const b = document.createElement('button'); b.textContent = n; b.onclick = f; document.getElementById('shots').append(b);
+  }
+  let t = performance.now();
+  (function loop(now) { a.update((now - t) / 1000, s); t = now; requestAnimationFrame(loop); })(t);
+</script>

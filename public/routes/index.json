@@ -1,0 +1,156 @@
+[
+  {
+    "id": "grossglockner",
+    "name": "Großglockner Hochalpenstraße",
+    "region": "Salzburg, AT",
+    "category": "climb",
+    "loop": false,
+    "lengthKm": 26.58,
+    "gain": 1860,
+    "startEle": 810.8,
+    "endEle": 2508.5
+  },
+  {
+    "id": "gaisberg",
+    "name": "Gaisberg",
+    "region": "Salzburg, AT",
+    "category": "climb",
+    "loop": false,
+    "lengthKm": 10.03,
+    "gain": 704,
+    "startEle": 571.8,
+    "endEle": 1275.5
+  },
+  {
+    "id": "kitzbueheler-horn",
+    "name": "Kitzbüheler Horn",
+    "region": "Tirol, AT",
+    "category": "climb",
+    "loop": false,
+    "lengthKm": 11.05,
+    "gain": 923,
+    "startEle": 746.5,
+    "endEle": 1615.3
+  },
+  {
+    "id": "alpe-dhuez",
+    "name": "Alpe d'Huez",
+    "region": "Isère, FR",
+    "category": "climb",
+    "loop": false,
+    "lengthKm": 14.9,
+    "gain": 1135,
+    "startEle": 718.8,
+    "endEle": 1824.3
+  },
+  {
+    "id": "stelvio",
+    "name": "Passo dello Stelvio",
+    "region": "Südtirol, IT",
+    "category": "climb",
+    "loop": false,
+    "lengthKm": 25.32,
+    "gain": 1855,
+    "startEle": 905.3,
+    "endEle": 2758.3
+  },
+  {
+    "id": "ventoux",
+    "name": "Mont Ventoux (Bédoin)",
+    "region": "Provence, FR",
+    "category": "climb",
+    "loop": false,
+    "lengthKm": 21.41,
+    "gain": 1589,
+    "startEle": 311,
+    "endEle": 1900.3
+  },
+  {
+    "id": "wachau",
+    "name": "Wachau",
+    "region": "Niederösterreich, AT",
+    "category": "flat",
+    "loop": false,
+    "lengthKm": 38.94,
+    "gain": 71,
+    "startEle": 230.8,
+    "endEle": 198.3
+  },
+  {
+    "id": "neusiedler-see",
+    "name": "Neusiedler See",
+    "region": "Burgenland, AT",
+    "category": "flat",
+    "loop": false,
+    "lengthKm": 25.75,
+    "gain": 4,
+    "startEle": 125,
+    "endEle": 119.3
+  },
+  {
+    "id": "wolfgangsee",
+    "name": "Wolfgangsee",
+    "region": "Salzkammergut, AT",
+    "category": "rolling",
+    "loop": false,
+    "lengthKm": 18.31,
+    "gain": 104,
+    "startEle": 548,
+    "endEle": 544.8
+  },
+  {
+    "id": "formentor",
+    "name": "Cap de Formentor",
+    "region": "Mallorca, ES",
+    "category": "rolling",
+    "loop": false,
+    "lengthKm": 19.4,
+    "gain": 556,
+    "startEle": 2,
+    "endEle": 161.5
+  },
+  {
+    "id": "sa-calobra",
+    "name": "Sa Calobra",
+    "region": "Mallorca, ES",
+    "category": "climb",
+    "loop": false,
+    "lengthKm": 9.69,
+    "gain": 686,
+    "startEle": 13.5,
+    "endEle": 673.8
+  },
+  {
+    "id": "central-park",
+    "name": "Central Park Loop",
+    "region": "New York, US",
+    "category": "city",
+    "loop": true,
+    "lengthKm": 9.89,
+    "gain": 55,
+    "startEle": 27.8,
+    "endEle": 27.8
+  },
+  {
+    "id": "sydney",
+    "name": "Sydney Coast & Park",
+    "region": "Sydney, AU",
+    "category": "city",
+    "loop": true,
+    "lengthKm": 17.66,
+    "gain": 228,
+    "startEle": 18.3,
+    "endEle": 18.3
+  },
+  {
+    "id": "vienna-ring",
+    "name": "Wiener Ringstraße",
+    "region": "Wien, AT",
+    "category": "city",
+    "loop": true,
+    "lengthKm": 5.88,
+    "gain": 16,
+    "startEle": 165.8,
+    "endEle": 165.8
+  }
+]

@@ -1,0 +1,97 @@
+{
+ "placements": [
+  {
+   "model": "sender-gaisberg.glb",
+   "lon": 13.112097,
+   "lat": 47.805225,
+   "rot": 12,
+   "lift": 9.5
+  },
+  {
+   "model": "sender-gaisberg-small.glb",
+   "lon": 13.111691,
+   "lat": 47.805298,
+   "rot": 5,
+   "lift": 0
+  },
+  {
+   "model": "car-hatchback.glb",
+   "lon": 13.11161,
+   "lat": 47.803266,
+   "rot": 165.2,
+   "tint": "#5d6f86",
+   "align": true
+  },
+  {
+   "model": "car-van.glb",
+   "lon": 13.111803,
+   "lat": 47.8033,
+   "rot": 165.2,
+   "tint": "#9aa3ad",
+   "align": true
+  },
+  {
+   "model": "car-hatchback.glb",
+   "lon": 13.111625,
+   "lat": 47.803315,
+   "rot": 345.2,
+   "tint": "#2d4a6b",
+   "align": true
+  },
+  {
+   "model": "car-van.glb",
+   "lon": 13.111786,
+   "lat": 47.803344,
+   "rot": 345.2,
+   "tint": "#4a5d3a",
+   "align": true
+  },
+  {
+   "model": "car-hatchback.glb",
+   "lon": 13.111587,
+   "lat": 47.80341,
+   "rot": 165.2,
+   "tint": "#8c1c13",
+   "align": true
+  },
+  {
+   "model": "car-hatchback.glb",
+   "lon": 13.111749,
+   "lat": 47.803439,
+   "rot": 165.2,
+   "tint": "#f2f2ef",
+   "align": true
+  },
+  {
+   "model": "car-hatchback.glb",
+   "lon": 13.111781,
+   "lat": 47.803445,
+   "rot": 165.2,
+   "tint": "#b8bcc2",
+   "align": true
+  },
+  {
+   "model": "car-hatchback.glb",
+   "lon": 13.111597,
+   "lat": 47.803561,
+   "rot": 165.2,
+   "tint": "#5d6f86",
+   "align": true
+  },
+  {
+   "model": "car-hatchback.glb",
+   "lon": 13.111483,
+   "lat": 47.803587,
+   "rot": 345.2,
+   "tint": "#f2f2ef",
+   "align": true
+  },
+  {
+   "model": "bus.glb",
+   "lon": 13.111139,
+   "lat": 47.803437,
+   "rot": 75.2,
+   "align": true
+  }
+ ]
+}

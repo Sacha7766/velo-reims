@@ -1,0 +1,21 @@
+// GPX import → live Overpass + DEM for a non-baked route → ride screenshot
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] });
+const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+const errors = [];
+page.on('pageerror', (e) => errors.push(e.message));
+page.on('console', (m) => { if (['error', 'warning'].includes(m.type()) && !m.text().includes('404') && !m.text().includes('PCF')) errors.push(m.text()); });
+await page.goto('http://localhost:5199/');
+await page.getByText('Keyboard simulator').click();
+await page.locator('input[type=file][accept=".gpx"]').setInputFiles('shots/poestlingberg.gpx');
+await page.waitForTimeout(800);
+console.log('start button:', await page.locator('.start-main').textContent());
+const t0 = Date.now();
+await page.locator('.start').click();
+await page.waitForSelector('.hud', { timeout: 150000 });
+console.log('world ready in', ((Date.now() - t0) / 1000).toFixed(1), 's', JSON.stringify(await page.evaluate(() => window.engine.stats)));
+await page.keyboard.press('Digit2');
+await page.waitForTimeout(6000);
+await page.screenshot({ path: 'shots/gpx-drone.png' });
+console.log(errors.length ? errors.join('\n') : 'no errors');
+await browser.close();

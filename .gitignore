@@ -1,0 +1,12 @@
+node_modules
+dist
+.DS_Store
+shots
+research/gaisberg/photos
+research/gaisberg/data
+# downloaded third-party data and photos (mixed licences, large): re-fetch with the research notes
+research/*/photos
+research/*/data
+research/*/assets
+research/*/streetlevel
+*.fit

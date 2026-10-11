@@ -1,0 +1,394 @@
+// OpenStreetMap features along the route corridor via Overpass:
+// forests (→ instanced trees), buildings (→ extruded houses), roads + water (→ tree exclusion).
+
+import { get, set } from 'idb-keyval';
+import { lonLatToWorld } from './mercator.ts';
+import type { Route } from './route.ts';
+
+export interface Polygon {
+  outer: Float32Array; // x,z pairs (closed ring, last != first)
+  holes: Float32Array[];
+  bbox: [number, number, number, number];
+  leaf?: 'needle' | 'broad' | 'mixed';
+}
+
+export type RoofShape = 'flat' | 'gabled' | 'hipped' | 'half-hipped' | 'skillion';
+
+export interface Building {
+  ring: Float32Array;
+  height: number;
+  roof: RoofShape;
+  kind: string;
+  /** OSM building:levels when tagged. */
+  levels?: number;
+  /** Explicit colours (OSM building:colour / roof:colour) when tagged. */
+  wallColour?: string;
+  roofColour?: string;
+  name?: string;
+}
+
+/** Open land cover that changes ground shading and ground cover. */
+export type CoverClass = 'meadow' | 'built' | 'scrub' | 'rock';
+
+export interface Cover {
+  poly: Polygon;
+  cls: CoverClass;
+}
+
+/** Linear features beside roads: guard rails, fences, walls, hedges, power lines. */
+export interface Barrier {
+  pts: Float32Array;
+  kind: string;
+}
+
+/** Point features: benches, bus stops, crosses, signposts, peaks, paragliding take-offs… */
+export interface Poi {
+  x: number;
+  z: number;
+  kind: string;
+  name?: string;
+}
+
+export interface Line {
+  pts: Float32Array;
+  width: number;
+  kind: string;
+}
+
+export interface OsmWorld {
+  forests: Polygon[];
+  water: Polygon[];
+  buildings: Building[];
+  roads: Line[];
+  trees: Float32Array;
+  cover: Cover[];
+  barriers: Barrier[];
+  pois: Poi[];
+}
+
+type LatLon = { lat: number; lon: number };
+export interface OsmElement {
+  type: 'node' | 'way' | 'relation';
+  id: number;
+  lat?: number;
+  lon?: number;
+  tags?: Record<string, string>;
+  geometry?: LatLon[];
+  members?: { type: string; role: string; geometry?: LatLon[] }[];
+}
+
+const ENDPOINTS = [
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+];
+
+const KEEP_TAGS = [
+  'landuse', 'natural', 'building', 'building:levels', 'height', 'roof:shape', 'roof:colour', 'building:colour', 'highway',
+  'leaf_type', 'man_made', 'barrier', 'power', 'amenity', 'tourism', 'historic', 'information', 'name', 'sport', 'leisure',
+];
+
+const COVER: Record<string, CoverClass> = {
+  meadow: 'meadow', grass: 'meadow', farmland: 'meadow', village_green: 'meadow', orchard: 'meadow', grassland: 'meadow',
+  heath: 'meadow', residential: 'built', farmyard: 'built', industrial: 'built', commercial: 'built', retail: 'built',
+  scrub: 'scrub', bare_rock: 'rock', scree: 'rock', cliff: 'rock',
+};
+
+const ROAD_WIDTH: Record<string, number> = {
+  motorway: 14, trunk: 11, primary: 9, secondary: 8, tertiary: 7, unclassified: 5.5, residential: 5.5,
+  living_street: 5, service: 4, track: 3.5, cycleway: 2.5, path: 1.5, footway: 1.5, bridleway: 2, steps: 2,
+};
+
+function corridorBoxes(route: Route, corridor: number): string[] {
+  const boxes: string[] = [];
+  const chunk = Math.max(1, Math.round(1500 / route.step));
+  for (let a = 0; a < route.n - 1; a += chunk) {
+    const b = Math.min(route.n - 1, a + chunk);
+    let s = 90, w = 180, n = -90, e = -180;
+    for (let i = a; i <= b; i++) {
+      s = Math.min(s, route.lat[i]);
+      n = Math.max(n, route.lat[i]);
+      w = Math.min(w, route.lon[i]);
+      e = Math.max(e, route.lon[i]);
+    }
+    const dLat = corridor / 111320;
+    const dLon = corridor / (111320 * Math.cos((route.lat[a] * Math.PI) / 180));
+    boxes.push(`${(s - dLat).toFixed(5)},${(w - dLon).toFixed(5)},${(n + dLat).toFixed(5)},${(e + dLon).toFixed(5)}`);
+  }
+  return boxes;
+}
+
+function buildQuery(boxes: string[]): string {
+  const parts = boxes.map(
+    (b) =>
+      `way["landuse"="forest"](${b});relation["landuse"="forest"](${b});` +
+      `way["natural"="wood"](${b});relation["natural"="wood"](${b});` +
+      `way["natural"="water"](${b});relation["natural"="water"](${b});` +
+      `way["building"](${b});way["highway"](${b});node["natural"="tree"](${b});`,
+  );
+  return `[out:json][timeout:120][maxsize:536870912];(${parts.join('')});out geom qt;`;
+}
+
+async function overpass(query: string): Promise<OsmElement[]> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    for (const url of ENDPOINTS) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 25_000);
+      try {
+        const res = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: query }), signal: ctrl.signal });
+        if (!res.ok) throw new Error(`Overpass ${res.status}`);
+        const json = await res.json();
+        return json.elements as OsmElement[];
+      } catch (e) {
+        lastErr = e;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  throw lastErr;
+}
+
+/** Strip to the tags we use and round coordinates — keeps caches and baked files small. */
+export function compactElements(elements: OsmElement[]): OsmElement[] {
+  const r = (v: number) => Math.round(v * 1e6) / 1e6;
+  const pts = (g?: LatLon[]) => g?.map((p) => ({ lat: r(p.lat), lon: r(p.lon) }));
+  return elements.map((el) => {
+    const tags: Record<string, string> = {};
+    for (const k of KEEP_TAGS) if (el.tags?.[k] !== undefined) tags[k] = el.tags[k];
+    const out: OsmElement = { type: el.type, id: el.id, tags };
+    if (el.lat !== undefined) out.lat = r(el.lat);
+    if (el.lon !== undefined) out.lon = r(el.lon);
+    if (el.geometry) out.geometry = pts(el.geometry);
+    if (el.members) out.members = el.members.filter((m) => m.geometry).map((m) => ({ type: m.type, role: m.role, geometry: pts(m.geometry) }));
+    return out;
+  });
+}
+
+export async function loadOsmElements(
+  route: Route,
+  corridor: number,
+  onProgress?: (done: number, total: number) => void,
+): Promise<OsmElement[]> {
+  // presets ship with baked OSM data
+  try {
+    const res = await fetch(`/osm/${route.id}.json`);
+    if (res.ok && res.headers.get('content-type')?.includes('json')) return (await res.json()) as OsmElement[];
+  } catch {
+    /* not baked */
+  }
+  const cacheKey = `osm:v2:${route.id}:${route.n}:${corridor}`;
+  try {
+    const cached = await get<OsmElement[]>(cacheKey);
+    if (cached) return cached;
+  } catch {
+    /* IndexedDB unavailable */
+  }
+  const boxes = corridorBoxes(route, corridor);
+  const groups: string[][] = [];
+  for (let i = 0; i < boxes.length; i += 3) groups.push(boxes.slice(i, i + 3));
+  const seen = new Map<string, OsmElement>();
+  let failed = 0;
+  for (let i = 0; i < groups.length; i++) {
+    onProgress?.(i, groups.length);
+    try {
+      for (const el of await overpass(buildQuery(groups[i]))) seen.set(`${el.type}${el.id}`, el);
+    } catch {
+      failed++;
+    }
+  }
+  if (failed === groups.length) throw new Error('Overpass unavailable');
+  const elements = compactElements([...seen.values()]);
+  if (!failed) {
+    try {
+      await set(cacheKey, elements);
+    } catch {
+      /* quota or private mode */
+    }
+  }
+  return elements;
+}
+
+function joinRings(ways: LatLon[][]): LatLon[][] {
+  const rings: LatLon[][] = [];
+  const pool = ways.filter((w) => w.length > 1).map((w) => w.slice());
+  const same = (a: LatLon, b: LatLon) => a.lat === b.lat && a.lon === b.lon;
+  while (pool.length) {
+    let ring = pool.pop()!;
+    let guard = 0;
+    while (!same(ring[0], ring[ring.length - 1]) && guard++ < 10000) {
+      const end = ring[ring.length - 1];
+      const idx = pool.findIndex((w) => same(w[0], end) || same(w[w.length - 1], end));
+      if (idx < 0) break;
+      let next = pool.splice(idx, 1)[0];
+      if (!same(next[0], end)) next = next.reverse();
+      ring = ring.concat(next.slice(1));
+    }
+    if (ring.length >= 4) rings.push(ring);
+  }
+  return rings;
+}
+
+function toRing(route: Route, pts: LatLon[]): Float32Array {
+  const closed = pts.length > 1 && pts[0].lat === pts[pts.length - 1].lat && pts[0].lon === pts[pts.length - 1].lon;
+  const count = closed ? pts.length - 1 : pts.length;
+  const out = new Float32Array(count * 2);
+  for (let i = 0; i < count; i++) {
+    const [x, z] = lonLatToWorld(route.frame, pts[i].lon, pts[i].lat);
+    out[i * 2] = x;
+    out[i * 2 + 1] = z;
+  }
+  return out;
+}
+
+function ringBbox(r: Float32Array): [number, number, number, number] {
+  let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
+  for (let i = 0; i < r.length; i += 2) {
+    a = Math.min(a, r[i]);
+    c = Math.max(c, r[i]);
+    b = Math.min(b, r[i + 1]);
+    d = Math.max(d, r[i + 1]);
+  }
+  return [a, b, c, d];
+}
+
+function leafType(tags?: Record<string, string>): Polygon['leaf'] {
+  const t = tags?.leaf_type;
+  if (t === 'needleleaved') return 'needle';
+  if (t === 'broadleaved') return 'broad';
+  if (t === 'mixed') return 'mixed';
+  return undefined;
+}
+
+function polygonsFrom(route: Route, el: OsmElement): Polygon[] {
+  if (el.type === 'way' && el.geometry) {
+    const outer = toRing(route, el.geometry);
+    if (outer.length < 6) return [];
+    return [{ outer, holes: [], bbox: ringBbox(outer), leaf: leafType(el.tags) }];
+  }
+  if (el.type === 'relation' && el.members) {
+    const outers = joinRings(el.members.filter((m) => m.role !== 'inner' && m.geometry).map((m) => m.geometry!));
+    const inners = joinRings(el.members.filter((m) => m.role === 'inner' && m.geometry).map((m) => m.geometry!)).map(
+      (r) => toRing(route, r),
+    );
+    return outers.map((o) => {
+      const outer = toRing(route, o);
+      const bbox = ringBbox(outer);
+      const holes = inners.filter((h) => {
+        const hb = ringBbox(h);
+        return hb[0] >= bbox[0] && hb[2] <= bbox[2] && hb[1] >= bbox[1] && hb[3] <= bbox[3];
+      });
+      return { outer, holes, bbox, leaf: leafType(el.tags) };
+    });
+  }
+  return [];
+}
+
+function buildingHeight(tags: Record<string, string>): number {
+  const h = parseFloat(tags.height ?? '');
+  if (Number.isFinite(h) && h > 1) return Math.min(h, 80);
+  const levels = parseFloat(tags['building:levels'] ?? '');
+  if (Number.isFinite(levels)) return Math.min(levels * 3 + 1, 80);
+  switch (tags.building) {
+    case 'garage': case 'garages': case 'shed': case 'carport': case 'hut': case 'cabin': return 3.2;
+    case 'apartments': case 'hotel': case 'commercial': case 'retail': case 'office': return 13;
+    case 'church': case 'chapel': return 14;
+    case 'industrial': case 'warehouse': return 9;
+    default: return 7;
+  }
+}
+
+export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
+  const forests: Polygon[] = [];
+  const water: Polygon[] = [];
+  const buildings: Building[] = [];
+  const roads: Line[] = [];
+  const trees: number[] = [];
+  const cover: Cover[] = [];
+  const barriers: Barrier[] = [];
+  const pois: Poi[] = [];
+  for (const el of elements) {
+    const t = el.tags ?? {};
+    if (el.type === 'node') {
+      if (el.lon === undefined || el.lat === undefined) continue;
+      if (t.natural === 'tree') {
+        trees.push(...lonLatToWorld(route.frame, el.lon, el.lat));
+        continue;
+      }
+      const kind = poiKind(t);
+      if (kind) {
+        const [x, z] = lonLatToWorld(route.frame, el.lon, el.lat);
+        pois.push({ x, z, kind, name: t.name });
+      }
+      continue;
+    }
+    // lattice towers and masts are landmarks (Landmarks.ts), not houses
+    if (t.man_made === 'tower' || t.man_made === 'mast') continue;
+    const coverCls = COVER[t.landuse] ?? COVER[t.natural];
+    if (t.landuse === 'forest' || t.natural === 'wood') forests.push(...polygonsFrom(route, el));
+    else if (t.natural === 'water') water.push(...polygonsFrom(route, el));
+    else if (t.building && el.type === 'way' && el.geometry) {
+      const ring = toRing(route, el.geometry);
+      if (ring.length < 6) continue;
+      const roofTag = t['roof:shape'];
+      const [a, b, c, d] = ringBbox(ring);
+      const area = (c - a) * (d - b);
+      const roof: RoofShape =
+        roofTag === 'flat' ? 'flat'
+          : roofTag === 'hipped' ? 'hipped'
+            : roofTag === 'half-hipped' ? 'half-hipped'
+              : roofTag === 'skillion' ? 'skillion'
+                : roofTag ? 'gabled'
+                  : area < 900 ? 'gabled' : 'flat';
+      const levels = parseFloat(t['building:levels'] ?? '');
+      buildings.push({
+        ring, height: buildingHeight(t), roof, kind: t.building, levels: Number.isFinite(levels) ? levels : undefined,
+        wallColour: t['building:colour'], roofColour: t['roof:colour'], name: t.name,
+      });
+    } else if (t.barrier && el.type === 'way' && el.geometry && !t.area) {
+      barriers.push({ pts: toLine(route, el.geometry), kind: t.barrier });
+    } else if (t.power === 'line' || t.power === 'minor_line') {
+      if (el.geometry) barriers.push({ pts: toLine(route, el.geometry), kind: `power:${t.power}` });
+    } else if (coverCls && (el.type === 'way' || el.type === 'relation') && t.natural !== 'cliff') {
+      for (const poly of polygonsFrom(route, el)) cover.push({ poly, cls: coverCls });
+    } else if (t.highway && el.type === 'way' && el.geometry) {
+      const pts = new Float32Array(el.geometry.length * 2);
+      el.geometry.forEach((p, i) => {
+        const [x, z] = lonLatToWorld(route.frame, p.lon, p.lat);
+        pts[i * 2] = x;
+        pts[i * 2 + 1] = z;
+      });
+      roads.push({ pts, kind: t.highway, width: ROAD_WIDTH[t.highway] ?? 4 });
+    }
+  }
+  return { forests, water, buildings, roads, trees: new Float32Array(trees), cover, barriers, pois };
+}
+
+function toLine(route: Route, g: LatLon[]): Float32Array {
+  const pts = new Float32Array(g.length * 2);
+  g.forEach((p, i) => {
+    const [x, z] = lonLatToWorld(route.frame, p.lon, p.lat);
+    pts[i * 2] = x;
+    pts[i * 2 + 1] = z;
+  });
+  return pts;
+}
+
+function poiKind(t: Record<string, string>): string | null {
+  if (t.highway === 'bus_stop') return 'bus_stop';
+  if (t.highway === 'street_lamp') return 'street_lamp';
+  if (t.amenity === 'bench') return 'bench';
+  if (t.amenity === 'shelter') return 'shelter';
+  if (t.historic === 'wayside_cross' || t.man_made === 'cross' || t.summit_cross === 'yes') return 'cross';
+  if (t.historic === 'wayside_shrine') return 'shrine';
+  if (t.tourism === 'information' && (t.information === 'guidepost' || !t.information)) return 'guidepost';
+  if (t.tourism === 'information' && t.information === 'board') return 'board';
+  if (t.tourism === 'viewpoint') return 'viewpoint';
+  if (t.natural === 'peak') return 'peak';
+  if (t.sport === 'free_flying') return 'takeoff';
+  if (t.power === 'pole' || t.power === 'tower') return `power:${t.power}`;
+  if (t.man_made === 'mast') return 'mast';
+  return null;
+}

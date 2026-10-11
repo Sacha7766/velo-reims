@@ -1,0 +1,38 @@
+{
+  "name": "serpentine",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "bake-routes": "node scripts/bake-routes.mjs",
+    "start": "./Serpentine.command",
+    "bake-osm": "node scripts/bake-osm.mjs",
+    "e2e": "node scripts/e2e.mjs"
+  },
+  "dependencies": {
+    "@fontsource/barlow": "^5.3.0",
+    "@fontsource/barlow-condensed": "^5.3.0",
+    "@garmin/fitsdk": "^21.218.0",
+    "idb-keyval": "^6.3.0",
+    "maplibre-gl": "^6.13.0",
+    "n8ao": "^2.0.1",
+    "postprocessing": "^6.39.5",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
+    "@types/web-bluetooth": "^0.0.21",
+    "@vitejs/plugin-react": "^6.1.2",
+    "playwright": "^1.64.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  }
+}
