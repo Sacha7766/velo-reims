@@ -1,14 +1,21 @@
 // Road tunnels (route.tunnels, from OSM tunnel=yes): a rough rock tube with an arched roof
-// and a line of ceiling lamps. The terrain above stays untouched (Terrain.flatten), the terrain
+// and a line of ceiling lamps. Underpasses (route.underpasses) are short tunnels whose bore is a
+// bridge model. The terrain above stays untouched (Terrain.flatten), the terrain
 // shader cuts the portal openings, and every patched material dims its ambient light inside
 // the tube and adds the lamps (atmosphere.ts TUNNEL_GLSL).
 
 import * as THREE from 'three';
-import { pointAt, type Route, type RoutePoint } from '../geo/route.ts';
-import { patchMaterial, tunnelUniforms, MAX_TUNNEL_PTS } from './atmosphere.ts';
+import { pointAt, type Route, type RoutePoint, type Underpass } from '../geo/route.ts';
+import { patchMaterial, tunnelUniforms, MAX_TUNNEL_PTS, MAX_TUNNELS } from './atmosphere.ts';
+import { loadModel } from './Landmarks.ts';
 
 /** Half width of the bore (beyond the road edge) and roof heights above the road. */
 export const BORE = { side: 0.9, wall: 3.4, apex: 5.9 };
+
+/** Underpasses: from the middle of the passage to the bridge's outer faces (0.8 m thick faces at ±3.5 m). */
+export const UNDERPASS_HALF = 4.3;
+/** Underpasses: from the lower road's centre line to the ends of the bridge's faces. */
+export const UNDERPASS_SIDE = 8;
 
 export class Tunnels extends THREE.Group {
   private spans: { a: number; b: number }[] = [];
@@ -21,34 +28,67 @@ export class Tunnels extends THREE.Group {
     this.route = route;
     this.hw = hw;
     const pts: number[] = [];
-    let first = true;
+    const shader: { s0: number; s1: number; first: number; count: number; lamps: number; ramp: number }[] = [];
+    // centre line for the shaders, ~8 m steps, all tunnels in one point list
+    const line = (from: number, to: number) => {
+      const first = pts.length / 4;
+      const n = Math.min(MAX_TUNNEL_PTS - first, Math.ceil((to - from) / 8) + 1);
+      if (n < 2) return null;
+      for (let i = 0; i < n; i++) {
+        const s = from + ((to - from) * i) / (n - 1);
+        const p = pointAt(route, s, this.tmp);
+        pts.push(p.x, p.ele, p.z, s);
+      }
+      return { first, count: n };
+    };
     for (const [a, b] of route.tunnels) {
       this.spans.push({ a, b });
       this.add(this.tube(a, b));
       this.add(this.portal(a + 4, 1), this.portal(b - 4, -1));
-      // centre line for the shaders, ~8 m steps
-      const n = Math.max(2, Math.min(MAX_TUNNEL_PTS - pts.length / 4, Math.ceil((b - a + 8) / 8) + 1));
-      if (!first) continue;
-      for (let i = 0; i < n; i++) {
-        const s = a - 4 + ((b - a + 8) * i) / (n - 1);
-        const p = pointAt(route, s, this.tmp);
-        pts.push(p.x, p.ele, p.z, s);
-      }
-      first = false; // shader support for one tunnel per route (Formentor has one)
+      const l = line(a - 4, b + 4);
+      if (l) shader.push({ s0: a, s1: b, ...l, lamps: 1, ramp: 3 });
     }
-    const u = tunnelUniforms;
-    u.uTunnelCount.value = pts.length / 4;
-    for (let i = 0; i < MAX_TUNNEL_PTS; i++) {
-      if (i * 4 < pts.length) u.uTunnelPts.value[i].set(pts[i * 4], pts[i * 4 + 1], pts[i * 4 + 2], pts[i * 4 + 3]);
+    // under a bridge: the model is the bore; the shader only cuts the terrain between its faces, no lamps
+    for (const u of route.underpasses) {
+      this.spans.push({ a: u.s - UNDERPASS_HALF, b: u.s + UNDERPASS_HALF });
+      const l = line(u.s - 8, u.s + 8);
+      if (l) shader.push({ s0: u.s - UNDERPASS_HALF, s1: u.s + UNDERPASS_HALF, ...l, lamps: 0, ramp: 0.3 });
+      if (u.model) void this.bridge(u);
     }
-    if (pts.length) {
+    const un = tunnelUniforms;
+    for (let i = 0; i < pts.length / 4; i++) un.uTunnelPts.value[i].set(pts[i * 4], pts[i * 4 + 1], pts[i * 4 + 2], pts[i * 4 + 3]);
+    const used = shader.slice(0, MAX_TUNNELS);
+    used.forEach((t, k) => {
+      un.uTunnelSpan.value[k].set(t.s0, t.s1, t.first, t.count);
+      un.uTunnelMeta.value[k].set(t.lamps, t.ramp, 0, 0);
       const c = new THREE.Vector3();
-      for (let i = 0; i < pts.length; i += 4) c.add(new THREE.Vector3(pts[i], pts[i + 1], pts[i + 2]));
-      c.multiplyScalar(4 / pts.length);
+      const v = new THREE.Vector3();
+      for (let i = t.first; i < t.first + t.count; i++) c.add(v.set(pts[i * 4], pts[i * 4 + 1], pts[i * 4 + 2]));
+      c.multiplyScalar(1 / t.count);
       let r = 0;
-      for (let i = 0; i < pts.length; i += 4) r = Math.max(r, c.distanceTo(new THREE.Vector3(pts[i], pts[i + 1], pts[i + 2])));
-      u.uTunnelBound.value.set(c.x, c.y, c.z, r + 20);
-      u.uTunnelHalf.value = hw + BORE.side;
+      for (let i = t.first; i < t.first + t.count; i++) r = Math.max(r, c.distanceTo(v.set(pts[i * 4], pts[i * 4 + 1], pts[i * 4 + 2])));
+      un.uTunnelBound.value[k].set(c.x, c.y, c.z, r + 20);
+    });
+    un.uTunnelCount.value = used.length;
+    un.uTunnelHalf.value = hw + BORE.side;
+  }
+
+  /** The bridge over an underpass, on the lower road and facing along it. */
+  private async bridge(u: Underpass) {
+    try {
+      const obj = (await loadModel(u.model!)).clone(true);
+      const p = pointAt(this.route, u.s, this.tmp);
+      obj.position.set(p.x, p.ele, p.z);
+      obj.rotation.y = -p.heading;
+      obj.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        m.castShadow = true;
+        m.receiveShadow = true;
+      });
+      this.add(obj);
+    } catch (e) {
+      console.warn('bridge model failed', u.model, e);
     }
   }
 

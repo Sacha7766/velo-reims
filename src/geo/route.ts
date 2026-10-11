@@ -18,6 +18,14 @@ export interface RouteData {
   coords: number[][];
   /** Tunnel spans [from, to] in metres along the route (from OSM tunnel=yes). */
   tunnels?: [number, number][];
+  /** Spans [from, to] where the DEM is the rock above a road cutting, not the road (a false ramp). */
+  cuts?: [number, number][];
+  /**
+   * Where the road passes under itself, like Sa Calobra's Nus de la Corbata: [lon, lat] near the crossing.
+   * The earlier pass along the route goes under, `clearance` metres below the later one; `model` is the
+   * bridge (public/models), its origin on the lower road in the middle of the passage.
+   */
+  underpasses?: { lon: number; lat: number; clearance: number; model?: string }[];
   /**
    * Point-to-point routes: how the rider turns at each end ([lon, lat] from the end point
    * around a loop back to it; scripts/bake-turnarounds.mjs). Missing → a turning circle.
@@ -83,6 +91,7 @@ export interface Route {
   bounds: [number, number, number, number];
   /** Tunnel spans [from, to] in metres along the route. */
   tunnels: [number, number][];
+  underpasses: Underpass[];
   turnEnd: TurnPath | null;
   turnStart: TurnPath | null;
   /** Metres of easy lead-in before the route proper (0 without one) and where it starts. */
@@ -93,6 +102,14 @@ export interface Route {
 }
 
 export const ROUTE_STEP = 4;
+
+export interface Underpass {
+  /** Metres along the route where the road passes under, and where it crosses over that spot. */
+  s: number;
+  over: number;
+  clearance: number;
+  model?: string;
+}
 
 function smooth(src: Float32Array, radius: number, passes = 1): Float32Array {
   let a = src;
@@ -189,15 +206,26 @@ export async function buildRoute(data: RouteData): Promise<Route> {
     }
   }
   if (missing === n && !Number.isFinite(gpxEle[0])) ele.fill(0);
-  // tunnels: the DEM is the mountain above; the road runs straight between the portals
+  // tunnels: the DEM is the mountain above, and in the cuts leading to the portals it is still the
+  // hillside above the road (Formentor climbed 87 m into its tunnel); `cuts` mark other places where the
+  // DEM is the rock above a cutting. The road takes the profile's lower hull there.
   const tunnels = (data.tunnels ?? []).map(([a, b]) => [Math.min(a, b), Math.max(a, b)] as [number, number]);
-  for (const [a, b] of tunnels) {
-    const i0 = Math.max(0, Math.floor(a / step) - 2);
-    const i1 = Math.min(n - 1, Math.ceil(b / step) + 2);
-    for (let i = i0 + 1; i < i1; i++) ele[i] = ele[i0] + ((ele[i1] - ele[i0]) * (i - i0)) / (i1 - i0);
-  }
+  for (const [a, b] of [...tunnels, ...(data.cuts ?? [])]) lowerHull(ele, step, a, b);
   // DEM on steep hillsides is noisy where the road is cut in; smooth over ~±60 m
   ele = smooth(ele, Math.round(30 / step), 3);
+  // the DEM puts both passes of a self-crossing at one height: the lower one drops under the bridge
+  // over the 160 m before it, and the loop climbs from there to the bridge deck
+  const underpasses = findUnderpasses(data, frame, x, z, step);
+  for (const u of underpasses) {
+    const iu = Math.round(u.s / step);
+    const io = Math.round(u.over / step);
+    const i0 = Math.max(0, iu - Math.round(160 / step));
+    const deck = ele[io];
+    const low = deck - u.clearance;
+    for (let i = i0 + 1; i < io; i++) {
+      ele[i] = i <= iu ? ele[i0] + ((low - ele[i0]) * (i - i0)) / Math.max(1, iu - i0) : low + ((deck - low) * (i - iu)) / Math.max(1, io - iu);
+    }
+  }
 
   const grade = new Float32Array(n);
   const gw = Math.round(20 / step);
@@ -269,11 +297,68 @@ export async function buildRoute(data: RouteData): Promise<Route> {
     maxEle,
     bounds: [minX, minZ, maxX, maxZ],
     tunnels,
+    underpasses,
     ...turns(data, frame, { x, z, ele, n, step }, demZ),
     leadIn,
     leadInFrom: data.climbFrom?.name,
     leadInShift: data.climbFrom ? leadIn - data.climbFrom.cut : 0,
   };
+}
+
+/**
+ * Replace the profile across [a, b] by its lower hull from 150 m before to 150 m after: the road runs
+ * straight under every bump, never above the ground either side. A tunnel through a summit (the road
+ * climbing to one portal and falling from the other) would lose its top; no preset has one yet.
+ */
+function lowerHull(ele: Float32Array, step: number, a: number, b: number) {
+  const n = ele.length;
+  const lo = Math.max(0, Math.floor((a - 150) / step));
+  const hi = Math.min(n - 1, Math.ceil((b + 150) / step));
+  const hull: number[] = [];
+  for (let i = lo; i <= hi; i++) {
+    // drop the last vertex while it lies on or above the line from the one before it to i
+    while (hull.length >= 2) {
+      const p = hull[hull.length - 2], q = hull[hull.length - 1];
+      if ((ele[q] - ele[p]) * (i - p) >= (ele[i] - ele[p]) * (q - p)) hull.pop();
+      else break;
+    }
+    hull.push(i);
+  }
+  const ia = Math.floor(a / step), ib = Math.ceil(b / step);
+  let k0 = 0;
+  while (k0 + 1 < hull.length && hull[k0 + 1] <= ia) k0++;
+  let k1 = hull.length - 1;
+  while (k1 - 1 >= 0 && hull[k1 - 1] >= ib) k1--;
+  for (let k = k0; k < k1; k++) {
+    const p = hull[k], q = hull[k + 1];
+    for (let i = p + 1; i < q; i++) ele[i] = ele[p] + ((ele[q] - ele[p]) * (i - p)) / (q - p);
+  }
+}
+
+/** Where the resampled path crosses itself near each `underpasses` point (the earlier pass goes under). */
+function findUnderpasses(data: RouteData, frame: WorldFrame, x: Float32Array, z: Float32Array, step: number): Underpass[] {
+  const out: Underpass[] = [];
+  for (const u of data.underpasses ?? []) {
+    const [ux, uz] = mercToWorld(frame, ...lonLatToMerc(u.lon, u.lat));
+    const near: number[] = [];
+    for (let i = 0; i < x.length - 1; i++) if (Math.hypot(x[i] - ux, z[i] - uz) < 60) near.push(i);
+    let found: Underpass | null = null;
+    for (const i of near) {
+      for (const j of near) {
+        if (j <= i + 3) continue;
+        const rx = x[i + 1] - x[i], rz = z[i + 1] - z[i];
+        const qx = x[j + 1] - x[j], qz = z[j + 1] - z[j];
+        const den = rx * qz - rz * qx;
+        if (Math.abs(den) < 1e-9) continue;
+        const t = ((x[j] - x[i]) * qz - (z[j] - z[i]) * qx) / den;
+        const v = ((x[j] - x[i]) * rz - (z[j] - z[i]) * rx) / den;
+        if (t >= 0 && t <= 1 && v >= 0 && v <= 1) found = { s: (i + t) * step, over: (j + v) * step, clearance: u.clearance, model: u.model };
+      }
+    }
+    if (found) out.push(found);
+    else console.warn(`[route] ${data.id}: no self-crossing near underpass ${u.lon},${u.lat}`);
+  }
+  return out;
 }
 
 const REJOIN = 24;

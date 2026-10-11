@@ -30,6 +30,8 @@ for (const spec of specs) {
   try {
     await page.waitForFunction(() => window.__ready || window.__error, null, { timeout: 150000, polling: 500 });
   } catch { console.log('timeout waiting ready'); }
+  // hold the rider at <at>: the simulator would otherwise ride (or roll) on during the wait
+  await page.evaluate(() => window.__session?.state.status === 'riding' && window.__session.togglePause());
   if (!hud) await page.keyboard.press('h');
   await page.waitForTimeout(wait);
   const info = await page.evaluate(() => ({ err: window.__error, stats: window.engine?.stats }));

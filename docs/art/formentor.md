@@ -123,5 +123,11 @@ From `research/formentor/qa-sweep.md` and `visual-qa-1.md`. Each needs re-checki
 
 ## Status
 
-Biome, assets, PNOA imagery, DEM, tunnel, sea and the street-level comparison loop are done. Not yet reviewed
-with the scorecard; the next review sets the baseline.
+Biome, assets, PNOA imagery, DEM, tunnel, sea and the street-level comparison loop are done. 2026-10-11: the road no
+longer climbs 87 m into the tunnel (a false ±25 % ramp, now 6 %); the Talaia d'Albercutx and the Parietti monument
+are placed; the Mirador walkway model (`mirador-colomer.glb`) waits for a version that follows the terrain (the DEM
+drops away at the cliff edge, so a flat model at the viewpoint node sat at 45 m). Baseline scorecard review
+(`research/formentor/review-2026-10-11.md`, round 2 on shots with the rider held at the spot): REJECT, mean 2.50:
+ground 2, vegetation 2, road 4, built 2, light 3, life 2, rider 3, place 2. Its lighthouse blocker was framing
+(`r2-19290-drone` shows tower and buildings). Next: limestone cut texture, the baked shadow smear on the 5.1 km cliff,
+umbrella pines with varied heights, the parapet at 2.5–3.5 km, warmer golden light.

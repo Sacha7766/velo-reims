@@ -6,8 +6,9 @@ import * as THREE from 'three';
 import { DEM_MAX_Z, heightAtMerc, heightAtMercSmooth, loadDem } from '../geo/elevation.ts';
 import { loadImageryTile, type ImagerySource } from '../geo/imagery.ts';
 import { tileBoundsMerc, type WorldFrame } from '../geo/mercator.ts';
-import type { Route, RouteIndex } from '../geo/route.ts';
+import { pointAt, type Route, type RouteIndex } from '../geo/route.ts';
 import { terrainMaterial } from './terrainMaterial.ts';
+import { UNDERPASS_HALF, UNDERPASS_SIDE } from './Tunnel.ts';
 
 const SEG = 64;
 const VERTS = (SEG + 1) * (SEG + 1);
@@ -127,6 +128,8 @@ export interface TerrainOptions {
 
 export class Terrain extends THREE.Group {
   private opts: Required<TerrainOptions>;
+  /** Where the road passes under itself: the lower road's centre, direction and floor height. */
+  private underpasses: { x: number; z: number; fx: number; fz: number; floor: number }[];
   private roots: Node[] = [];
   private active = 0;
   private queue: { node: Node; d: number }[] = [];
@@ -139,6 +142,10 @@ export class Terrain extends THREE.Group {
   constructor(opts: TerrainOptions) {
     super();
     this.opts = { detail: 2.3, maxConcurrent: 14, cutWidth: 14, ...opts };
+    this.underpasses = opts.route.underpasses.map((u) => {
+      const p = pointAt(opts.route, u.s);
+      return { x: p.x, z: p.z, fx: Math.sin(p.heading), fz: -Math.cos(p.heading), floor: p.ele - 0.45 };
+    });
     const data = new Uint8Array([86, 100, 70, 255]);
     this.fallbackTex = new THREE.DataTexture(data, 1, 1);
     this.fallbackTex.colorSpace = THREE.SRGBColorSpace;
@@ -390,6 +397,11 @@ export class Terrain extends THREE.Group {
   /** Blend raw terrain towards the road: embankments below, cuts above; untouched over tunnels. */
   private flatten(x: number, z: number, h: number): number {
     const { routeIndex, roadHalfWidth, route } = this.opts;
+    // under a bridge the ground is the lower road's floor, out to the bridge's ends; the model hides it
+    for (const b of this.underpasses) {
+      const dx = x - b.x, dz = z - b.z;
+      if (Math.abs(dx * b.fx + dz * b.fz) < UNDERPASS_HALF && Math.abs(dx * b.fz - dz * b.fx) < UNDERPASS_SIDE) return b.floor;
+    }
     const near = routeIndex.nearest(x, z, roadHalfWidth + 17);
     if (near.index < 0) return h;
     const s = near.f * route.step;

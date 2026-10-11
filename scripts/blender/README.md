@@ -10,6 +10,8 @@ python3 scripts/blender/bl.py scripts/blender/b_life.py          # paraglider, c
 python3 scripts/blender/bl.py scripts/blender/b_cow.py           # Pinzgauer cow (replaces the first one)
 python3 scripts/blender/bl.py scripts/blender/b_rider.py         # road bike, wheel, crank and rider body parts → rider.glb
 python3 scripts/blender/bl.py scripts/blender/b_rock.py          # Poly Haven rocks decimated to ~700 tris (needs research/gaisberg/assets)
+python3 scripts/blender/bl.py scripts/blender/b_sacalobra.py     # Nus de sa Corbata: arched rubble-limestone underpass, parapets (route underpasses)
+python3 scripts/blender/bl.py scripts/blender/b_formentor_mirador.py  # Talaia d'Albercutx, Parietti monument, Mirador es Colomer walkway
 ```
 
 `b_rider.py` is split into `b_rider_bike.py` + `b_rider_body.py`, built with the lofting/sweep toolkit in `borg.py` (set `ONLY={'torso',...}` before the script to build single parts for preview).

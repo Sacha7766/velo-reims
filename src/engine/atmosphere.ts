@@ -66,19 +66,24 @@ export const WHITE_TEX = new THREE.DataTexture(new Uint8Array([255, 255, 255, 25
 WHITE_TEX.needsUpdate = true;
 
 export const MAX_TUNNEL_PTS = 32;
+export const MAX_TUNNELS = 4;
 
-/** Tunnel centre line for lighting and terrain portals (Tunnel.ts). */
+/** Tunnel centre lines for lighting and terrain portals (Tunnel.ts), all tunnels in one point list. */
 export const tunnelUniforms = {
+  /** x, ele, z, s along the route */
   uTunnelPts: { value: Array.from({ length: MAX_TUNNEL_PTS }, () => new THREE.Vector4()) },
+  /** per tunnel: inside from s, inside to s, first point, point count */
+  uTunnelSpan: { value: Array.from({ length: MAX_TUNNELS }, () => new THREE.Vector4()) },
+  /** per tunnel: ceiling lamps (0/1), metres over which "inside" fades in at the portals */
+  uTunnelMeta: { value: Array.from({ length: MAX_TUNNELS }, () => new THREE.Vector4()) },
+  /** per tunnel: centre xyz + radius; fragments outside skip it */
+  uTunnelBound: { value: Array.from({ length: MAX_TUNNELS }, () => new THREE.Vector4(0, -1e6, 0, 0)) },
   uTunnelCount: { value: 0 },
-  /** centre xyz + radius; fragments outside skip the tunnel test */
-  uTunnelBound: { value: new THREE.Vector4(0, -1e6, 0, 0) },
   uTunnelHalf: { value: 4 },
 };
 
 export function clearTunnels() {
   tunnelUniforms.uTunnelCount.value = 0;
-  tunnelUniforms.uTunnelBound.value.set(0, -1e6, 0, 0);
 }
 
 /** Terrain cast-shadow texture (TerrainShadow.ts) over a world rect. */
@@ -246,33 +251,44 @@ float atmoSunVisibility(vec3 wp) {
  */
 export const TUNNEL_GLSL = /* glsl */ `
 uniform vec4 uTunnelPts[${MAX_TUNNEL_PTS}];
+uniform vec4 uTunnelSpan[${MAX_TUNNELS}];
+uniform vec4 uTunnelMeta[${MAX_TUNNELS}];
+uniform vec4 uTunnelBound[${MAX_TUNNELS}];
 uniform int uTunnelCount;
-uniform vec4 uTunnelBound;
 uniform float uTunnelHalf;
+// x: inside a tunnel bore (0..1), y: ceiling lamp light
 vec2 atmoTunnel(vec3 wp) {
-  if (uTunnelCount < 2 || distance(wp, uTunnelBound.xyz) > uTunnelBound.w) return vec2(0.0);
-  float best = 1e9; float bs = 0.0; float by = 0.0;
-  for (int i = 0; i < ${MAX_TUNNEL_PTS - 1}; i++) {
-    if (i + 1 >= uTunnelCount) break;
-    vec4 a = uTunnelPts[i]; vec4 b = uTunnelPts[i + 1];
-    vec2 ab = b.xz - a.xz;
-    float t = clamp(dot(wp.xz - a.xz, ab) / max(dot(ab, ab), 1e-4), 0.0, 1.0);
-    float d = length(wp.xz - a.xz - ab * t);
-    if (d < best) { best = d; bs = mix(a.w, b.w, t); by = mix(a.y, b.y, t); }
+  for (int k = 0; k < ${MAX_TUNNELS}; k++) {
+    if (k >= uTunnelCount) break;
+    vec4 bd = uTunnelBound[k];
+    if (distance(wp, bd.xyz) > bd.w) continue;
+    vec4 sp = uTunnelSpan[k];
+    int i0 = int(sp.z);
+    int cnt = int(sp.w);
+    float best = 1e9; float bs = 0.0; float by = 0.0;
+    for (int i = 0; i < ${MAX_TUNNEL_PTS - 1}; i++) {
+      if (i + 1 >= cnt) break;
+      vec4 a = uTunnelPts[i0 + i]; vec4 b = uTunnelPts[i0 + i + 1];
+      vec2 ab = b.xz - a.xz;
+      float t = clamp(dot(wp.xz - a.xz, ab) / max(dot(ab, ab), 1e-4), 0.0, 1.0);
+      float d = length(wp.xz - a.xz - ab * t);
+      if (d < best) { best = d; bs = mix(a.w, b.w, t); by = mix(a.y, b.y, t); }
+    }
+    float r = uTunnelMeta[k].y;
+    float along = smoothstep(sp.x - r, sp.x + 2.0 * r, bs) * (1.0 - smoothstep(sp.y - 2.0 * r, sp.y + r, bs));
+    float inside = along * (1.0 - smoothstep(uTunnelHalf - 0.2, uTunnelHalf + 0.6, best)) * (1.0 - smoothstep(by + 6.2, by + 7.0, wp.y)) * step(by - 1.5, wp.y);
+    if (inside <= 0.0) continue;
+    float sl = (floor((bs - sp.x) / 9.0) + 0.5) * 9.0 + sp.x;
+    float ds = bs - sl;
+    float dy = by + 5.8 - wp.y;
+    float lamp = 0.0;
+    for (int j = -1; j <= 1; j++) {
+      float dd = ds - float(j) * 9.0;
+      lamp += 1.0 / (1.0 + (dd * dd + dy * dy + best * best) * 0.09);
+    }
+    return vec2(inside, lamp * inside * uTunnelMeta[k].x);
   }
-  float s0 = uTunnelPts[0].w + 4.0;
-  float s1 = uTunnelPts[uTunnelCount - 1].w - 4.0;
-  float along = smoothstep(s0 - 3.0, s0 + 6.0, bs) * (1.0 - smoothstep(s1 - 6.0, s1 + 3.0, bs));
-  float inside = along * (1.0 - smoothstep(uTunnelHalf - 0.2, uTunnelHalf + 0.6, best)) * (1.0 - smoothstep(by + 6.2, by + 7.0, wp.y)) * step(by - 1.5, wp.y);
-  float sl = (floor((bs - s0) / 9.0) + 0.5) * 9.0 + s0;
-  float ds = bs - sl;
-  float dy = by + 5.8 - wp.y;
-  float lamp = 0.0;
-  for (int k = -1; k <= 1; k++) {
-    float dd = ds - float(k) * 9.0;
-    lamp += 1.0 / (1.0 + (dd * dd + dy * dy + best * best) * 0.09);
-  }
-  return vec2(inside, lamp * inside);
+  return vec2(0.0);
 }
 `;
 

@@ -393,6 +393,9 @@ export class Engine {
         await landmarks.build(sceneDef, frame, (x, z) => terrain.groundHeight(x, z), (x, z) => index.nearest(x, z, halfWidth + 3.8).index >= 0);
       }
       if (this.world !== world) return;
+      // per-route fixes for what OSM lacks or gets wrong (scenes/<id>.json "osmTags": { "<element id>": { tag: value } })
+      const fixes = (sceneDef?.osmTags ?? {}) as Record<string, Record<string, string>>;
+      for (const e of elements) if (fixes[e.id]) e.tags = { ...e.tags, ...fixes[e.id] };
       const osm: OsmWorld = parseOsm(route, elements);
       if (route.category !== 'city') {
         world.roadside = new Roadside(

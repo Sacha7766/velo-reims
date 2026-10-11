@@ -1,0 +1,26 @@
+[
+  {
+    "model": "talaia-albercutx.glb",
+    "lon": 3.117192,
+    "lat": 39.928765,
+    "rot": 0,
+    "lift": 0,
+    "note": "OSM way 256182974 (historic=tower, material=stone) footprint centroid; peak node 13120868138 (ele 370) 3 m east. Door faces ESE (estimated). 9 m height and 5 m base estimated."
+  },
+  {
+    "model": "parietti-monument.glb",
+    "lon": 3.11038,
+    "lat": 39.929266,
+    "rot": 42,
+    "lift": 0,
+    "note": "OSM node 3784965182 (historic=memorial, memorial=stone, Antoni Parietti Coll 1968) at the coll. Form and size estimated; inscription face toward NE (estimated)."
+  },
+  {
+    "model": "mirador-colomer.glb",
+    "lon": 3.112389,
+    "lat": 39.930979,
+    "rot": 0,
+    "lift": 0,
+    "note": "OSM node 301337647 tourism=viewpoint Mirador d'es Colomer (origin). Walkway = footways 27445508 + 464795273 plus 425545011/425545012; parapets on NW sea side (estimated); barrier=wall 375106403, 991753708. Model +Y = north. Flat heights."
+  }
+]

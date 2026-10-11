@@ -24,6 +24,20 @@
    "lat": 39.9613679,
    "rot": 0,
    "lift": -0.3
+  },
+  {
+   "model": "talaia-albercutx.glb",
+   "lon": 3.117192,
+   "lat": 39.928765,
+   "rot": 0,
+   "lift": 0
+  },
+  {
+   "model": "parietti-monument.glb",
+   "lon": 3.11038,
+   "lat": 39.929266,
+   "rot": 42,
+   "lift": 0
   }
  ]
 }

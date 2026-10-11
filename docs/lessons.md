@@ -35,6 +35,9 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   builds the half-res depth shader without `REVERSEDEPTH` (wrong normals); three 0.186's PCF shadow lookup adds the
   bias without flipping it. Fixes in `Engine` (AO render wrapper, `shadow.bias` sign). After them the frames match
   to under 1/255 on average at six spots. Re-check with `?depth=log` after upgrading three or N8AO.
+- **The second tunnel was dark but had no portal cut.** The tunnel shader handled only a route's first tunnel.
+  Fix: per-tunnel spans, bounds and lamp flags in one point list (`MAX_TUNNELS` 4). Where: `atmosphere.ts`
+  `TUNNEL_GLSL`, `Tunnel.ts`.
 
 ## Placement and geometry
 
@@ -47,6 +50,11 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   only synthesised turning circles get pavement.
 - **Fake sea on coastal flats.** The "dark and flat" photo test caught shaded farmland. Fix: a stricter threshold
   where photo-sea is on, and never on canopy or verge. Where: `terrainMaterial.ts`.
+- **The Nus de sa Corbata was a flat X-junction.** The DEM gives both passes of a self-crossing one height. Fix: a
+  route `underpasses` entry; the loader finds the crossing in world space (a hand-measured s was 37 m off), drops
+  the lower pass 7 m over the 160 m before it, builds a short underpass whose bore is the Blender bridge, and gives
+  the ground under the bridge a flat floor (sloped terrain triangles stuck out of the arch as pale spikes before).
+  Where: `route.ts` `findUnderpasses`, `Tunnel.ts`, `Terrain.flatten`.
 
 ## Data and bakes
 
@@ -64,6 +72,13 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   ways of one `ref` with a shortest path instead. Where: `scripts/bake-leadin.py`.
 - **Commons titles lie.** "meadow-kuehberg-autumn-01" is a trail signpost. Check reference photos by eye before
   they go on a board or into a brief.
+- **Formentor climbed 87 m into its tunnel and dropped 56 m out of it (±25 %).** In the cut leading to a portal the
+  DEM is still the hillside above the road, and the tunnel straightening started at the portal. Fix: across every
+  tunnel the profile takes its lower hull from 150 m before to 150 m after; `cuts` spans do the same where a cutting
+  fakes a ramp (Sa Calobra's 21 % at 2.7 km, now 9 %). Not a global gradient cap: the Kitzbüheler Horn really has
+  22 %. Find them with a scan for runs over 12 %. Where: `route.ts` `lowerHull`.
+- **One OSM building was three storeys too tall.** OSM had no levels for the bar at the knot. Fix: per-route tag
+  fixes in `scenes/<id>.json` `osmTags` (`{ "<element id>": { "building:levels": "1" } }`). Where: `Engine.loadWorld`.
 
 ## Capture and review
 
@@ -71,6 +86,11 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   `pending` reaches 0 (`engine.stats`).
 - **HMR reloaded the page mid-flyover.** Don't edit `src/` while `flyover.mjs` or `shots-set.mjs` runs.
 - **Large videos can't be sent to the phone (30 MB limit).** Re-encode at crf 28, 1280 px.
+- **Shots were taken 70 m past their spot.** The simulator rode on (or rolled downhill) during the capture wait, so
+  "9495" showed the loop behind the knot and "13500" the road after the tunnel; the reviewer then reported the arch
+  and the tunnel missing. Fix: `shots-set.mjs` pauses the ride once loaded. Where: `scripts/shots-set.mjs`.
+- **Check a reviewer blocker against the frame before fixing it.** Three of the first Mallorca blockers were the
+  capture or the reviewer opening the wrong file, not the scene.
 
 ## Devices and riding
 

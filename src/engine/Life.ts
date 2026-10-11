@@ -1,6 +1,7 @@
 // Things that move: paragliders thermalling over the real Gaisberg take-off sites (OSM
 // sport=free_flying), Pinzgauer cattle grazing on OSM meadows, a flock of jackdaws at the
-// summit, and road traffic (oncoming cars and motorbikes, the odd car overtaking).
+// summit, and road traffic (oncoming cars and motorbikes, the odd car overtaking). On Mallorca:
+// goats, sailboats, tour coaches and other cyclists.
 
 import * as THREE from 'three';
 import type { OsmWorld } from '../geo/osm.ts';
@@ -8,8 +9,10 @@ import { pointAt, type Route, type RouteIndex, type RoutePoint } from '../geo/ro
 import { patchMaterial } from './atmosphere.ts';
 import { loadModel } from './Landmarks.ts';
 import type { Biome } from './biome.ts';
+import { Rider } from './Rider.ts';
 
 const CANOPIES = ['#f5a11a', '#d7263d', '#1b98e0', '#2bb673', '#f4d35e', '#7b2cbf', '#ff6b35', '#e0e0e0'];
+const KITS = ['#e63946', '#1d3557', '#2a9d8f', '#f4a261', '#f1f1ee', '#111214', '#ffb703', '#8338ec'];
 const CAR_COLOURS = ['#5d6f86', '#b8bcc2', '#1f2329', '#8c1c13', '#f2f2ef', '#2d4a6b', '#4a5d3a', '#c7a25a'];
 
 function rng(seed: number) {
@@ -109,6 +112,12 @@ export class Life extends THREE.Group {
   private rand = rng(99);
   private route: Route | null = null;
   private tmp: Partial<RoutePoint> = {};
+  /** Coaches drive slower than cars. */
+  private coaches = new Set<THREE.Object3D>();
+  private cyclistPool: Rider[] = [];
+  private cyclists: { obj: Rider; s: number; dir: 1 | -1; speed: number; lateral: number; climbing: boolean }[] = [];
+  private nextDescender = 6;
+  private nextClimber = 2;
 
   async build(
     route: Route,
@@ -313,6 +322,19 @@ export class Life extends THREE.Group {
       this.boats.push({ obj: o, vx: Math.sin(heading) * sp, vz: -Math.cos(heading) * sp, heel: 0.08 + r() * 0.1 });
       placed++;
     }
+    // the island's climbs are full of cyclists: descenders coasting past, climbers to catch
+    for (let i = 0; i < 6; i++) {
+      const c = new Rider({ kit: KITS[i], accent: '#111214', bike: i % 2 ? '#e9e9e4' : '#1a1c1f' });
+      c.visible = false;
+      this.add(c);
+      this.cyclistPool.push(c);
+    }
+    // and white tour coaches squeezing through the hairpins
+    const coach = tinted(await loadModel('bus.glb'), ['bus_body'], '#f2f2ef');
+    coach.visible = false;
+    this.add(coach);
+    this.cars.push(coach);
+    this.coaches.add(coach);
   }
 
   update(dt: number, riderS: number, riderDir: 1 | -1, riderSpeed: number, time: number) {
@@ -386,6 +408,51 @@ export class Life extends THREE.Group {
       w.obj.rotation.y = Math.atan2(-hx, -hz);
     }
     this.traffic(dt, route, riderS, riderDir, riderSpeed, time);
+    this.ride(dt, route, riderS, riderDir);
+  }
+
+  private ride(dt: number, route: Route, riderS: number, riderDir: 1 | -1) {
+    if (!this.cyclistPool.length) return;
+    const free = this.cyclistPool.filter((c) => !c.visible);
+    const inRoute = (s: number) => route.loop || (s > 0 && s < route.length);
+    this.nextDescender -= dt;
+    this.nextClimber -= dt;
+    if (this.nextDescender < 0) {
+      this.nextDescender = 10 + this.rand() * 25;
+      const s = riderS + 450 * riderDir;
+      const obj = free.pop();
+      if (obj && inRoute(s)) {
+        obj.visible = true;
+        this.cyclists.push({ obj, s, dir: (-riderDir) as 1 | -1, speed: 9 + this.rand() * 4, lateral: 1.4 + this.rand() * 0.6, climbing: false });
+      }
+    }
+    if (this.nextClimber < 0) {
+      this.nextClimber = 20 + this.rand() * 40;
+      const s = riderS + (70 + this.rand() * 130) * riderDir;
+      const obj = free.pop();
+      if (obj && inRoute(s)) {
+        obj.visible = true;
+        this.cyclists.push({ obj, s, dir: riderDir, speed: 2.8 + this.rand() * 1.0, lateral: 2.3, climbing: true });
+      }
+    }
+    for (let i = this.cyclists.length - 1; i >= 0; i--) {
+      const c = this.cyclists[i];
+      const p = pointAt(route, c.s, this.tmp);
+      const g = p.grade * c.dir;
+      // climbers slow on the steep ramps, descenders brake into the hairpins
+      const v = c.climbing ? c.speed * Math.max(0.6, 1 - Math.max(0, g) * 0.025) : Math.min(c.speed, 4 + p.radius * 0.35);
+      c.s += v * c.dir * dt;
+      const rel = (c.s - riderS) * riderDir;
+      if (rel < -160 || rel > 900 || !inRoute(c.s)) {
+        c.obj.visible = false;
+        this.cyclists.splice(i, 1);
+        continue;
+      }
+      const h = p.heading + (c.dir < 0 ? Math.PI : 0);
+      c.obj.position.set(p.x + Math.cos(h) * c.lateral, p.ele + 0.02, p.z + Math.sin(h) * c.lateral);
+      c.obj.rotation.set(-Math.atan(g / 100), Math.PI - h, 0, 'YXZ');
+      c.obj.update(dt, v, c.climbing ? 82 : 0, c.climbing ? 0.7 : 0.15, g);
+    }
   }
 
   private traffic(dt: number, route: Route, riderS: number, riderDir: 1 | -1, riderSpeed: number, _time: number) {
@@ -401,7 +468,8 @@ export class Life extends THREE.Group {
       if (pool.length && inRoute(s)) {
         const obj = pool[Math.floor(this.rand() * pool.length)];
         obj.visible = true;
-        this.vehicles.push({ obj, s, dir: (-riderDir) as 1 | -1, speed: 11 + this.rand() * 5, lateral: 1.6, targetLateral: 1.6, overtaking: false });
+        const speed = this.coaches.has(obj) ? 7 + this.rand() * 2 : 11 + this.rand() * 5;
+        this.vehicles.push({ obj, s, dir: (-riderDir) as 1 | -1, speed, lateral: 1.6, targetLateral: 1.6, overtaking: false });
       }
     }
     if (this.nextOvertake < 0) {

@@ -130,4 +130,8 @@ From `research/gaisberg/qa-sweep.md` (2026-10-11). Each needs re-checking in the
 
 ## Status
 
-Realism passes 1 and 2 are done (2026-10-10). Not yet reviewed with the scorecard; the next review sets the baseline.
+Realism passes 1 and 2 are done (2026-10-10). Baseline scorecard review 2026-10-11
+(`research/gaisberg/review-2026-10-11-scorecard.md`): REJECT, mean 2.88: ground 2, vegetation 2, road 4, built 3,
+light 3, life 3, rider 4, place 2. Its two blockers were framing (the mast and the basin out of frame). Next: low even
+turf instead of spiky grass cards on the verges, layered crowns and October beech colour, the summit lot with cars
+and the bus, cows at the Gersbergalm (H1).

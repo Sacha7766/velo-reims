@@ -1,1 +1,1 @@
-{"biome":"mediterranean","barriers":[],"placements":[]}
+{"biome":"mediterranean","barriers":[{"from":0,"to":600,"barrier":"none"},{"from":600,"to":9000,"barrier":"stonewall"},{"from":9000,"to":9700,"barrier":"wbeam"}],"placements":[],"osmTags":{"155810661":{"building:levels":"1"}}}

@@ -116,8 +116,9 @@ export class Roadside extends THREE.Group {
       const outside: 1 | -1 = turn > 0 ? -1 : 1; // turning right → outside is on the left
       for (let j = Math.max(0, c - span); j < Math.min(n, c + span); j++) need[outside][j] = 1;
     }
-    // no barriers inside tunnels
-    for (const [ta, tb] of route.tunnels) {
+    // no barriers inside tunnels, nor where a bridge model brings its own parapets
+    const spans = [...route.tunnels, ...route.underpasses.flatMap((u) => [[u.s - 9, u.s + 9], [u.over - 9, u.over + 9]] as [number, number][])];
+    for (const [ta, tb] of spans) {
       for (let i = Math.max(0, Math.floor(ta / route.step) - 1); i <= Math.min(n - 1, Math.ceil(tb / route.step) + 1); i++) {
         need[1][i] = 0;
         need[-1][i] = 0;
