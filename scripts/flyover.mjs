@@ -1,5 +1,5 @@
 // Scripted drone film of a preset, captured frame by frame (deterministic 30 fps):
-//   node scripts/flyover.mjs [time=inversion] [seconds=48] [out=shots/gaisberg/flyover.mp4]
+//   node scripts/flyover.mjs [time=inversion] [seconds=48] [out=shots/gaisberg/flyover.mp4] [--route=gaisberg]
 // The engine is paused and stepped with engine.frame(1/30); the camera follows a shot list.
 import { mkdirSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -9,23 +9,30 @@ const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const [time = 'inversion', seconds = '48', out = 'shots/gaisberg/flyover.mp4'] = args;
 // --test=1,12,25,40 renders single stills at those times instead of a film
 const test = process.argv.find((a) => a.startsWith('--test='))?.slice(7).split(',').map(Number);
+const route = process.argv.find((a) => a.startsWith('--route='))?.slice(8) ?? 'gaisberg';
+// per route: where the rider starts, the landmark to orbit, the climb stretch to follow
+const PLANS = {
+  gaisberg: { at: 9420, landmark: [13.112097, 47.805225], approachAng: 1.08, follow: [7250, 8650], orbitR: 300, orbitH: 95 },
+  formentor: { at: 9300, landmark: [3.212287, 39.9613679], approachAng: 0.55, follow: [3000, 4600], orbitR: 260, orbitH: 70 },
+};
+const plan = PLANS[route];
 const FPS = 30;
 const frames = Math.round(Number(seconds) * FPS);
-const dir = `shots/gaisberg/frames-${time}`;
+const dir = `shots/${route}/frames-${time}`;
 rmSync(dir, { recursive: true, force: true });
 mkdirSync(dir, { recursive: true });
 
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
-await page.goto(`http://localhost:5199/?ride=gaisberg&sim=1&watts=270&at=9420&cam=chase&time=${time}`);
+await page.goto(`http://localhost:5199/?ride=${route}&sim=1&watts=270&at=${plan.at}&cam=chase&time=${time}`);
 await page.waitForFunction(() => window.__ready || window.__error, null, { timeout: 150000, polling: 500 });
 await page.keyboard.press('h');
 // nothing but the 3D view in the film
 await page.addStyleTag({ content: '.app > :not(canvas) { visibility: hidden !important; }' });
 await page.waitForTimeout(9000); // trees, landmarks, life
 
-await page.evaluate((total) => {
+await page.evaluate(([total, plan]) => {
   const e = window.engine;
   const R = e.world.route;
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -45,7 +52,7 @@ await page.evaluate((total) => {
     const h = e.world.terrain.heightAt(x, z);
     return Number.isFinite(h) ? h : 1000;
   };
-  const tower = world(13.112097, 47.805225);
+  const tower = world(plan.landmark[0], plan.landmark[1]);
   const towerY = ground(tower.x, tower.z);
   window.__fly = { t: 0 };
   const shots = [
@@ -53,7 +60,7 @@ await page.evaluate((total) => {
       // approach over the fog sea from the Salzburg side
       const k = ease(u);
       const d = lerp(2900, 1150, k);
-      const ang = Math.PI * 1.08 + 0.25 * k;
+      const ang = Math.PI * plan.approachAng + 0.25 * k;
       return {
         pos: [tower.x + Math.cos(ang) * d, towerY + lerp(420, 230, k), tower.z + Math.sin(ang) * d],
         look: [tower.x, towerY + lerp(20, 45, k), tower.z],
@@ -61,17 +68,18 @@ await page.evaluate((total) => {
     } },
     { end: 19, f: (u) => {
       // along the climb: Zistelalm → Nocksteinkehre
-      const s = lerp(7250, 8650, u);
+      const s = lerp(plan.follow[0], plan.follow[1], u);
       const p = at(s), q = at(s + 160);
       const back = at(s - 110);
-      return { pos: [back.x + Math.cos(p.h) * 45, Math.max(back.y, p.y) + 75, back.z + Math.sin(p.h) * 45], look: [q.x, q.y, q.z] };
+      const px = back.x + Math.cos(p.h) * 45, pz = back.z + Math.sin(p.h) * 45;
+      return { pos: [px, Math.max(Math.max(back.y, p.y) + 75, ground(px, pz) + 35), pz], look: [q.x, q.y, q.z] };
     } },
     { end: 33, f: (u) => {
       // orbit the summit, transmitter and paragliders
       const ang = 0.4 + ease(u) * 2.1;
-      const rad = 300;
+      const rad = plan.orbitR;
       return {
-        pos: [tower.x + Math.cos(ang) * rad, towerY + 95 - 25 * u, tower.z + Math.sin(ang) * rad],
+        pos: [tower.x + Math.cos(ang) * rad, towerY + plan.orbitH - 25 * u, tower.z + Math.sin(ang) * rad],
         look: [tower.x, towerY + 35, tower.z],
       };
     } },
@@ -104,7 +112,7 @@ await page.evaluate((total) => {
     }
   };
   e.paused = true;
-}, frames);
+}, [frames, plan]);
 
 const t0 = Date.now();
 const list = test ? test.map((t) => Math.round(t * FPS)) : [...Array(frames).keys()];

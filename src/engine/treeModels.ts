@@ -63,6 +63,14 @@ export function preserveCoverage<T extends THREE.Material>(mat: T, texSize = 204
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (shader, renderer) => {
     prev?.call(mat, shader, renderer);
+    // the per-instance tint is the foliage colour: bark (atlas v < 0.5) keeps its own colour
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <color_vertex>',
+      `#include <color_vertex>
+#if defined( USE_INSTANCING_COLOR ) && defined( USE_MAP )
+if (uv.y < 0.5) vColor.xyz /= max(instanceColor.xyz, vec3(0.05));
+#endif`,
+    );
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <alphatest_fragment>',
       `#ifdef USE_MAP

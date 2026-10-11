@@ -1,1 +1,29 @@
-{"biome":"mediterranean","barriers":[{"from":0,"to":9000,"barrier":"stonewall"},{"from":9000,"to":12200,"barrier":"stonewall"},{"from":12200,"to":19500,"barrier":"wbeam"}],"placements":[]}
+{
+ "biome": "mediterranean",
+ "barriers": [
+  {
+   "from": 0,
+   "to": 9000,
+   "barrier": "stonewall"
+  },
+  {
+   "from": 9000,
+   "to": 12200,
+   "barrier": "stonewall"
+  },
+  {
+   "from": 12200,
+   "to": 19500,
+   "barrier": "wbeam"
+  }
+ ],
+ "placements": [
+  {
+   "model": "far-formentor.glb",
+   "lon": 3.212287,
+   "lat": 39.9613679,
+   "rot": 0,
+   "lift": -0.3
+  }
+ ]
+}

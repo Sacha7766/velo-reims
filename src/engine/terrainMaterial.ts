@@ -109,6 +109,8 @@ ${NOISE}`,
         '#include <map_fragment>',
         `// tunnel portals: no terrain inside the bore
 if (atmoTunnel(vAtmoWorld).x > 0.5) discard;
+// coastal routes: the open-sea plane takes over far out (no tile edges or skirts on the horizon)
+if (uPhotoSea > 0.5 && vAtmoWorld.y < 0.6 && length(vAtmoWorld.xz - cameraPosition.xz) > 8000.0) discard;
 vec3 tPert = vec3(0.0);
 float tWater = 0.0;
 float tDetail = 1.0;
@@ -116,7 +118,7 @@ float tBump = 0.0;
 #ifdef USE_MAP
 {
   // PNOA orthophotos are cool and bluish compared with the ground seen from the road
-  vec3 photoFix = mix(vec3(1.0), vec3(1.02, 0.95, 0.8), uKarst);
+  vec3 photoFix = mix(vec3(1.0), vec3(1.0, 0.97, 0.9), uKarst);
   vec3 img = texture2D(map, vMapUv).rgb * photoFix;
   vec3 imgB = texture(map, vMapUv, 2.5).rgb * photoFix;
   vec3 s = sqrt(max(imgB, vec3(0.0)));
@@ -218,24 +220,26 @@ float tBump = 0.0;
   vec3 limeTint = mix(vec3(1.0, 0.95, 0.86), vec3(1.08, 0.88, 0.66), ochre * steep);
   base *= mix(vec3(1.0), limeTint, uKarst * max(limestone, steep));
   // rock faces and cuts near the road: photographed fractured limestone, ochre to grey
-  float cliffW = uKarst * smoothstep(0.16, 0.36, slope) * (1.0 - smoothstep(35.0, 110.0, camD));
+  float cliffNear = 1.0 - smoothstep(35.0, 110.0, camD);
+  float cliffW = uKarst * smoothstep(0.16, 0.36, slope) * (1.0 - smoothstep(900.0, 1600.0, camD)) * mix(0.75, 1.0, cliffNear);
   if (cliffW > 0.001) {
     vec3 cw = pow(abs(wn), vec3(5.0));
     cw /= cw.x + cw.y + cw.z;
-    float sc = 1.0 / 5.5;
+    // near: rock detail at 5.5 m per repeat; far: the same scan as cliff banding at 40 m
+    float sc = mix(1.0 / 40.0, 1.0 / 5.5, cliffNear);
     vec3 cc = texture2D(uCliffTex, q.zy * sc).rgb * cw.x + texture2D(uCliffTex, q.xz * sc).rgb * cw.y + texture2D(uCliffTex, q.xy * sc).rgb * cw.z;
     float cl = dot(cc, vec3(0.3, 0.55, 0.15));
     // mostly grey limestone; ochre where the noise says the face is freshly broken
     vec3 greyRock = vec3(cl) * vec3(1.04, 1.0, 0.94) * 1.15;
     vec3 rockC = mix(greyRock, cc * 1.08, 0.35 + 0.6 * ochre);
     base = mix(base, rockC, cliffW);
-    tBump = mix(tBump, (cl - 0.45) * 4.0, cliffW);
+    tBump = mix(tBump, (cl - 0.45) * 4.0 * cliffNear, cliffW);
     tDetail = mix(tDetail, 1.0, cliffW); // the scan carries its own detail
   }
   // under pines the Mediterranean floor is dry needle litter, not dark mould
-  base = mix(base, mix(base, vec3(0.5, 0.4, 0.3) * (0.85 + 0.3 * tNoise(p * 0.5)), 0.6), canopy * uKarst);
+  base = mix(base, mix(base * 0.7, vec3(0.36, 0.29, 0.22) * (0.8 + 0.4 * tNoise(p * 0.5)), 0.65), canopy * uKarst);
   // and the verges of the road are dusty terra rossa
-  base = mix(base, vec3(0.52, 0.4, 0.3) * (0.8 + 0.35 * tNoise(p * 0.9)), uKarst * near * (1.0 - smoothstep(0.0, 0.6, slope)) * 0.35);
+  base = mix(base, vec3(0.46, 0.4, 0.34) * (0.8 + 0.35 * tNoise(p * 0.9)), uKarst * near * (1.0 - smoothstep(0.0, 0.6, slope)) * 0.2);
   tc = base * tDetail;
 
   // water: OSM mask, or sea level
@@ -276,7 +280,12 @@ float tBump = 0.0;
   float n2 = tNoise(wp * 1.3 - vec2(t * 0.23, -t * 0.17));
   float n3 = tNoise(wp * 4.1 + vec2(t * 0.5, t * 0.31));
   float chop = mix(1.0, 2.2, uPhotoSea); // open sea: bigger waves, reflections sample higher sky
-  vec3 wnrm = normalize(vec3(((n1 - 0.5) * 0.12 + (n2 - 0.5) * 0.08 + (n3 - 0.5) * 0.05) * chop, 1.0, ((n2 - 0.5) * 0.12 + (n3 - 0.5) * 0.06) * chop));
+  float wd = length(vAtmoWorld - cameraPosition);
+  float a1 = 1.0 - smoothstep(1500.0, 5000.0, wd);
+  float a2 = 1.0 - smoothstep(250.0, 1000.0, wd);
+  float a3 = 1.0 - smoothstep(60.0, 260.0, wd);
+  vec3 wnrm = normalize(vec3(((n1 - 0.5) * 0.12 * a1 + (n2 - 0.5) * 0.08 * a2 + (n3 - 0.5) * 0.05 * a3) * chop, 1.0,
+    ((n2 - 0.5) * 0.12 * a2 + (n3 - 0.5) * 0.06 * a3) * chop));
   vec3 v = normalize(vAtmoWorld - cameraPosition);
   vec3 r = reflect(v, wnrm);
   r.y = abs(r.y);
@@ -288,6 +297,21 @@ float tBump = 0.0;
   vec3 refl = atmoSky(r) * mix(1.0, 0.82, uPhotoSea);
   float glint = pow(max(dot(r, uSunDir), 0.0), 380.0) * mix(18.0, 9.0, uPhotoSea) + pow(max(dot(r, uSunDir), 0.0), 40.0) * mix(0.4, 0.15, uPhotoSea);
   vec3 water = mix(deep, refl, fres) + uSunColor * glint;
+  if (uPhotoSea > 0.5) {
+    // far out: converge to the open-sea plane's shading (Ocean.ts) so the hand-over is invisible
+    float o1 = tNoise(wp * 0.05 + vec2(t * 0.03, t * 0.02));
+    float o2 = tNoise(wp * 0.21 - vec2(t * 0.07, -t * 0.05));
+    float f2 = 1.0 - smoothstep(900.0, 3500.0, wd);
+    float f1 = 1.0 - smoothstep(2000.0, 6000.0, wd);
+    vec3 on = normalize(vec3((o1 - 0.5) * 0.22 * f1 + (o2 - 0.5) * 0.16 * f2, 1.0, (o2 - 0.5) * 0.22 * f2));
+    vec3 orf = reflect(v, on);
+    orf.y = abs(orf.y);
+    float ofr = 0.02 + 0.98 * pow(1.0 - max(dot(-v, on), 0.0), 5.0);
+    vec3 odeep = vec3(0.012, 0.05, 0.11) * (0.6 + 0.6 * max(uSunDir.y, 0.1));
+    float og = pow(max(dot(orf, uSunDir), 0.0), 420.0) * 16.0 + pow(max(dot(orf, uSunDir), 0.0), 45.0) * 0.35;
+    vec3 ocean = mix(odeep, atmoSky(orf) * 0.82, ofr) + uSunColor * og;
+    water = mix(water, ocean, smoothstep(700.0, 2600.0, wd));
+  }
   gl_FragColor.rgb = mix(gl_FragColor.rgb, water, tWater);
 }
 #include <fog_fragment>`,
