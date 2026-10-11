@@ -62,7 +62,18 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
 ## Devices and riding
 
 - **Closing the app tabs dropped Chris's ride.** The tabs were closed to protect his wife's KICKR. Never close,
-  reload or restart anything at :5199 without asking; the app doesn't save unfinished rides.
+  reload or restart anything at :5199 without asking.
+- **A dead battery lost a whole Gaisberg ride.** The Mac hibernated at 2 %, woke on the charger with the tab intact,
+  and then Vite's client ("server connection lost. Polling for restart…") reloaded the page: the ride only lived in
+  memory until "End ride". Fix: the ride is kept in IndexedDB every 5 s and on pagehide; Home offers Carry on / Save
+  ride / Discard; a ride asks before the page unloads; a screen wake lock keeps the display on. Where:
+  `src/sim/unfinished.ts`, `RideSession.snapshot/resume`, `App.tsx`.
+- **The battery drained 50 % an hour.** The GPU was flat out the whole ride: at 1× on the forest climbs the scene
+  makes 45–57 fps on an M5 Max, so a 60 fps cap changes nothing there. Trees and 4× MSAA cost the most (each about
+  +40 % fps when off); AO and the sun shadows little. Fix: unplugged, the Fast preset without MSAA at 30 fps (GPU
+  busy ~90 % → ~40 %); the cap still stops 120 Hz rendering where the GPU has room. Measure with
+  `ioreg -r -c IOAccelerator` "Device Utilization %" in a visible window; `SystemLoad` is useless while charging.
+  Where: `Engine.setBatterySaver`, `Engine.loop`.
 - **Opening the app could take over someone else's trainer.** `reconnectKnown` silently reconnected the last
   trainer. Fix: rider profiles each keep their own saved devices; "Who's riding?" comes before any reconnect; a
   toggle for reconnecting saved devices; `?nobt=1`.

@@ -9,7 +9,7 @@ import type { AppSettings } from '../sim/storage.ts';
 import { fmtTime, gradeColor, int, km, zoneColor } from './format.ts';
 
 import { GradeSign } from './GradeSign.tsx';
-import { useCanvas, useHub, useSession } from './hooks.ts';
+import { useBattery, useCanvas, useHub, useSession } from './hooks.ts';
 import { drawProfile } from './profile.ts';
 import { WorkoutChart } from './WorkoutChart.tsx';
 
@@ -31,6 +31,9 @@ export function Hud({
   onEnd: () => void;
 }) {
   const st = useSession(session);
+  const battery = useBattery();
+  // unplugged and low: the ride is kept anyway (sim/unfinished.ts), but a dead laptop still ends it
+  const lowBattery = battery && !battery.charging && battery.level <= 0.2 ? Math.round(battery.level * 100) : null;
   const { controllable, devices } = useHub();
   const route = session.route;
   // inside a turnaround s runs past the ends of the route
@@ -254,6 +257,7 @@ export function Hud({
           <span className="ele">
             <b>{int(st.ele)}</b> m
           </span>
+          {lowBattery !== null && <span className={`battery-low${lowBattery <= 10 ? ' critical' : ''}`}>Battery {lowBattery} %, plug in the charger</span>}
           {toClimb !== null && <span className="lead-in">Easy lead-in, climb in {km(toClimb)} km</span>}
           {route.category === 'climb' && toTop !== null && hmToTop !== null && (
             <span>

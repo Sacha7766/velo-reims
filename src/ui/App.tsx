@@ -12,11 +12,14 @@ import { fetchStravaSegments, getStravaStatus } from '../sim/stravaApi.ts';
 import { RideSession } from '../sim/session.ts';
 import { rideStats } from '../sim/stats.ts';
 import { bestRideFor, deleteRide, getRide, listCustomRoutes, listRides, loadSettings, saveRide, saveSettings, type AppSettings } from '../sim/storage.ts';
+import type { RideRecord } from '../sim/types.ts';
+import { clearUnfinished, loadUnfinished, saveUnfinished, type UnfinishedRide } from '../sim/unfinished.ts';
 import { LIBRARY } from '../workouts/index.ts';
 import { fmtTime } from './format.ts';
 import { Home, type HomeTab, type StartRequest } from './Home.tsx';
 import { needsPick, takeOpenSettings } from '../sim/profiles.ts';
 import { Hud } from './Hud.tsx';
+import { useBattery } from './hooks.ts';
 import { Loading } from './Loading.tsx';
 import { profileFromCoords, type ProfileData } from './profile.ts';
 import { Summary, type SummaryData } from './Summary.tsx';
@@ -27,6 +30,17 @@ interface Ride {
   session: RideSession;
   hairpins: number[];
   ghostLabel: string | null;
+  /** The ride so far, to keep in case the page goes away before it ends. */
+  unfinished: () => UnfinishedRide;
+}
+
+/** Started by a test URL (?ride=…): no unload prompt and no unfinished-ride card. */
+const TEST_START = new URLSearchParams(location.search).has('ride');
+
+function stoppedAt(t: number): string {
+  const d = new Date(t);
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return d.toDateString() === new Date().toDateString() ? time : `${d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })} ${time}`;
 }
 
 export function App() {
@@ -41,6 +55,9 @@ export function App() {
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [unfinished, setUnfinished] = useState<UnfinishedRide | null>(null);
+  const battery = useBattery();
+  const onBattery = !!battery && !battery.charging;
   const lastStart = useRef<StartRequest | null>(null);
   const prefetchAbort = useRef<AbortController | null>(null);
   const [audio] = useState(() => new RideAudio());
@@ -79,6 +96,66 @@ export function App() {
   }, [engine, settings.quality]);
 
   useEffect(() => {
+    engine?.setFrameCap(settings.frameRate);
+    engine?.setBatterySaver(settings.batterySaver && onBattery);
+  }, [engine, settings.frameRate, settings.batterySaver, onBattery]);
+
+  // a ride that never reached "End ride" (battery, crash, reload): Home offers to carry on, save or discard it
+  useEffect(() => {
+    if (screen !== 'home' || TEST_START) return;
+    void loadUnfinished().then((u) => {
+      if (u && u.record.samples.length < 30) void clearUnfinished();
+      else setUnfinished(u);
+    });
+  }, [screen]);
+
+  // kept every 5 s and when the page is hidden, so a dead battery or a reload loses seconds, not the ride
+  useEffect(() => {
+    if (!ride) return;
+    const save = () => {
+      const { status } = ride.session.state;
+      if (status === 'riding' || status === 'paused') void saveUnfinished(ride.unfinished());
+    };
+    const timer = setInterval(save, 5000);
+    const hidden = () => document.visibilityState === 'hidden' && save();
+    document.addEventListener('visibilitychange', hidden);
+    window.addEventListener('pagehide', save);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', hidden);
+      window.removeEventListener('pagehide', save);
+    };
+  }, [ride]);
+
+  // nobody touches the keyboard for an hour on a trainer: keep the display awake while riding, and ask before
+  // the page goes away (Vite's client reloads it when it reconnects after the Mac slept)
+  useEffect(() => {
+    if (screen !== 'ride') return;
+    let lock: WakeLockSentinel | null = null;
+    let done = false;
+    const acquire = () => {
+      if (document.visibilityState !== 'visible' || !('wakeLock' in navigator)) return;
+      navigator.wakeLock
+        .request('screen')
+        .then((l) => {
+          if (done) void l.release();
+          else lock = l;
+        })
+        .catch(() => undefined);
+    };
+    const guard = (e: BeforeUnloadEvent) => e.preventDefault();
+    acquire();
+    document.addEventListener('visibilitychange', acquire);
+    if (!TEST_START) window.addEventListener('beforeunload', guard);
+    return () => {
+      done = true;
+      document.removeEventListener('visibilitychange', acquire);
+      window.removeEventListener('beforeunload', guard);
+      void lock?.release();
+    };
+  }, [screen]);
+
+  useEffect(() => {
     audio.setVolume(settings.volume);
     audio.setMuted(settings.volume <= 0.001);
   }, [audio, settings.volume]);
@@ -99,12 +176,53 @@ export function App() {
     saveSettings(s);
   };
 
-  const start = async (req: StartRequest, debug?: { at?: number; cam?: CameraMode; go?: boolean; leadIn?: boolean }) => {
+  /** Save a ride to history (under 30 s it is dropped) and forget its unfinished copy. */
+  const storeRide = async (rec: RideRecord, summitTime: number | null): Promise<SummaryData> => {
+    const stats = rideStats(rec.samples, rec.ftp);
+    const prev = await bestRideFor(rec.routeId, !!rec.leadIn);
+    if (rec.samples.length >= 30) {
+      await saveRide(rec, {
+        id: rec.id,
+        name: rec.name,
+        routeId: rec.routeId,
+        workoutId: rec.workoutId,
+        workoutName: rec.workoutName,
+        start: rec.start,
+        duration: stats.duration,
+        distance: stats.distance,
+        gain: stats.ascent,
+        avgPower: stats.avgPower,
+        np: stats.np,
+        tss: stats.tss,
+        summitTime,
+        kj: stats.kj,
+        avgHr: stats.avgHr,
+        bestEfforts: stats.bestEfforts,
+        segments: rec.segments,
+        leadIn: rec.leadIn,
+      });
+    }
+    await clearUnfinished();
+    setUnfinished(null);
+    return { record: rec, stats, summitTime, previousBest: prev?.summary.summitTime ?? null };
+  };
+
+  /**
+   * Load the world and start a ride. `opts` is for test starts (?ride=…) and for carrying on an unfinished
+   * ride; both say whether to ride the lead-in instead of following the setting.
+   */
+  const start = async (req: StartRequest, opts?: { at?: number; cam?: CameraMode; go?: boolean; leadIn?: boolean; resume?: UnfinishedRide }) => {
     if (!engine) return;
     const cfg = settingsRef.current;
     lastStart.current = req;
+    // a new ride from Home keeps an unfinished one in history rather than overwriting it
+    if (!opts) {
+      const pending = await loadUnfinished();
+      if (pending) await storeRide(pending.record, pending.summitTime);
+    }
+    const resume = opts?.resume;
     // test starts (?ride=…&at=…) keep the route's own distances unless they ask for the lead-in
-    const data = (debug ? debug.leadIn : cfg.leadIn) ? withLeadIn(req.route) : req.route;
+    const data = (opts ? opts.leadIn : cfg.leadIn) ? withLeadIn(req.route) : req.route;
     setError(null);
     setProgress(null);
     setLoadInfo({ name: req.route.name, profile: profileFromCoords(data.coords) });
@@ -122,7 +240,7 @@ export function App() {
           : Promise.resolve([]);
       engine.setTime(cfg.time);
       engine.paused = false;
-      engine.riderS = debug?.at ?? 0;
+      engine.riderS = resume?.snapshot.st.s ?? opts?.at ?? 0;
       engine.setCameraMode('cinematic');
       const halfWidth = route.category === 'city' ? 4.2 : route.category === 'flat' ? 3.2 : 3.1;
       await engine.loadWorld(route, { kit: cfg.kit, accent: cfg.accent, bike: cfg.bike }, setProgress, halfWidth);
@@ -167,7 +285,8 @@ export function App() {
         session.state.bots.map((b) => b.wkg),
         session.state.bots.map((b) => b.label),
       );
-      if (debug?.at) session.jump(debug.at);
+      if (resume) session.resume(resume.snapshot);
+      else if (opts?.at) session.jump(opts.at);
       (window as unknown as { __session: RideSession }).__session = session;
       let pedal = 0;
       let envT = 0;
@@ -215,14 +334,18 @@ export function App() {
           descending: st.grade < -2,
         });
       });
-      if (debug?.go) {
+      if (opts?.go) {
         session.begin();
-        engine.setCameraMode(debug.cam ?? 'chase');
+        engine.setCameraMode(opts.cam ?? 'chase');
       }
+      const leadIn = route.leadIn > 0;
       setRide({
         session,
         hairpins: findHairpins(route),
         ghostLabel: best?.summary.summitTime ? `best ${fmtTime(best.summary.summitTime)}` : null,
+        unfinished: () => ({
+          req, leadIn, snapshot: session.snapshot(), record: session.record(), summitTime: session.summitTime, savedAt: Date.now(),
+        }),
       });
       setScreen('ride');
       (window as unknown as { __ready: boolean }).__ready = true;
@@ -239,32 +362,7 @@ export function App() {
     if (!ride || !engine) return;
     const rec = ride.session.finish();
     engine.setOnFrame(undefined);
-    const stats = rideStats(rec.samples, rec.ftp);
-    const prev = await bestRideFor(rec.routeId, !!rec.leadIn);
-    const summitTime = ride.session.summitTime;
-    if (rec.samples.length >= 30) {
-      await saveRide(rec, {
-        id: rec.id,
-        name: rec.name,
-        routeId: rec.routeId,
-        workoutId: rec.workoutId,
-        workoutName: rec.workoutName,
-        start: rec.start,
-        duration: stats.duration,
-        distance: stats.distance,
-        gain: stats.ascent,
-        avgPower: stats.avgPower,
-        np: stats.np,
-        tss: stats.tss,
-        summitTime,
-        kj: stats.kj,
-        avgHr: stats.avgHr,
-        bestEfforts: stats.bestEfforts,
-        segments: rec.segments,
-        leadIn: rec.leadIn,
-      });
-    }
-    setSummary({ record: rec, stats, summitTime, previousBest: prev?.summary.summitTime ?? null });
+    setSummary(await storeRide(rec, ride.session.summitTime));
     prefetchAbort.current?.abort();
     audio.update(0.1, { speed: 0, power: 0, cadence: 0, grade: 0, altitude: 0, forest: 0, urban: 0, sea: 0, biome: 'alpine', descending: false });
     engine.unloadWorld();
@@ -319,6 +417,41 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine]);
 
+  const unfinishedCard = unfinished && (
+    <div className="unfinished" role="region" aria-label="Unfinished ride">
+      <div>
+        <b>Your last ride didn't finish</b>
+        <span>
+          {unfinished.record.name}, {fmtTime(unfinished.snapshot.st.elapsed)}, {(unfinished.snapshot.st.distance / 1000).toFixed(1)} km
+          and {Math.round(unfinished.snapshot.st.gain)} m up. Stopped at {stoppedAt(unfinished.savedAt)}.
+        </span>
+      </div>
+      <button className="btn" onClick={() => void start(unfinished.req, { leadIn: unfinished.leadIn, resume: unfinished })}>
+        Carry on
+      </button>
+      <button
+        className="btn ghost"
+        onClick={async () => {
+          lastStart.current = unfinished.req;
+          setSummary(await storeRide(unfinished.record, unfinished.summitTime));
+          setScreen('summary');
+        }}
+      >
+        Save ride
+      </button>
+      <button
+        className="btn ghost"
+        onClick={() => {
+          if (!confirm('Throw this ride away? It will not be saved.')) return;
+          void clearUnfinished();
+          setUnfinished(null);
+        }}
+      >
+        Discard
+      </button>
+    </div>
+  );
+
   return (
     <div className={`app screen-${screen}`}>
       <canvas ref={canvasRef} className="scene" />
@@ -331,6 +464,7 @@ export function App() {
             tab={homeTab}
             onTab={setHomeTab}
             onOpenRide={(id) => void openRide(id)}
+            notice={unfinishedCard}
           />
           {error && (
             <div className="toast error" role="alert" onClick={() => setError(null)}>

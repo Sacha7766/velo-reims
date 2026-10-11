@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { TIMES } from '../../engine/atmosphere.ts';
 import { leadInLength } from '../../geo/leadIn.ts';
 import { getActivePlan, type AppSettings, type RideSummary } from '../../sim/storage.ts';
@@ -32,6 +32,8 @@ export interface RideTabProps {
   onStart: () => void;
   onDevices: () => void;
   error: string | null;
+  /** Shown above the route (the unfinished-ride card). */
+  notice?: ReactNode;
 }
 
 export function RideTab(p: RideTabProps) {
@@ -95,6 +97,7 @@ export function RideTab(p: RideTabProps) {
       </aside>
 
       <main className="ride-pane">
+        {p.notice}
         {p.route && (
           <RouteHero
             entry={p.route}

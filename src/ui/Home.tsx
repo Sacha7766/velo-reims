@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { parseGpx } from '../geo/gpx.ts';
 import type { RouteData } from '../geo/route.ts';
 import {
@@ -54,6 +54,7 @@ export function Home({
   tab,
   onTab,
   onOpenRide,
+  notice,
 }: {
   settings: AppSettings;
   onSettings: (s: AppSettings) => void;
@@ -61,6 +62,8 @@ export function Home({
   tab: HomeTab;
   onTab: (t: HomeTab) => void;
   onOpenRide: (id: string) => void;
+  /** Shown above the route on the Ride tab. */
+  notice?: ReactNode;
 }) {
   const [routes, setRoutes] = useState<RouteEntry[]>([]);
   const [routeId, setRouteId] = useState<string>(() => stored<string>('serpentine.route', 'gaisberg'));
@@ -186,6 +189,7 @@ export function Home({
             }
             onDevices={() => setDevicesOpen(true)}
             error={error}
+            notice={notice}
           />
         )}
         {tab === 'train' && (

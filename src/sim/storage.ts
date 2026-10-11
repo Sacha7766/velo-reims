@@ -32,6 +32,10 @@ export interface AppSettings extends RiderSettings {
   stravaPacerSegment: number | null;
   /** Start preset routes that have one on their easy lead-in (src/geo/leadIn.ts). */
   leadIn: boolean;
+  /** Frames per second at most; 120 only helps on a ProMotion display and costs twice the power of 60. */
+  frameRate: 30 | 60 | 120;
+  /** Unplugged: Fast graphics without antialiasing, at most 30 fps (Engine.setBatterySaver). */
+  batterySaver: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -57,6 +61,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   stravaPr: false,
   stravaPacerSegment: null,
   leadIn: true,
+  frameRate: 60,
+  batterySaver: true,
 };
 
 const SETTINGS_KEY = 'serpentine.settings';

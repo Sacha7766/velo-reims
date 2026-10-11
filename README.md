@@ -20,6 +20,7 @@ Before pairing, quit Zwift and Zwift Companion. A trainer accepts only one contr
 - **History:** every ride is saved as `.json` + Strava-ready `.fit` in `~/Documents/Serpentine/rides` (override with `SERPENTINE_DATA`). The History screen shows totals, weekly training load, climb records and best efforts.
 - **Ghost:** your fastest summit on a route rides with you, with a live time gap.
 - The ride starts as soon as you pedal. At the summit you roll back down and loop.
+- **Nothing gets lost:** a ride in progress is kept in the browser every 5 s. If the laptop dies, the browser crashes or the page reloads, Home offers to carry on where you stopped, save the ride as it is, or discard it. While you ride the display stays awake, and leaving the page asks first. Unplugged and below 20 % battery, the HUD tells you to plug in.
 
 Keys: `1`–`5` camera (chase, drone, moto, rider, cinematic) · `Space` pause · `E` ERG on/off · `Tab` skip interval · `[` `]` gears · `−` `=` difficulty · `↑` `↓` simulator watts (Shift = ±50) · `H` hide HUD · `Esc` end ride.
 
@@ -49,7 +50,7 @@ Zwift Ride controllers connect directly (no Zwift needed). Ride firmware 1.3+ hi
 
 ## Graphics
 
-Terrain is real elevation (bicubic-smoothed) textured with orthophotos; near the camera the photo only supplies colour and procedurally painted, mipmapped grass/rock/gravel detail with bump lighting takes over, steep faces get tri-planar rock. OSM land cover (meadow, built-up, water) steers the ground shading and the grass. OSM water and the sea are rendered with reflections and sun glints. Resolution adapts automatically to hold 60 fps.
+Terrain is real elevation (bicubic-smoothed) textured with orthophotos; near the camera the photo only supplies colour and procedurally painted, mipmapped grass/rock/gravel detail with bump lighting takes over, steep faces get tri-planar rock. OSM land cover (meadow, built-up, water) steers the ground shading and the grass. OSM water and the sea are rendered with reflections and sun glints. Resolution adapts automatically to hold the frame rate (60 fps by default, 30 or 120 under Settings). Unplugged, a battery saver switches to the Fast preset without antialiasing at 30 fps: on the forest climbs that more than halves the GPU's busy time (about 90 % to 40 % on an M5 Max).
 
 Lighting: the real terrain casts shadows (a DEM heightfield around the route is ray-marched towards the sun on the GPU, `TerrainShadow.ts`), clouds cast moving shadows, N8AO ambient occlusion grounds everything, and the sun's shadow map follows the rider. The **Nebelmeer** time of day adds an autumn valley-fog inversion: you climb out of the grey fog into sunshine and look over a sea of fog from the top.
 

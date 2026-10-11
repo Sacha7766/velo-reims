@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { hub } from '../devices/index.ts';
 import type { DeviceInfo, Metrics, ShiftingMode } from '../devices/types.ts';
 import type { LiveState, RideSession } from '../sim/session.ts';
@@ -51,4 +51,37 @@ export function useCanvas(draw: (c: HTMLCanvasElement) => void, deps: unknown[])
     return () => ro.disconnect();
   }, []);
   return ref;
+}
+
+// Battery Status API (Chrome only, not in TypeScript's DOM types)
+interface BatteryManager extends EventTarget {
+  charging: boolean;
+  level: number;
+}
+
+export interface Battery {
+  charging: boolean;
+  /** 0..1 */
+  level: number;
+}
+
+/** The laptop's battery, null where the browser doesn't tell (a desktop reads as charging at 100 %). */
+export function useBattery(): Battery | null {
+  const [state, setState] = useState<Battery | null>(null);
+  useEffect(() => {
+    const nav = navigator as Navigator & { getBattery?: () => Promise<BatteryManager> };
+    let bat: BatteryManager | null = null;
+    const update = () => bat && setState({ charging: bat.charging, level: bat.level });
+    void nav.getBattery?.().then((b) => {
+      bat = b;
+      update();
+      b.addEventListener('chargingchange', update);
+      b.addEventListener('levelchange', update);
+    }).catch(() => undefined);
+    return () => {
+      bat?.removeEventListener('chargingchange', update);
+      bat?.removeEventListener('levelchange', update);
+    };
+  }, []);
+  return state;
 }

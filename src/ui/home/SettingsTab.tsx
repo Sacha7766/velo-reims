@@ -86,7 +86,19 @@ export function SettingsTab({
             </button>
           ))}
         </div>
-        <p className="muted small">Resolution adapts on the fly to hold 60 fps either way.</p>
+        <p className="muted small">Resolution adapts on the fly to hold the frame rate either way.</p>
+        <div className="segmented" role="radiogroup" aria-label="Frame rate">
+          {([30, 60, 120] as const).map((f) => (
+            <button key={f} role="radio" aria-checked={settings.frameRate === f} className={settings.frameRate === f ? 'on' : ''} onClick={() => set('frameRate', f)}>
+              {f} fps
+            </button>
+          ))}
+        </div>
+        <p className="muted small">120 fps is only smoother on a ProMotion display and takes about twice the power of 60.</p>
+        <label className="toggle">
+          <input type="checkbox" checked={settings.batterySaver} onChange={(e) => set('batterySaver', e.target.checked)} />
+          <span>Save battery when the laptop is unplugged (Fast graphics, 30 fps)</span>
+        </label>
         <label className="slider">
           <span>
             Sound <b>{Math.round(settings.volume * 100)} %</b>

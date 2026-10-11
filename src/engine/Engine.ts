@@ -109,6 +109,11 @@ export class Engine {
   fps = 0;
   /** Skip rendering while no 3D view is on screen. */
   paused = false;
+  /** Frames per second at most. Without a cap a 120 Hz ProMotion display renders (and drains) twice as often. */
+  private fpsCap = 60;
+  /** Battery saver: the Fast preset without antialiasing, at most 30 fps. */
+  private saving = false;
+  private lastFrame = -Infinity;
   /** Scripted camera (flyover capture): replaces the rig's camera each frame. */
   cameraOverride: ((cam: THREE.PerspectiveCamera) => void) | null = null;
 
@@ -178,10 +183,38 @@ export class Engine {
   private slowFor = 0;
   private fastFor = 0;
 
+  setFrameCap(fps: number) {
+    this.fpsCap = fps;
+  }
+
+  /**
+   * Unplugged. The GPU runs flat out on the forest climbs (trees and 4× MSAA cost the most), so capping
+   * frames alone saves little there: this drops to the Fast preset without MSAA and at most 30 fps.
+   */
+  setBatterySaver(on: boolean) {
+    if (on === this.saving) return;
+    this.saving = on;
+    this.composer.multisampling = on ? 0 : 4;
+    this.setQuality(this.quality);
+  }
+
+  private get maxFps() {
+    return this.saving ? Math.min(30, this.fpsCap) : this.fpsCap;
+  }
+
+  /** The quality preset in use: the chosen one, or Fast while saving battery. */
+  private get preset() {
+    return QUALITY[this.saving ? 'low' : this.quality];
+  }
+
+  private get maxScale() {
+    return Math.min(window.devicePixelRatio, this.preset.pixelRatio);
+  }
+
   setQuality(q: Quality) {
     this.quality = q;
-    const cfg = QUALITY[q];
-    this.scale = Math.min(window.devicePixelRatio, cfg.pixelRatio);
+    const cfg = this.preset;
+    this.scale = this.maxScale;
     this.renderer.setPixelRatio(this.scale);
     this.sun.shadow.mapSize.set(cfg.shadow, cfg.shadow);
     this.sun.shadow.map?.dispose();
@@ -268,7 +301,7 @@ export class Engine {
       roadHalfWidth: halfWidth,
       sources: sourcesFor(p0.lon, p0.lat),
       anisotropy: this.renderer.capabilities.getMaxAnisotropy(),
-      detail: QUALITY[this.quality].detail,
+      detail: this.preset.detail,
       cutWidth: biome.id === 'mediterranean' ? 3.2 : 14,
     });
     const road = new Road(route, halfWidth, biome);
@@ -407,7 +440,7 @@ export class Engine {
             return mask.data[(pz * mask.w + px) * 4] > 110;
           }
         : undefined,
-      density: QUALITY[this.quality].trees,
+      density: this.preset.trees,
       coverAt: (x, z) => this.coverAt(x, z),
       canopyAt: (x, z) => this.canopyAt(x, z),
     });
@@ -640,8 +673,11 @@ export class Engine {
     r.rotation.set(-Math.atan((p.grade * dir) / 100), Math.PI - h, 0, 'YXZ');
   }
 
-  private loop = () => {
+  private loop = (now = performance.now()) => {
     this.raf = requestAnimationFrame(this.loop);
+    // 2 ms of slack so a 60 fps cap on a 120 Hz display renders every second frame, not every third
+    if (now - this.lastFrame < 1000 / this.maxFps - 2) return;
+    this.lastFrame = now;
     this.clock.update();
     if (this.paused) return;
     const dt = Math.min(this.clock.getDelta(), 0.1);
@@ -684,7 +720,7 @@ export class Engine {
       this.rig.update(this.camera, dt, route, this.riderS, this.riderDir, this.lateral, (x, z) => (inTunnel ? NaN : w.terrain.heightAt(x, z)), inTunnel);
       this.cameraOverride?.(this.camera);
       w.terrain.update(this.camera);
-      w.trees?.update(this.camera.position, QUALITY[this.quality].trees);
+      w.trees?.update(this.camera.position, this.preset.trees);
       w.cover?.update(this.riderS);
       w.life.update(dt, this.riderS, this.riderDir, this.riderSpeed, atmo.uTime.value);
       w.shadow.update(this.renderer);
@@ -710,11 +746,12 @@ export class Engine {
 
   private adaptScale() {
     if (!this.world) return;
-    const cap = Math.min(window.devicePixelRatio, QUALITY[this.quality].pixelRatio);
-    if (this.fps < 52) {
+    const cap = this.maxScale;
+    const target = Math.min(this.maxFps, 60);
+    if (this.fps < target * 0.87) {
       this.slowFor++;
       this.fastFor = 0;
-    } else if (this.fps > 58) {
+    } else if (this.fps > target * 0.97) {
       this.fastFor++;
       this.slowFor = 0;
     }

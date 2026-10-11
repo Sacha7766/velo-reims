@@ -129,6 +129,23 @@ export interface LiveState {
   rampFtp: number | null;
 }
 
+/** What a ride needs to carry on after the page went away: battery, crash, reload (src/sim/unfinished.ts). */
+export interface SessionSnapshot {
+  start: number;
+  samples: RideSample[];
+  laps: number[];
+  efforts: { id: string; name: string; time: number; power: number }[];
+  segmentBests: Record<string, number>;
+  /** Segments being ridden, by id. */
+  segRuns: { id: string; t0: number; power: number; n: number }[];
+  gainRef: number;
+  st: Pick<
+    LiveState,
+    'elapsed' | 'movingTime' | 's' | 'dir' | 'lap' | 'distance' | 'gain' | 'avgPower' | 'np' | 'kj' | 'workoutElapsed' | 'erg'
+    | 'summitTime' | 'difficulty' | 'gear' | 'holdWatts' | 'bias' | 'rampFtp' | 'bots'
+  >;
+}
+
 const tmp: Partial<RoutePoint> = {};
 
 /** Lead-in: at most this gradient (%) on the way up, a third of the real one below it. */
@@ -281,10 +298,16 @@ export class RideSession {
 
   begin() {
     if (this.st.status !== 'ready') return;
-    this.start = Date.now();
     this.st.status = 'riding';
     const r = this.route;
     const km = (m: number) => (m / 1000).toFixed(1);
+    if (this.start) {
+      // resumed: samples keep counting from where they stopped, so the ride has no gap in it
+      this.banner('Welcome back', `${fmtTime(this.st.elapsed)} ridden, ${km(this.st.distance)} km so far`, 5);
+      this.emit();
+      return;
+    }
+    this.start = Date.now();
     const sub = r.leadIn > 0
       ? `${km(r.leadIn)} km easy lead-in from ${r.leadInFrom}, then ${km(r.length - r.leadIn)} km and ${Math.round(r.maxEle - pointAt(r, r.leadIn).ele)} m up`
       : `${km(r.length)} km with ${Math.round(r.gain)} m of climbing`;
@@ -602,6 +625,11 @@ export class RideSession {
     this.hub.setMode({ kind: 'idle' });
     this.hub.setGearRatio(null);
     this.emit();
+    return this.record();
+  }
+
+  /** The ride so far, as finish() would save it. */
+  record(): RideRecord {
     return {
       id: `ride-${this.start || Date.now()}`,
       name: this.route.name,
@@ -617,6 +645,55 @@ export class RideSession {
       rampFtp: this.st.rampFtp ?? undefined,
       leadIn: this.route.leadIn > 0 ? Math.round(this.route.leadIn) : undefined,
     };
+  }
+
+  snapshot(): SessionSnapshot {
+    const st = this.st;
+    return {
+      start: this.start,
+      samples: this.samples,
+      laps: this.laps,
+      efforts: this.efforts,
+      segmentBests: this.segmentBests,
+      segRuns: this.segRuns.map((r) => ({ id: r.seg.id, t0: r.t0, power: r.power, n: r.n })),
+      gainRef: this.gainRef,
+      st: {
+        elapsed: st.elapsed, movingTime: st.movingTime, s: st.s, dir: st.dir, lap: st.lap, distance: st.distance, gain: st.gain,
+        avgPower: st.avgPower, np: st.np, kj: st.kj, workoutElapsed: st.workoutElapsed, erg: st.erg, summitTime: st.summitTime,
+        difficulty: st.difficulty, gear: st.gear, holdWatts: st.holdWatts, bias: st.bias, rampFtp: st.rampFtp, bots: st.bots,
+      },
+    };
+  }
+
+  /** Carry on from a snapshot of the same ride. Pedalling starts it again, as at the start. */
+  resume(snap: SessionSnapshot) {
+    if (this.st.status !== 'ready') return;
+    this.start = snap.start;
+    this.samples = [...snap.samples];
+    this.laps = [...snap.laps];
+    this.efforts = [...snap.efforts];
+    this.segmentBests = { ...this.segmentBests, ...snap.segmentBests };
+    this.segRuns = snap.segRuns.flatMap((r) => {
+      const seg = this.segments.find((g) => g.id === r.id);
+      return seg ? [{ seg, t0: r.t0, power: r.power, n: r.n }] : [];
+    });
+    this.gainRef = snap.gainRef;
+    const { bots, gear, ...rest } = snap.st;
+    const st = this.st;
+    Object.assign(st, rest);
+    // the same pacers as before, unless they were changed in Settings since
+    if (bots.length === st.bots.length && bots.every((b, i) => b.wkg === st.bots[i].wkg)) st.bots = bots;
+    const p = pointAt(this.route, st.s, tmp);
+    st.grade = p.grade * st.dir;
+    st.ele = p.ele;
+    if (this.workout) st.workout = stateAt(this.workout, st.workoutElapsed, this.settings.ftp);
+    this.settings.difficulty = st.difficulty;
+    // the gear you were in, if virtual gears are still on
+    if (st.gear !== null && gear !== null && this.gears[gear - 1]) {
+      st.gear = gear;
+      this.hub.setGearRatio(trainerRatio(this.drivetrain, this.gears[gear - 1]));
+    }
+    this.emit();
   }
 
   /** Debug/testing: teleport along the route. */
