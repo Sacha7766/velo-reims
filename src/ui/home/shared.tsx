@@ -169,6 +169,7 @@ export function DevicesPanel() {
   const { devices, metrics, simulator, shifting } = useHub();
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [auto, setAuto] = useState(hub.autoConnect);
   const pair = async (kind: string, fn: () => Promise<void>) => {
     setBusy(kind);
     setErr(null);
@@ -229,6 +230,17 @@ export function DevicesPanel() {
       <label className="toggle">
         <input type="checkbox" checked={simulator} onChange={(e) => hub.setSimulator(e.target.checked)} />
         <span>Keyboard simulator, ↑ ↓ change watts</span>
+      </label>
+      <label className="toggle">
+        <input
+          type="checkbox"
+          checked={auto}
+          onChange={(e) => {
+            hub.setAutoConnect(e.target.checked);
+            setAuto(e.target.checked);
+          }}
+        />
+        <span>Reconnect saved devices when the app opens</span>
       </label>
       {(metrics.power !== undefined || metrics.heartRate !== undefined) && (
         <p className="live">

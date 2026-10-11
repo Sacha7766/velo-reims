@@ -106,6 +106,27 @@ function saveId(role: Role, id: string): void {
   }
 }
 
+function forgetId(id: string): void {
+  try {
+    const ids = loadIds();
+    for (const r of Object.keys(ids) as Role[]) if (ids[r] === id) delete ids[r];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+  } catch {
+    // storage unavailable
+  }
+}
+
+const AUTO_KEY = 'serpentine.autoConnect';
+
+/** Reconnect saved devices on start (off on shared trainers someone else may be riding). */
+function loadAutoConnect(): boolean {
+  try {
+    return localStorage.getItem(AUTO_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
 export function createDeviceHub(): DeviceHub {
   const links = new Map<string, Link>();
   const listeners = new Set<() => void>();
@@ -715,6 +736,16 @@ export function createDeviceHub(): DeviceHub {
     get hasControllableTrainer() {
       return !!controllableLink() || simEnabled;
     },
+    get autoConnect() {
+      return loadAutoConnect();
+    },
+    setAutoConnect(on) {
+      try {
+        localStorage.setItem(AUTO_KEY, on ? '1' : '0');
+      } catch {
+        // storage unavailable
+      }
+    },
     get simulatorEnabled() {
       return simEnabled;
     },
@@ -769,7 +800,7 @@ export function createDeviceHub(): DeviceHub {
 
     async reconnectKnown() {
       const b = bt();
-      if (!b || typeof b.getDevices !== 'function') return;
+      if (!b || typeof b.getDevices !== 'function' || !loadAutoConnect()) return;
       try {
         const known = await b.getDevices();
         const ids = loadIds();
@@ -816,6 +847,8 @@ export function createDeviceHub(): DeviceHub {
       }
       const l = links.get(id);
       if (l) removeLink(l);
+      // a manual disconnect also stops the silent reconnect on the next start
+      forgetId(id);
     },
 
     setSimulator(enabled) {

@@ -68,6 +68,9 @@ export interface DeviceHub {
   pairHeartRate(): Promise<void>;
   /** Silent reconnect to previously permitted devices where the browser allows it. */
   reconnectKnown(): Promise<void>;
+  /** Whether reconnectKnown runs on start (persisted). */
+  readonly autoConnect: boolean;
+  setAutoConnect(on: boolean): void;
   disconnect(id: string): Promise<void>;
   setSimulator(enabled: boolean): void;
   /** Throttled: ERG re-sent on change; SIM sent at most 1×/s and only when grade moves ≥0.1 %. */

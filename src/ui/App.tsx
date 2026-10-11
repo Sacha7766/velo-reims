@@ -50,7 +50,8 @@ export function App() {
     e.paused = true;
     setEngine(e);
     (window as unknown as { engine: Engine }).engine = e;
-    void hub.reconnectKnown();
+    // ?nobt=1: never touch Bluetooth on start (someone else is on the trainer)
+    if (!new URLSearchParams(location.search).has('nobt')) void hub.reconnectKnown();
     return () => e.dispose();
   }, []);
 
