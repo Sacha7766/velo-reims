@@ -5,7 +5,8 @@ import { mkdirSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const args = process.argv.slice(2);
-const flag = (k, d) => (args.find((a) => a.startsWith(`--${k}=`))?.split('=')[1] ?? d);
+// values may contain '=' themselves (--extra=leadin=1&nobt=1)
+const flag = (k, d) => (args.find((a) => a.startsWith(`--${k}=`))?.slice(k.length + 3) ?? d);
 const route = flag('route', 'gaisberg');
 const wait = Number(flag('wait', '6000'));
 const hud = args.includes('--hud');

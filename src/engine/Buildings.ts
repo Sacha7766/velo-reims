@@ -228,7 +228,8 @@ function addBuilding(
     }
     // gable walls (wood on farmhouses), clipped at the hip line
     for (const u of [u0, u1]) {
-      const gw = woodTop || barn || rnd(seed + 13) > 0.5 ? wood : wall;
+      // apartment and commercial blocks have plastered gables
+      const gw = woodTop || barn || (!big && rnd(seed + 13) > 0.5) ? wood : wall;
       const gs = gw === wood ? WOOD : PLASTER;
       if (hip >= half) continue;
       if (hip > 0) {
@@ -282,7 +283,9 @@ function addBuilding(
 
 /** Windows, shutters, planks and roof tiles drawn from the surface id and world position. */
 function facadeMaterial() {
-  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  // double-sided: from the street you look up at the underside of the eaves; with one-sided roofs it
+  // vanished and left the gable edge of tall blocks hanging in the sky
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   mat.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
       .replace(

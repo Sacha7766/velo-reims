@@ -9,7 +9,8 @@ import { execFileSync } from 'node:child_process';
 import { chromium } from 'playwright';
 
 const args = process.argv.slice(2);
-const flag = (k, d) => args.find((a) => a.startsWith(`--${k}=`))?.split('=')[1] ?? d;
+// values may contain '=' themselves
+const flag = (k, d) => args.find((a) => a.startsWith(`--${k}=`))?.slice(k.length + 3) ?? d;
 const [route, manifestPath] = args.filter((a) => !a.startsWith('--'));
 const only = flag('only', '')?.split(',').filter(Boolean);
 const time = flag('time', 'noon');
