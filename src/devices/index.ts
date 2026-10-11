@@ -14,6 +14,7 @@ import * as cps from './cps.ts';
 import * as hrs from './hrs.ts';
 import * as zwift from './zwift.ts';
 import { createSimulator } from './simulator.ts';
+import { profileKey } from '../sim/profiles.ts';
 
 export type * from './types.ts';
 
@@ -22,6 +23,7 @@ type Key = 'power' | 'cadence' | 'heartRate' | 'speed';
 type Stamped = { v: number; t: number };
 
 const STALE_MS = 3000;
+// saved device ids per rider profile (two riders, two trainers)
 const STORAGE_KEY = 'serpentine.devices';
 const BATTERY_SERVICE = 0x180f;
 const BATTERY_LEVEL = 0x2a19;
@@ -92,7 +94,7 @@ async function tryGet<T>(fn: () => Promise<T>): Promise<T | undefined> {
 
 function loadIds(): Partial<Record<Role, string>> {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') ?? {};
+    return JSON.parse(localStorage.getItem(profileKey(STORAGE_KEY)) ?? '{}') ?? {};
   } catch {
     return {};
   }
@@ -100,7 +102,7 @@ function loadIds(): Partial<Record<Role, string>> {
 
 function saveId(role: Role, id: string): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...loadIds(), [role]: id }));
+    localStorage.setItem(profileKey(STORAGE_KEY), JSON.stringify({ ...loadIds(), [role]: id }));
   } catch {
     // storage unavailable
   }
@@ -110,7 +112,7 @@ function forgetId(id: string): void {
   try {
     const ids = loadIds();
     for (const r of Object.keys(ids) as Role[]) if (ids[r] === id) delete ids[r];
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+    localStorage.setItem(profileKey(STORAGE_KEY), JSON.stringify(ids));
   } catch {
     // storage unavailable
   }

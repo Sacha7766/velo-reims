@@ -17,14 +17,38 @@ const TTL = 7 * 24 * 3600 * 1000;
 const NEAR = 40; // m from the route polyline
 const MAX_CANDIDATES = 25;
 
-interface Stored {
-  clientId?: string;
-  clientSecret?: string;
+interface Tokens {
   accessToken?: string;
   refreshToken?: string;
   /** Epoch seconds. */
   expiresAt?: number;
   athlete?: string;
+}
+
+/** One API application for the household; the main rider's tokens at the top level (as before profiles),
+ * every other rider profile's under `riders`. */
+interface Stored extends Tokens {
+  clientId?: string;
+  clientSecret?: string;
+  riders?: Record<string, Tokens>;
+}
+
+const MAIN = 'main';
+
+function tokensOf(s: Stored, rider: string): Tokens {
+  if (rider !== MAIN) return s.riders?.[rider] ?? {};
+  return { accessToken: s.accessToken, refreshToken: s.refreshToken, expiresAt: s.expiresAt, athlete: s.athlete };
+}
+
+function withTokens(s: Stored, rider: string, t: Tokens): Stored {
+  if (rider === MAIN) return { ...s, ...t };
+  return { ...s, riders: { ...s.riders, [rider]: t } };
+}
+
+/** Rider profile id from the query (?rider=), main when absent. */
+function riderOf(url: URL): string {
+  const r = url.searchParams.get('rider') ?? MAIN;
+  return /^[a-z0-9]{1,20}$/.test(r) ? r : MAIN;
 }
 
 class StravaError extends Error {
@@ -86,7 +110,7 @@ function body(req: IncomingMessage): Promise<string> {
 
 export function createStrava(root: string) {
   const configFile = join(root, 'strava.json');
-  let oauthState: string | null = null;
+  let oauthState: { state: string; rider: string } | null = null;
   const inflight = new Map<string, Promise<{ segments: StravaSegment[]; warning?: string }>>();
 
   function load(): Stored {
@@ -105,7 +129,7 @@ export function createStrava(root: string) {
   }
 
   /** Token endpoint call for both the code exchange and the refresh; stores the result. */
-  async function tokenRequest(params: Record<string, string>): Promise<Stored> {
+  async function tokenRequest(params: Record<string, string>, rider: string): Promise<Tokens> {
     const s = load();
     if (!s.clientId || !s.clientSecret) throw new StravaError(400, 'Strava client id and secret are not set');
     const res = await fetch('https://www.strava.com/oauth/token', {
@@ -120,33 +144,32 @@ export function createStrava(root: string) {
       expires_at: number;
       athlete?: { firstname?: string; lastname?: string };
     };
-    const next: Stored = {
-      ...s,
+    const next: Tokens = {
       accessToken: j.access_token,
       refreshToken: j.refresh_token,
       expiresAt: j.expires_at,
-      athlete: j.athlete ? [j.athlete.firstname, j.athlete.lastname].filter(Boolean).join(' ') : s.athlete,
+      athlete: j.athlete ? [j.athlete.firstname, j.athlete.lastname].filter(Boolean).join(' ') : tokensOf(s, rider).athlete,
     };
-    save(next);
+    save(withTokens(load(), rider, next));
     return next;
   }
 
-  async function accessToken(): Promise<string> {
-    let s = load();
-    if (!s.refreshToken) throw new StravaError(401, 'Strava is not connected');
-    if (!s.accessToken || (s.expiresAt ?? 0) < Date.now() / 1000 + 60) {
-      s = await tokenRequest({ grant_type: 'refresh_token', refresh_token: s.refreshToken });
+  async function accessToken(rider: string): Promise<string> {
+    let t = tokensOf(load(), rider);
+    if (!t.refreshToken) throw new StravaError(401, 'Strava is not connected');
+    if (!t.accessToken || (t.expiresAt ?? 0) < Date.now() / 1000 + 60) {
+      t = await tokenRequest({ grant_type: 'refresh_token', refresh_token: t.refreshToken }, rider);
     }
-    return s.accessToken!;
+    return t.accessToken!;
   }
 
-  async function get<T>(path: string, retry = true): Promise<T> {
-    const res = await fetch(`${API}${path}`, { headers: { authorization: `Bearer ${await accessToken()}` } });
+  async function get<T>(path: string, rider: string, retry = true): Promise<T> {
+    const res = await fetch(`${API}${path}`, { headers: { authorization: `Bearer ${await accessToken(rider)}` } });
     if (res.status === 401 && retry) {
       // access token revoked or expired early: force one refresh
       const s = load();
-      save({ ...s, expiresAt: 0 });
-      return get<T>(path, false);
+      save(withTokens(s, rider, { ...tokensOf(s, rider), expiresAt: 0 }));
+      return get<T>(path, rider, false);
     }
     if (!res.ok) throw new StravaError(res.status, `Strava ${res.status} for ${path.split('?')[0]}`);
     return (await res.json()) as T;
@@ -168,19 +191,20 @@ export function createStrava(root: string) {
     return null;
   }
 
-  function cacheFile(route: string) {
-    return join(root, `strava-segments-${route}.json`);
+  // PRs and starred segments are the rider's own, so the cache is per rider
+  function cacheFile(route: string, rider: string) {
+    return join(root, rider === MAIN ? `strava-segments-${route}.json` : `strava-segments-${route}-${rider}.json`);
   }
 
-  function readCache(route: string): Cache | null {
+  function readCache(route: string, rider: string): Cache | null {
     try {
-      return JSON.parse(readFileSync(cacheFile(route), 'utf8')) as Cache;
+      return JSON.parse(readFileSync(cacheFile(route, rider), 'utf8')) as Cache;
     } catch {
       return null;
     }
   }
 
-  async function computeSegments(route: string, coords: number[][]): Promise<StravaSegment[]> {
+  async function computeSegments(route: string, coords: number[][], rider: string): Promise<StravaSegment[]> {
     const cum = cumulativeDistances(coords);
     const lons = coords.map((c) => c[0]);
     const lats = coords.map((c) => c[1]);
@@ -195,12 +219,12 @@ export function createStrava(root: string) {
     for (let i = 0; i < cells; i++) {
       for (let j = 0; j < cells; j++) {
         const b = [s + ((n - s) * j) / cells, w + ((e - w) * i) / cells, s + ((n - s) * (j + 1)) / cells, w + ((e - w) * (i + 1)) / cells];
-        const r = await get<{ segments?: SegmentSummary[] }>(`/segments/explore?bounds=${b.map((x) => x.toFixed(6)).join(',')}&activity_type=riding`);
+        const r = await get<{ segments?: SegmentSummary[] }>(`/segments/explore?bounds=${b.map((x) => x.toFixed(6)).join(',')}&activity_type=riding`, rider);
         for (const seg of r.segments ?? []) found.set(seg.id, seg);
       }
     }
     try {
-      for (const seg of await get<SegmentSummary[]>('/segments/starred?per_page=100')) found.set(seg.id, { ...found.get(seg.id), ...seg });
+      for (const seg of await get<SegmentSummary[]>('/segments/starred?per_page=100', rider)) found.set(seg.id, { ...found.get(seg.id), ...seg });
     } catch (err) {
       if (err instanceof StravaError && err.status === 429) throw err;
       /* starred is optional */
@@ -217,7 +241,7 @@ export function createStrava(root: string) {
 
     const out: StravaSegment[] = [];
     for (const c of candidates.slice(0, MAX_CANDIDATES)) {
-      const d = await get<SegmentDetail>(`/segments/${c.id}`);
+      const d = await get<SegmentDetail>(`/segments/${c.id}`, rider);
       const start = d.start_latlng ?? c.start_latlng;
       const end = d.end_latlng ?? c.end_latlng;
       if (!start || !end) continue;
@@ -228,7 +252,7 @@ export function createStrava(root: string) {
       if (Math.abs(b.s - a.s - distance) / distance > 0.35) continue; // took a different road
       // geometry: most of the segment's own track has to lie on the route
       try {
-        const streams = await get<{ latlng?: { data: [number, number][] } }>(`/segments/${c.id}/streams?keys=latlng,distance,altitude&key_by_type=true`);
+        const streams = await get<{ latlng?: { data: [number, number][] } }>(`/segments/${c.id}/streams?keys=latlng,distance,altitude&key_by_type=true`, rider);
         const pts = streams.latlng?.data ?? [];
         if (pts.length > 4) {
           const every = Math.max(1, Math.floor(pts.length / 40));
@@ -257,17 +281,17 @@ export function createStrava(root: string) {
     }
     out.sort((x, y) => x.startS - y.startS);
     mkdirSync(root, { recursive: true });
-    writeFileSync(cacheFile(route), JSON.stringify({ at: Date.now(), segments: out } satisfies Cache));
+    writeFileSync(cacheFile(route, rider), JSON.stringify({ at: Date.now(), segments: out } satisfies Cache));
     return out;
   }
 
-  async function segmentsFor(route: string, refresh: boolean): Promise<{ segments: StravaSegment[]; warning?: string }> {
+  async function segmentsFor(route: string, refresh: boolean, rider: string): Promise<{ segments: StravaSegment[]; warning?: string }> {
     const coords = routeCoords(route);
     if (!coords) throw new StravaError(404, 'no such preset route');
-    const cached = readCache(route);
+    const cached = readCache(route, rider);
     if (cached && !refresh && Date.now() - cached.at < TTL) return { segments: cached.segments };
     try {
-      return { segments: await computeSegments(route, coords) };
+      return { segments: await computeSegments(route, coords, rider) };
     } catch (err) {
       if (err instanceof StravaError && err.status === 429) {
         return { segments: cached?.segments ?? [], warning: 'Strava rate limit reached, showing cached data' };
@@ -285,9 +309,11 @@ export function createStrava(root: string) {
   return async function handle(req: IncomingMessage, res: ServerResponse, url: URL, parts: string[]) {
     try {
       const what = parts[1];
+      const rider = riderOf(url);
       if (what === 'status' && req.method === 'GET') {
         const s = load();
-        return send(res, 200, { configured: !!(s.clientId && s.clientSecret), connected: !!s.refreshToken, athlete: s.athlete ?? null, clientId: s.clientId ?? null });
+        const t = tokensOf(s, rider);
+        return send(res, 200, { configured: !!(s.clientId && s.clientSecret), connected: !!t.refreshToken, athlete: t.athlete ?? null, clientId: s.clientId ?? null });
       }
       if (what === 'config' && req.method === 'POST') {
         const { clientId, clientSecret } = JSON.parse(await body(req)) as { clientId?: string; clientSecret?: string };
@@ -297,7 +323,7 @@ export function createStrava(root: string) {
         const s = load();
         const nextSecret = secret || (s.clientId === id ? s.clientSecret : undefined);
         if (!nextSecret) return send(res, 400, { error: 'Client secret is missing' });
-        // a different application invalidates the old tokens
+        // a different application invalidates the old tokens (every rider's)
         const same = s.clientId === id && s.clientSecret === nextSecret;
         save(same ? s : { clientId: id, clientSecret: nextSecret });
         return send(res, 200, { ok: true });
@@ -305,14 +331,14 @@ export function createStrava(root: string) {
       if (what === 'connect' && req.method === 'GET') {
         const s = load();
         if (!s.clientId || !s.clientSecret) return redirect(res, '/?strava=unconfigured');
-        oauthState = randomBytes(12).toString('hex');
+        oauthState = { state: randomBytes(12).toString('hex'), rider };
         const q = new URLSearchParams({
           client_id: s.clientId,
           response_type: 'code',
           redirect_uri: `${origin(req)}/api/strava/callback`,
           approval_prompt: 'auto',
           scope: 'read,activity:read',
-          state: oauthState,
+          state: oauthState.state,
         });
         return redirect(res, `https://www.strava.com/oauth/authorize?${q}`);
       }
@@ -320,21 +346,22 @@ export function createStrava(root: string) {
         const code = url.searchParams.get('code');
         const state = url.searchParams.get('state');
         if (url.searchParams.get('error') || !code) return redirect(res, '/?strava=denied');
-        if (!oauthState || state !== oauthState) return redirect(res, '/?strava=error');
+        if (!oauthState || state !== oauthState.state) return redirect(res, '/?strava=error');
+        const forRider = oauthState.rider;
         oauthState = null;
-        await tokenRequest({ grant_type: 'authorization_code', code });
+        await tokenRequest({ grant_type: 'authorization_code', code }, forRider);
         return redirect(res, '/?strava=connected');
       }
       if (what === 'segments' && req.method === 'GET') {
         const route = url.searchParams.get('route') ?? '';
         if (!/^[a-z0-9-]{1,60}$/i.test(route)) return send(res, 400, { error: 'bad route' });
-        const s = load();
-        if (!s.refreshToken) return send(res, 401, { error: 'Strava is not connected' });
+        if (!tokensOf(load(), rider).refreshToken) return send(res, 401, { error: 'Strava is not connected' });
         const refresh = url.searchParams.get('refresh') === '1';
-        let job = inflight.get(route);
+        const key = `${rider}:${route}`;
+        let job = inflight.get(key);
         if (!job) {
-          job = segmentsFor(route, refresh).finally(() => inflight.delete(route));
-          inflight.set(route, job);
+          job = segmentsFor(route, refresh, rider).finally(() => inflight.delete(key));
+          inflight.set(key, job);
         }
         const { segments, warning } = await job;
         return send(res, 200, segments, warning ? { 'x-strava-warning': warning } : {});

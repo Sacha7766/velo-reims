@@ -8,10 +8,13 @@ import {
 import { buildRampTest } from '../training/rampTest.ts';
 import { LIBRARY, parseZwo } from '../workouts/index.ts';
 import type { Workout } from '../workouts/types.ts';
+import { hub } from '../devices/index.ts';
+import { needsPick } from '../sim/profiles.ts';
 import { Contours } from './Contours.tsx';
 import { History } from './History.tsx';
 import { useHub } from './hooks.ts';
 import { profileFromCoords } from './profile.ts';
+import { Avatar, RiderPicker } from './RiderPicker.tsx';
 import { RideTab } from './home/RideTab.tsx';
 import { SettingsTab } from './home/SettingsTab.tsx';
 import { DevicesPanel, type RideMode, type RouteEntry } from './home/shared.tsx';
@@ -67,6 +70,8 @@ export function Home({
   const [rides, setRides] = useState<RideSummary[]>([]);
   const [builder, setBuilder] = useState(false);
   const [devicesOpen, setDevicesOpen] = useState(false);
+  // "Who's riding?" on start when the household has more than one rider
+  const [picker, setPicker] = useState<'required' | 'open' | null>(() => (needsPick() ? 'required' : null));
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -149,7 +154,7 @@ export function Home({
       }}
     >
       <Contours />
-      <TopBar tab={tab} onTab={onTab} onDevices={() => setDevicesOpen(true)} />
+      <TopBar tab={tab} onTab={onTab} onDevices={() => setDevicesOpen(true)} rider={settings} onRider={() => setPicker('open')} />
 
       <div className={`tab-body tab-${tab}`}>
         {tab === 'ride' && (
@@ -228,11 +233,33 @@ export function Home({
         </Suspense>
       )}
       {dragging && <div className="dropzone">Drop to import</div>}
+      {picker && (
+        <RiderPicker
+          required={picker === 'required'}
+          onDone={() => {
+            // App skipped the silent reconnect until the rider was known
+            if (picker === 'required' && !new URLSearchParams(location.search).has('nobt')) void hub.reconnectKnown();
+            setPicker(null);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function TopBar({ tab, onTab, onDevices }: { tab: HomeTab; onTab: (t: HomeTab) => void; onDevices: () => void }) {
+function TopBar({
+  tab,
+  onTab,
+  onDevices,
+  rider,
+  onRider,
+}: {
+  tab: HomeTab;
+  onTab: (t: HomeTab) => void;
+  onDevices: () => void;
+  rider: { name: string; kit: string };
+  onRider: () => void;
+}) {
   const { devices, simulator } = useHub();
   const on = (pred: (d: (typeof devices)[number]) => boolean) => devices.some((d) => pred(d) && d.state === 'connected');
   const chips = [
@@ -256,6 +283,10 @@ function TopBar({ tab, onTab, onDevices }: { tab: HomeTab; onTab: (t: HomeTab) =
           </button>
         ))}
       </nav>
+      <button className="rider-chip" onClick={onRider} aria-label={`Rider: ${rider.name}. Switch rider`}>
+        <Avatar p={rider} />
+        <span>{rider.name}</span>
+      </button>
       <button className="dev-chips" onClick={onDevices} aria-label="Devices">
         {chips.map((c) => (
           <span key={c.label} className={`chip ${c.ok ? 'ok' : c.alt ? 'alt' : ''}`}>

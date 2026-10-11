@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { clearTileCache, tileCacheStats } from '../../geo/tileCache.ts';
+import { activeProfile, MAIN, removeProfile, switchProfile } from '../../sim/profiles.ts';
 import { openRidesFolder, type AppSettings } from '../../sim/storage.ts';
 import { DrivetrainSection } from './DrivetrainSection.tsx';
 import { ColorField, DevicesPanel, NumberField } from './shared.tsx';
@@ -34,6 +35,18 @@ export function SettingsTab({
           <ColorField label="Stripe" value={settings.accent} onChange={(v) => set('accent', v)} />
           <ColorField label="Frame" value={settings.bike} onChange={(v) => set('bike', v)} />
         </div>
+        {activeProfile() !== MAIN && (
+          <button
+            className="btn ghost small remove-rider"
+            onClick={() => {
+              if (!confirm(`Remove ${settings.name} as a rider? Their rides stay in the rides folder.`)) return;
+              removeProfile(activeProfile());
+              switchProfile(MAIN);
+            }}
+          >
+            Remove rider {settings.name}
+          </button>
+        )}
       </section>
 
       <section>

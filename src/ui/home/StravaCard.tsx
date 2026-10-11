@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getStravaStatus, saveStravaConfig, type StravaStatus } from '../../sim/stravaApi.ts';
+import { getStravaStatus, saveStravaConfig, stravaConnectUrl, type StravaStatus } from '../../sim/stravaApi.ts';
 
 export function StravaCard() {
   const [status, setStatus] = useState<StravaStatus | null | undefined>(undefined);
@@ -68,7 +68,7 @@ export function StravaCard() {
               Save
             </button>
             {status?.configured && (
-              <a className="btn small" href="/api/strava/connect">
+              <a className="btn small" href={stravaConnectUrl()}>
                 {status.connected ? 'Reconnect' : 'Connect to Strava'}
               </a>
             )}

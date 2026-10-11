@@ -5,6 +5,7 @@ import type { Workout } from '../workouts/types.ts';
 import { DEFAULT_CUSTOM_DRIVETRAIN } from './drivetrain.ts';
 import type { RiderSettings } from './session.ts';
 import { encodeFit } from './fit.ts';
+import { activeProfile, MAIN, profileKey, touchProfile } from './profiles.ts';
 import type { RideRecord } from './types.ts';
 
 export interface AppSettings extends RiderSettings {
@@ -57,9 +58,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 const SETTINGS_KEY = 'serpentine.settings';
 
+/** Settings of the active rider profile. */
 export function loadSettings(): AppSettings {
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
+    const raw = localStorage.getItem(profileKey(SETTINGS_KEY));
     if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
   } catch {
     /* storage blocked */
@@ -69,10 +71,11 @@ export function loadSettings(): AppSettings {
 
 export function saveSettings(s: AppSettings) {
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+    localStorage.setItem(profileKey(SETTINGS_KEY), JSON.stringify(s));
   } catch {
     /* storage blocked */
   }
+  touchProfile(s.name, s.kit);
 }
 
 export interface RideSummary {
@@ -93,7 +96,11 @@ export interface RideSummary {
   avgHr?: number;
   segments?: { id: string; name: string; time: number; power: number }[];
   bestEfforts?: { 5: number; 60: number; 300: number; 1200: number };
+  /** Rider profile id; rides from before profiles belong to the main profile. */
+  profile?: string;
 }
+
+const mine = (r: RideSummary) => (r.profile ?? MAIN) === activeProfile();
 
 async function safeGet<T>(key: string, fallback: T): Promise<T> {
   try {
@@ -118,18 +125,19 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(s);
 }
 
-async function putRide(rec: RideRecord, summary: RideSummary) {
+async function putRide(rec: RideRecord, summary: RideSummary, rider?: string) {
   const res = await fetch(`/api/rides/${rec.id}`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ record: rec, summary, fit: toBase64(encodeFit(rec)) }),
+    body: JSON.stringify({ record: rec, summary, rider, fit: toBase64(encodeFit(rec)) }),
   });
   if (!res.ok) throw new Error(`Saving ride failed: ${res.status}`);
 }
 
 export async function saveRide(rec: RideRecord, summary: RideSummary) {
+  summary = { ...summary, profile: summary.profile ?? activeProfile() };
   if (await hasApi()) {
-    await putRide(rec, summary);
+    await putRide(rec, summary, loadSettings().name);
     return;
   }
   await set(`ride:${rec.id}`, rec);
@@ -165,16 +173,17 @@ async function migrate() {
   if (local.length) await set('rides', []);
 }
 
+/** Rides of the active rider profile. */
 export async function listRides(): Promise<RideSummary[]> {
   if (await hasApi()) {
     await migrate();
     try {
-      return (await (await fetch('/api/rides')).json()) as RideSummary[];
+      return ((await (await fetch('/api/rides')).json()) as RideSummary[]).filter(mine);
     } catch {
       return [];
     }
   }
-  return safeGet<RideSummary[]>('rides', []);
+  return (await safeGet<RideSummary[]>('rides', [])).filter(mine);
 }
 
 export async function getRide(id: string): Promise<RideRecord | undefined> {
@@ -276,19 +285,22 @@ export async function saveCustomWorkout(w: Workout) {
   await writeList('workouts', [w, ...list.filter((x) => x.id !== w.id)]);
 }
 
+// the training plan is per rider: 'plan' for the main profile, 'plan-<id>' for the others
 export async function getActivePlan(): Promise<ActivePlan | null> {
+  const key = profileKey('plan', '-');
   if (await hasApi()) {
     try {
-      return await storeGet<ActivePlan>('plan');
+      return await storeGet<ActivePlan>(key);
     } catch {
       return null;
     }
   }
-  return safeGet<ActivePlan | null>('plan', null);
+  return safeGet<ActivePlan | null>(key, null);
 }
 
 export async function saveActivePlan(p: ActivePlan | null) {
-  if (await hasApi()) await storePut('plan', p);
-  else if (p) await set('plan', p);
-  else await del('plan');
+  const key = profileKey('plan', '-');
+  if (await hasApi()) await storePut(key, p);
+  else if (p) await set(key, p);
+  else await del(key);
 }

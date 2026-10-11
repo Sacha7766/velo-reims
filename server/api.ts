@@ -115,17 +115,19 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       return res.end(readFileSync(join(RIDES, `${entry.file}.json`)));
     }
     if (req.method === 'PUT') {
-      const { record, summary, fit } = JSON.parse(await body(req)) as {
+      const { record, summary, fit, rider } = JSON.parse(await body(req)) as {
         record: { start: number; name: string };
         summary: Record<string, unknown>;
         fit?: string;
+        /** Rider profile name, part of the file name so a household's rides stay apart. */
+        rider?: string;
       };
       mkdirSync(RIDES, { recursive: true });
       const d = new Date(record.start);
       const pad = (n: number) => String(n).padStart(2, '0');
       const file =
         entry?.file ??
-        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}_${slug(record.name) || 'ride'}`;
+        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}_${rider && slug(rider) ? `${slug(rider)}_` : ''}${slug(record.name) || 'ride'}`;
       writeFileSync(join(RIDES, `${file}.json`), JSON.stringify(record));
       if (fit) writeFileSync(join(RIDES, `${file}.fit`), Buffer.from(fit, 'base64'));
       writeIndex([{ id, file, summary }, ...entries.filter((e) => e.id !== id)].sort((a, b) => Number(b.summary.start) - Number(a.summary.start)));

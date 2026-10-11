@@ -14,6 +14,7 @@ import { bestRideFor, deleteRide, getRide, listCustomRoutes, listRides, loadSett
 import { LIBRARY } from '../workouts/index.ts';
 import { fmtTime } from './format.ts';
 import { Home, type HomeTab, type StartRequest } from './Home.tsx';
+import { needsPick, takeOpenSettings } from '../sim/profiles.ts';
 import { Hud } from './Hud.tsx';
 import { Loading } from './Loading.tsx';
 import { profileFromCoords, type ProfileData } from './profile.ts';
@@ -32,7 +33,7 @@ export function App() {
   const [engine, setEngine] = useState<Engine | null>(null);
   const [settings, setSettingsState] = useState<AppSettings>(loadSettings);
   const [screen, setScreen] = useState<Screen>('home');
-  const [homeTab, setHomeTab] = useState<HomeTab>('ride');
+  const [homeTab, setHomeTab] = useState<HomeTab>(() => (takeOpenSettings() ? 'settings' : 'ride'));
   const [loadInfo, setLoadInfo] = useState<{ name: string; profile: ProfileData | null }>({ name: '', profile: null });
   const [progress, setProgress] = useState<LoadProgress | null>(null);
   const [ride, setRide] = useState<Ride | null>(null);
@@ -50,8 +51,9 @@ export function App() {
     e.paused = true;
     setEngine(e);
     (window as unknown as { engine: Engine }).engine = e;
-    // ?nobt=1: never touch Bluetooth on start (someone else is on the trainer)
-    if (!new URLSearchParams(location.search).has('nobt')) void hub.reconnectKnown();
+    // ?nobt=1: never touch Bluetooth on start (someone else is on the trainer). With several riders the
+    // devices of whoever is picked reconnect after "Who's riding?" (Home), not the last rider's.
+    if (!new URLSearchParams(location.search).has('nobt') && !needsPick()) void hub.reconnectKnown();
     return () => e.dispose();
   }, []);
 

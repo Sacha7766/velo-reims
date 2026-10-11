@@ -1,7 +1,11 @@
 // Browser side of the Strava integration: talks to the local server (server/strava.ts), which holds
 // the credentials. Every call resolves quietly when Strava is not set up, so callers need no guards.
 
+import { activeProfile } from './profiles.ts';
 import type { StravaSegment } from './strava.ts';
+
+/** Each rider profile links its own Strava account. */
+const rider = () => `rider=${encodeURIComponent(activeProfile())}`;
 
 export interface StravaStatus {
   configured: boolean;
@@ -16,7 +20,7 @@ const segmentCache = new Map<string, Promise<StravaSegment[]>>();
 /** Status of the Strava link; null when the local API is not there (static preview). */
 export function getStravaStatus(force = false): Promise<StravaStatus | null> {
   if (force || !statusCache) {
-    statusCache = fetch('/api/strava/status')
+    statusCache = fetch(`/api/strava/status?${rider()}`)
       .then((r) => (r.ok && (r.headers.get('content-type') ?? '').includes('json') ? (r.json() as Promise<StravaStatus>) : null))
       .catch(() => null);
   }
@@ -51,7 +55,7 @@ export function fetchStravaSegments(routeId: string, timeoutMs = 45000): Promise
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), timeoutMs);
     try {
-      const res = await fetch(`/api/strava/segments?route=${encodeURIComponent(routeId)}`, { signal: ctl.signal });
+      const res = await fetch(`/api/strava/segments?route=${encodeURIComponent(routeId)}&${rider()}`, { signal: ctl.signal });
       if (!res.ok) return [];
       const list = (await res.json()) as StravaSegment[];
       return Array.isArray(list) ? list : [];
@@ -66,3 +70,6 @@ export function fetchStravaSegments(routeId: string, timeoutMs = 45000): Promise
   void p.then((l) => l.length === 0 && segmentCache.get(routeId) === p && segmentCache.delete(routeId));
   return p;
 }
+
+/** OAuth start for the active rider. */
+export const stravaConnectUrl = () => `/api/strava/connect?${rider()}`;
