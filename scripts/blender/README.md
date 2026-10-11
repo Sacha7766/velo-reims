@@ -12,5 +12,7 @@ python3 scripts/blender/bl.py scripts/blender/b_rider.py         # road bike, wh
 python3 scripts/blender/bl.py scripts/blender/b_rock.py          # Poly Haven rocks decimated to ~700 tris (needs research/gaisberg/assets)
 ```
 
+`b_rider.py` is split into `b_rider_bike.py` + `b_rider_body.py`, built with the lofting/sweep toolkit in `borg.py` (set `ONLY={'torso',...}` before the script to build single parts for preview).
+
 `bhelp.py` holds the shared helpers (materials, tube/box mesh builder, GLB export, EEVEE preview).
 Rider parts are authored in the three.js rider frame (+Z forward, +Y up) and converted with `T()`.
