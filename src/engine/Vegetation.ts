@@ -6,9 +6,10 @@ import type { OsmWorld, Polygon } from '../geo/osm.ts';
 import type { Route, RouteIndex } from '../geo/route.ts';
 import { patchMaterial } from './atmosphere.ts';
 import { mergeColored } from './Road.ts';
-import { broadleafGeometry, preserveCoverage, spruceGeometry, treeAtlas, treeAtlasReady } from './treeModels.ts';
+import { broadleafGeometry, pineGeometry, preserveCoverage, spruceGeometry, treeAtlas, treeAtlasReady } from './treeModels.ts';
+import { ALPINE, type Biome } from './biome.ts';
 import { impostorGeometry, renderImpostorAtlas } from './impostors.ts';
-import { broadleafTint, coniferTint, dayOfYear } from './season.ts';
+import { broadleafTint, coniferTint, dayOfYear, evergreenBroadTint, pineTint } from './season.ts';
 import { pointAt } from '../geo/route.ts';
 import type { BakedTrees } from '../geo/trees.ts';
 
@@ -163,6 +164,7 @@ export interface VegetationOptions {
   day?: number;
   /** Needed to render the distant-tree impostors. */
   renderer?: THREE.WebGLRenderer;
+  biome?: Biome;
 }
 
 // near-LOD variants: forest-grown (high crown base) and open/edge-grown (foliage to the ground)
@@ -193,12 +195,22 @@ export class Vegetation extends THREE.Group {
     if (o.baked) this.placeBaked(route, index, osm, o, blockers, add, day, tint);
     else this.placeFromOsm(route, index, osm, o, blockers, add, day, tint);
 
-    const near: Record<Kind, THREE.BufferGeometry> = {
-      spruceF: spruceGeometry(1, 0.36),
-      spruceO: spruceGeometry(5, 0.07),
-      beechF: broadleafGeometry(2, 0.44, 0.9),
-      beechO: broadleafGeometry(9, 0.22, 1.2),
-    };
+    const biome = o.biome ?? ALPINE;
+    // Alpine: spruce + beech; Mediterranean: Aleppo pine + holm oak / wild olive
+    const near: Record<Kind, THREE.BufferGeometry> =
+      biome.conifer === 'pine'
+        ? {
+          spruceF: pineGeometry(1, 0.7, 0.85),
+          spruceO: pineGeometry(5, 0.52, 1.05),
+          beechF: broadleafGeometry(2, 0.3, 1.0),
+          beechO: broadleafGeometry(9, 0.12, 1.25),
+        }
+        : {
+          spruceF: spruceGeometry(1, 0.36),
+          spruceO: spruceGeometry(5, 0.07),
+          beechF: broadleafGeometry(2, 0.44, 0.9),
+          beechO: broadleafGeometry(9, 0.22, 1.2),
+        };
     // distant trees: impostor cards rendered from the near models (fallback: simple solids)
     const far: Record<Kind, THREE.BufferGeometry> = o.renderer
       ? {
@@ -208,7 +220,7 @@ export class Vegetation extends THREE.Group {
         beechO: impostorGeometry(3, 4),
       }
       : { spruceF: coniferGeometry(1), spruceO: coniferGeometry(1), beechF: broadGeometry(1), beechO: broadGeometry(1) };
-    const atlas = treeAtlas();
+    const atlas = treeAtlas(biome.atlas);
     const nearMat = preserveCoverage(
       patchMaterial(new THREE.MeshLambertMaterial({ map: atlas, alphaTest: 0.5, side: THREE.DoubleSide, vertexColors: true }), {
         key: 'treecard2',
@@ -230,7 +242,7 @@ export class Vegetation extends THREE.Group {
     if (o.renderer) {
       farMat.alphaToCoverage = true;
       const renderer = o.renderer;
-      void treeAtlasReady().then((tex) => {
+      void treeAtlasReady(biome.atlas).then((tex) => {
         farMat.map = renderImpostorAtlas(renderer, [near.spruceF, near.spruceO, near.beechF, near.beechO], tex);
         farMat.needsUpdate = true;
         blank.dispose();
@@ -322,13 +334,17 @@ export class Vegetation extends THREE.Group {
       // forest edges along the road keep their lower branches, like open-grown trees
       const edge = t.open[i] === 1 || near.dist < hw + 14;
       const cr = t.crown[i];
+      const med = o.biome?.evergreen === true;
       if (conifer) {
-        const larch = r2 < 0.1 && y > 800;
-        coniferTint(day, y, r1, larch, tint);
-        const w = Math.min(Math.max(cr / 0.24, h * 0.42), h * 0.95);
+        const larch = !med && r2 < 0.1 && y > 800;
+        if (med) pineTint(r1, tint);
+        else coniferTint(day, y, r1, larch, tint);
+        // pines: crowns as wide as the canopy model says (open, umbrella-like)
+        const w = med ? Math.min(Math.max(cr / 0.3, h * 0.45), h * 1.1) : Math.min(Math.max(cr / 0.24, h * 0.42), h * 0.95);
         add(edge ? 'spruceO' : 'spruceF', x, y - 0.4, z, w, h * (larch ? 0.92 : 1), r1 * 6.283, tint);
       } else {
-        broadleafTint(day, y, r1, tint);
+        if (med) evergreenBroadTint(r1, tint);
+        else broadleafTint(day, y, r1, tint);
         // irregular crowns: some taller and narrower, some squat
         const w = Math.min(Math.max(cr / 0.3, h * 0.5), h * 1.25) * (0.8 + hash2(i, 41) * 0.4);
         add(edge ? 'beechO' : 'beechF', x, y - 0.3, z, w, h, r2 * 6.283, tint);

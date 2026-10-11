@@ -1,5 +1,6 @@
-// Aerial imagery tiles. basemap.at (Austrian government orthophotos, CC BY 4.0, ~30 cm)
-// is used inside Austria, Esri World Imagery everywhere else and as per-tile fallback.
+// Aerial imagery tiles. National orthophotos where they exist (basemap.at in Austria, ~30 cm;
+// IGN PNOA in Spain incl. the Balearics, 25 cm; both CC BY 4.0), Esri World Imagery everywhere
+// else and as per-tile fallback.
 
 export interface ImagerySource {
   id: string;
@@ -20,6 +21,16 @@ export const BASEMAP_AT: ImagerySource = {
   url: (z, x, y) => `https://mapsneu.wien.gv.at/basemap/bmaporthofoto30cm/normal/google3857/${z}/${y}/${x}.jpeg`,
 };
 
+export const PNOA: ImagerySource = {
+  id: 'pnoa',
+  name: 'PNOA Máxima Actualidad',
+  maxZoom: 20,
+  attribution: 'Ortofoto PNOA © Instituto Geográfico Nacional (CC BY 4.0)',
+  bounds: [-18.5, 27.5, 4.6, 44.0],
+  url: (z, x, y) =>
+    `https://www.ign.es/wmts/pnoa-ma?request=GetTile&service=WMTS&VERSION=1.0.0&Layer=OI.OrthoimageCoverage&Style=default&Format=image/jpeg&TileMatrixSet=GoogleMapsCompatible&TileMatrix=${z}&TileRow=${y}&TileCol=${x}`,
+};
+
 export const ESRI: ImagerySource = {
   id: 'esri',
   name: 'Esri World Imagery',
@@ -29,8 +40,13 @@ export const ESRI: ImagerySource = {
 };
 
 export function sourcesFor(lon: number, lat: number): ImagerySource[] {
-  const [w, s, e, n] = BASEMAP_AT.bounds!;
-  return lon > w && lon < e && lat > s && lat < n ? [BASEMAP_AT, ESRI] : [ESRI];
+  for (const src of [BASEMAP_AT, PNOA]) {
+    const [w, s, e, n] = src.bounds!;
+    // PNOA's box also covers southern France and Portugal: it answers those with blank tiles,
+    // which loadImageryTile detects and falls back to Esri
+    if (lon > w && lon < e && lat > s && lat < n) return [src, ESRI];
+  }
+  return [ESRI];
 }
 
 export async function loadImageryTile(

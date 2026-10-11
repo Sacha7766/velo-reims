@@ -120,6 +120,9 @@ export interface TerrainOptions {
   /** LOD aggressiveness: tiles split when camera distance < size * detail. */
   detail?: number;
   maxConcurrent?: number;
+  /** Width (m) over which the hillside above the road falls to road level: 14 = grassy
+   * embankment (Alps), ~3 = near-vertical rock cut (Mallorca). */
+  cutWidth?: number;
 }
 
 export class Terrain extends THREE.Group {
@@ -135,7 +138,7 @@ export class Terrain extends THREE.Group {
 
   constructor(opts: TerrainOptions) {
     super();
-    this.opts = { detail: 2.3, maxConcurrent: 14, ...opts };
+    this.opts = { detail: 2.3, maxConcurrent: 14, cutWidth: 14, ...opts };
     const data = new Uint8Array([86, 100, 70, 255]);
     this.fallbackTex = new THREE.DataTexture(data, 1, 1);
     this.fallbackTex.colorSpace = THREE.SRGBColorSpace;
@@ -295,7 +298,7 @@ export class Terrain extends THREE.Group {
   }
 
   private buildMesh(node: Node, dz: number, tex: THREE.Texture | null) {
-    const { frame, routeIndex, roadHalfWidth } = this.opts;
+    const { frame } = this.opts;
     const [mx0, , mx1, my1] = node.mb;
     const G = SEG + 3; // grid with a one-sample apron for normals
     const heights = new Float32Array(G * G);
@@ -310,16 +313,7 @@ export class Terrain extends THREE.Group {
         const mx = mx0 + (i - 1) * stepM;
         let h = smoothDem ? heightAtMercSmooth(mx, my, dz) : heightAtMerc(mx, my, dz);
         if (h !== h) h = 0;
-        if (flatten) {
-          const wx = (mx - frame.mx0) * frame.k;
-          const wz = -(my - frame.my0) * frame.k;
-          const near = routeIndex.nearest(wx, wz, roadHalfWidth + 17);
-          if (near.index >= 0) {
-            const road = routeIndex.eleAt(near.f) - 0.45;
-            const w = 1 - smooth01((near.dist - roadHalfWidth - 2.5) / 14);
-            h = h + (road - h) * w;
-          }
-        }
+        if (flatten) h = this.flatten((mx - frame.mx0) * frame.k, -(my - frame.my0) * frame.k, h);
         heights[j * G + i] = h;
         if (i > 0 && j > 0 && i < G - 1 && j < G - 1) {
           minH = Math.min(minH, h);
@@ -387,16 +381,26 @@ export class Terrain extends THREE.Group {
 
   /** Rendered ground height incl. the road cut, matching the near-camera mesh. */
   groundHeight(x: number, z: number): number {
-    const { frame, routeIndex, roadHalfWidth } = this.opts;
-    let h = heightAtMercSmooth(x / frame.k + frame.mx0, -z / frame.k + frame.my0, DEM_MAX_Z);
+    const { frame } = this.opts;
+    const h = heightAtMercSmooth(x / frame.k + frame.mx0, -z / frame.k + frame.my0, DEM_MAX_Z);
     if (h !== h) return NaN;
+    return this.flatten(x, z, h);
+  }
+
+  /** Blend raw terrain towards the road: embankments below, cuts above; untouched over tunnels. */
+  private flatten(x: number, z: number, h: number): number {
+    const { routeIndex, roadHalfWidth, route } = this.opts;
     const near = routeIndex.nearest(x, z, roadHalfWidth + 17);
-    if (near.index >= 0) {
-      const road = routeIndex.eleAt(near.f) - 0.45;
-      const w = 1 - smooth01((near.dist - roadHalfWidth - 2.5) / 14);
-      h += (road - h) * w;
-    }
-    return h;
+    if (near.index < 0) return h;
+    const s = near.f * route.step;
+    for (const [a, b] of route.tunnels) if (s > a + 4 && s < b - 4) return h;
+    const road = routeIndex.eleAt(near.f) - 0.45;
+    const cut = h > road + 0.5;
+    const width = cut ? this.opts.cutWidth : 14;
+    // cuts rise as a straight, steep face from the road edge; fills ease out into the slope
+    const t = (near.dist - roadHalfWidth - (cut ? 0.6 : 2.5)) / width;
+    const w = cut && width < 8 ? 1 - Math.min(Math.max(t, 0), 1) : 1 - smooth01(t);
+    return h + (road - h) * w;
   }
 
   /** Terrain height (no road flattening) at a world position, NaN when not loaded. */

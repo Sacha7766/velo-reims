@@ -6,6 +6,7 @@ const HOSTS = [
   ['s3.amazonaws.com', '/elevation-tiles-prod/'],
   ['mapsneu.wien.gv.at', '/basemap/'],
   ['server.arcgisonline.com', '/ArcGIS/rest/services/World_Imagery/'],
+  ['www.ign.es', '/wmts/pnoa-ma'],
   ['tiles.openfreemap.org', '/'],
 ];
 

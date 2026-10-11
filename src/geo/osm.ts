@@ -25,6 +25,8 @@ export interface Building {
   wallColour?: string;
   roofColour?: string;
   name?: string;
+  /** roof:shape was tagged (not inferred). */
+  explicitRoof?: boolean;
 }
 
 /** Open land cover that changes ground shading and ground cover. */
@@ -345,7 +347,7 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
       const levels = parseFloat(t['building:levels'] ?? '');
       buildings.push({
         ring, height: buildingHeight(t), roof, kind: t.building, levels: Number.isFinite(levels) ? levels : undefined,
-        wallColour: t['building:colour'], roofColour: t['roof:colour'], name: t.name,
+        wallColour: t['building:colour'], roofColour: t['roof:colour'], name: t.name, explicitRoof: !!roofTag,
       });
     } else if (t.barrier && el.type === 'way' && el.geometry && !t.area) {
       barriers.push({ pts: toLine(route, el.geometry), kind: t.barrier });

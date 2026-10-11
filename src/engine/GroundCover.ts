@@ -2,11 +2,13 @@
 // generated in route chunks around the rider and recycled as they ride on.
 
 import * as THREE from 'three';
+import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Line } from '../geo/osm.ts';
 import type { Route, RouteIndex } from '../geo/route.ts';
 import { patchMaterial } from './atmosphere.ts';
-import { preserveCoverage, REGIONS, treeAtlas } from './treeModels.ts';
+import { broadleafGeometry, preserveCoverage, REGIONS, treeAtlas } from './treeModels.ts';
 import { loadModel } from './Landmarks.ts';
+import { ALPINE, type Biome } from './biome.ts';
 
 const CHUNK = 40; // metres of route per chunk
 const AHEAD = 280;
@@ -50,6 +52,32 @@ function tuftGeometry(reg: { u0: number; v0: number; u1: number; v1: number }): 
   return g;
 }
 
+/** Low rounded shrub (rosemary, mastic): crossed half-dome cards plus a tilted ring. */
+function cushionGeometry(): THREE.BufferGeometry {
+  const reg = REGIONS.flowers;
+  const pos: number[] = [];
+  const uv: number[] = [];
+  const nor: number[] = [];
+  const idx: number[] = [];
+  const card = (a: number, tilt: number, r: number, h: number, y0: number) => {
+    const dx = Math.cos(a) * r, dz = Math.sin(a) * r;
+    const tx = -Math.sin(a) * Math.sin(tilt) * h, tz = Math.cos(a) * Math.sin(tilt) * h;
+    const b = pos.length / 3;
+    pos.push(-dx, y0, -dz, dx, y0, dz, dx + tx, y0 + h * Math.cos(tilt), dz + tz, -dx + tx, y0 + h * Math.cos(tilt), -dz + tz);
+    uv.push(reg.u0, reg.v0, reg.u1, reg.v0, reg.u1, reg.v1, reg.u0, reg.v1);
+    for (let i = 0; i < 4; i++) nor.push(0, 1, 0);
+    idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
+  };
+  for (let k = 0; k < 4; k++) card((k / 4) * Math.PI, 0, 0.5, 0.5, -0.04);
+  for (let k = 0; k < 5; k++) card((k / 5) * Math.PI * 2, 1.0, 0.32, 0.42, 0.12);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setIndex(idx);
+  return g;
+}
+
 function rockGeometry(): THREE.BufferGeometry {
   const g = new THREE.IcosahedronGeometry(0.5, 1);
   const p = g.getAttribute('position');
@@ -79,6 +107,7 @@ export interface GroundCoverOptions {
   coverAt?: (x: number, z: number) => number;
   /** Tree canopy 0..1 at a point (forest floor gets ferns instead of meadow grass). */
   canopyAt?: (x: number, z: number) => number;
+  biome?: Biome;
 }
 
 export class GroundCover extends THREE.Group {
@@ -90,24 +119,43 @@ export class GroundCover extends THREE.Group {
   private sharedRockMat = false;
   private tuft = tuftGeometry(REGIONS.grass);
   private flowerTuft = tuftGeometry(REGIONS.flowers);
+  private cushion = cushionGeometry();
+  private shrub: THREE.BufferGeometry | null = null;
+  private shrubMat: THREE.Material | null = null;
   private rock = rockGeometry();
   private fern: THREE.BufferGeometry | null = null;
   private fernMat: THREE.Material | null = null;
+  private palm: THREE.BufferGeometry | null = null;
+  private palmMats: THREE.Material | THREE.Material[] | null = null;
+  private biome: Biome;
   private roadGrid = new Map<number, number[]>();
   private roadSegs: number[] = [];
 
   constructor(o: GroundCoverOptions) {
     super();
     this.o = { density: 1, ...o };
+    this.biome = o.biome ?? ALPINE;
     // photographic grass cards from the shared foliage atlas (scripts/bake-foliage.py)
     this.grassMat = preserveCoverage(
-      patchMaterial(new THREE.MeshLambertMaterial({ map: treeAtlas(), alphaTest: 0.5, side: THREE.DoubleSide }), {
+      patchMaterial(new THREE.MeshLambertMaterial({ map: treeAtlas(this.biome.atlas), alphaTest: 0.5, side: THREE.DoubleSide }), {
         key: 'tuft2',
         wind: true,
       }),
     );
     this.grassMat.alphaToCoverage = true;
     this.flowerMat = this.grassMat;
+    if (this.biome.shrubs > 0) {
+      // mastic / lentisk / young holm oak: a round leafy bush (tree model, leaf clusters to the ground)
+      this.shrub = broadleafGeometry(11, 0.0, 1.35);
+      const sm = preserveCoverage(
+        patchMaterial(new THREE.MeshLambertMaterial({ map: treeAtlas(this.biome.atlas), alphaTest: 0.5, side: THREE.DoubleSide, vertexColors: true }), {
+          key: 'shrub',
+          wind: true,
+        }),
+      );
+      sm.alphaToCoverage = true;
+      this.shrubMat = sm;
+    }
     this.rockMat = patchMaterial(new THREE.MeshStandardMaterial({ color: 0x8b8a84, roughness: 0.95, flatShading: true }), {
       key: 'boulder',
     });
@@ -121,16 +169,44 @@ export class GroundCover extends THREE.Group {
           this.rock.dispose();
           this.rockMat.dispose();
           this.rock = m.geometry.clone().applyMatrix4(m.matrixWorld);
+          // the decimated scan has hard creases: soften so boulders read as weathered stone
+          this.rock.deleteAttribute('normal');
+          this.rock = mergeVertices(this.rock, 0.02);
+          this.rock.computeVertexNormals();
           // shared with the model cache: never disposed here
           // Gaisberg limestone is cool light grey; the scan is warmer
           const rm = (m.material as THREE.MeshStandardMaterial).clone();
-          rm.color.setRGB(0.86, 0.9, 0.95);
+          rm.color.copy(this.biome.rock);
           this.rockMat = patchMaterial(rm, { key: 'rockscan' });
         });
       })
       .catch(() => undefined);
+    if (this.biome.palms > 0) {
+      void loadModel('palm.glb')
+        .then((g) => {
+          g.updateMatrixWorld(true);
+          // one glTF primitive per material: merge them into one geometry with groups
+          const geos: THREE.BufferGeometry[] = [];
+          const mats: THREE.Material[] = [];
+          g.traverse((c) => {
+            const m = c as THREE.Mesh;
+            if (!m.isMesh) return;
+            const geo = m.geometry.clone().applyMatrix4(m.matrixWorld);
+            for (const k of Object.keys(geo.attributes)) if (!['position', 'normal'].includes(k)) geo.deleteAttribute(k);
+            geos.push(geo.index ? geo.toNonIndexed() : geo);
+            const mat = (m.material as THREE.Material).clone();
+            (mat as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
+            mats.push(patchMaterial(mat, { key: `palm:${mat.name}`, wind: true }));
+          });
+          if (geos.length) {
+            this.palm = mergeGeometries(geos, true);
+            this.palmMats = mats;
+          }
+        })
+        .catch(() => undefined);
+    }
     // Poly Haven fern_02 (CC0), decimated in Blender: forest-floor cover
-    void loadModel('fern.glb')
+    if (this.biome.ferns) void loadModel('fern.glb')
       .then((g) => {
         g.updateMatrixWorld(true);
         g.traverse((c) => {
@@ -217,6 +293,9 @@ export class GroundCover extends THREE.Group {
     const flowers: number[] = [];
     const rocks: number[] = [];
     const ferns: number[] = [];
+    const palms: number[] = [];
+    const cushions: number[] = [];
+    const B = this.biome;
     const i0 = Math.floor((ci * CHUNK) / route.step);
     const i1 = Math.min(route.n - 1, Math.floor(((ci + 1) * CHUNK) / route.step));
     for (let i = i0; i < i1; i++) {
@@ -255,7 +334,28 @@ export class GroundCover extends THREE.Group {
           const slope = Math.hypot(sx, sz) / 1.5;
           const alpine = Math.min(1, Math.max(0, (y - 1900) / 900));
           if (slope > 0.75 || (slope > 0.45 && r() < 0.6)) {
-            if (r() < 0.03) rocks.push(x, y - 0.15, z, 0.4 + r() * 1.3, r() * 6.28, 0);
+            if (r() < 0.03 * (B.steepRocks ?? B.rockDensity)) rocks.push(x, y - 0.15, z, 0.4 + r() * (B.tussocks ? 0.6 : 1.3), r() * 6.28, 0);
+            continue;
+          }
+          if (B.tussocks) {
+            // garrigue: limestone boulders, carritx tussocks, rosemary/mastic cushions, fan palms
+            if (r() < 0.012 * B.rockDensity) rocks.push(x, y - 0.18, z, 0.25 + r() * r() * 1.1, r() * 6.28, 0);
+            const pick = r();
+            if (pick < B.palms * (canopy > 0.3 ? 1.6 : 1) && d > halfWidth + 1.5) {
+              palms.push(x, y - 0.05, z, 0.7 + r() * 0.7, r() * 6.28, 0);
+              continue;
+            }
+            // under pines the understory is open: fewer shrubs, more palms
+            if (pick < B.palms + B.shrubs * (canopy > 0.4 ? 0.35 : 1) && d > halfWidth + 1.2) {
+              cushions.push(x, y - 0.2, z, 1.1 + r() * 1.5, r() * 6.28, 1);
+              continue;
+            }
+            // carritx grows in clumps with bare ground between
+            const clump = Math.sin(x * 0.23 + Math.sin(z * 0.19) * 2.0) * Math.cos(z * 0.21 + x * 0.07);
+            if (clump < -0.1 && r() < 0.8) continue;
+            if (r() < 0.45) continue;
+            const v = d < halfWidth + 1.2 ? 0.6 + r() * 0.3 : 0.9 + r() * 0.8;
+            grass.push(x, y - 0.03, z, v, r() * 6.28, 0);
             continue;
           }
           if (alpine > 0.4 && r() < alpine * 0.008) rocks.push(x, y - 0.1, z, 0.3 + r() * 0.9, r() * 6.28, 0);
@@ -280,10 +380,8 @@ export class GroundCover extends THREE.Group {
     const q = new THREE.Quaternion();
     const up = new THREE.Vector3(0, 1, 0);
     const col = new THREE.Color();
-    // the atlas grass is near-neutral; these set the meadow colour
-    const lush = new THREE.Color(0.98, 1.22, 0.58);
-    const dry = new THREE.Color(1.3, 1.2, 0.72);
-    const pale = new THREE.Color(1.1, 1.12, 0.86);
+    // the atlas grass is near-neutral; the biome sets the meadow colour
+    const [lush, dry, pale] = this.biome.grass;
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material, arr: number[], tall: number, shadow: boolean, tint: boolean) => {
       const n = arr.length / 6;
       if (!n) return;
@@ -293,7 +391,10 @@ export class GroundCover extends THREE.Group {
         q.setFromAxisAngle(up, rot);
         m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(sc, sc * tall, sc));
         mesh.setMatrixAt(k, m);
-        if (tint) {
+        if (tint && alpine === 1 && this.biome.shrubTint) {
+          // shrub cushions (flag 1): their own green
+          mesh.setColorAt(k, col.copy(this.biome.shrubTint).multiplyScalar(0.8 + 0.3 * ((rot * 7.3) % 1)));
+        } else if (tint) {
           const v = (Math.sin(x * 0.21 + z * 0.13) + Math.sin(z * 0.17 - x * 0.05)) * 0.25 + 0.5;
           col.copy(lush).lerp(dry, v * 0.6).lerp(pale, alpine * 0.7).multiplyScalar(0.82 + 0.18 * ((rot * 13.7) % 1));
           mesh.setColorAt(k, col);
@@ -305,7 +406,9 @@ export class GroundCover extends THREE.Group {
       meshes.push(mesh);
       this.add(mesh);
     };
-    add(this.tuft, this.grassMat, grass, 1.1, false, true);
+    add(this.tuft, this.grassMat, grass, this.biome.tussocks ? 1.5 : 1.1, false, true);
+    if (cushions.length && this.shrub && this.shrubMat) add(this.shrub, this.shrubMat, cushions, 0.8, true, true);
+    if (this.palm && this.palmMats) add(this.palm, this.palmMats as unknown as THREE.Material, palms, 1, true, false);
     add(this.flowerTuft, this.flowerMat, flowers, 1.0, false, true);
     add(this.rock, this.rockMat, rocks, 1, true, false);
     if (this.fern && this.fernMat) add(this.fern, this.fernMat, ferns, 1, false, false);
@@ -317,6 +420,9 @@ export class GroundCover extends THREE.Group {
     this.chunks.clear();
     this.tuft.dispose();
     this.flowerTuft.dispose();
+    this.cushion.dispose();
+    this.shrub?.dispose();
+    this.shrubMat?.dispose();
     this.rock.dispose();
     this.grassMat.dispose();
     if (!this.sharedRockMat) this.rockMat.dispose();

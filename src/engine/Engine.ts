@@ -13,7 +13,7 @@ import { DEM_MAX_Z, heightAtMerc, preloadDemForBox } from '../geo/elevation.ts';
 import { sourcesFor } from '../geo/imagery.ts';
 import { loadOsmElements, parseOsm, type OsmWorld, type Polygon } from '../geo/osm.ts';
 import { pointAt, RouteIndex, type Route, type RoutePoint } from '../geo/route.ts';
-import { applyTime, atmo, TIMES } from './atmosphere.ts';
+import { applyTime, atmo, clearTunnels, TIMES } from './atmosphere.ts';
 import { Buildings } from './Buildings.ts';
 import { CameraRig, type CameraMode } from './CameraRig.ts';
 import { Rider, type RiderStyle } from './Rider.ts';
@@ -21,11 +21,14 @@ import { Road } from './Road.ts';
 import { Sky } from './Sky.ts';
 import { Terrain } from './Terrain.ts';
 import { TerrainShadow } from './TerrainShadow.ts';
-import { clearWaterMask, setWaterMask } from './terrainMaterial.ts';
+import { clearWaterMask, setTerrainBiome, setWaterMask } from './terrainMaterial.ts';
 import { Vegetation } from './Vegetation.ts';
 import { GroundCover } from './GroundCover.ts';
 import { Landmarks, loadRouteScene } from './Landmarks.ts';
-import { Roadside } from './Roadside.ts';
+import { ALPINE, biomeFor, type Biome } from './biome.ts';
+import { Roadside, type BarrierSpan } from './Roadside.ts';
+import { Tunnels } from './Tunnel.ts';
+import { Ocean } from './Ocean.ts';
 import { Props } from './Props.ts';
 import { Life } from './Life.ts';
 import { loadBakedTrees, type BakedTrees } from '../geo/trees.ts';
@@ -54,6 +57,8 @@ interface World {
   roadside: Roadside | null;
   props: Props;
   life: Life;
+  tunnels: Tunnels;
+  ocean: Ocean | null;
 }
 
 const QUALITY = {
@@ -81,6 +86,7 @@ export class Engine {
   private resizeObs: ResizeObserver;
   private quality: Quality;
   private onFrame?: (dt: number) => void;
+  private biome: Biome = ALPINE;
   private fpsAcc = 0;
   private tmpV = new THREE.Vector3();
   private fpsFrames = 0;
@@ -245,6 +251,10 @@ export class Engine {
 
   async loadWorld(route: Route, style: RiderStyle, onProgress: (p: LoadProgress) => void, halfWidth = 3.1) {
     this.unloadWorld();
+    const sceneDef = await loadRouteScene(route.id);
+    const biome = biomeFor(route, sceneDef?.biome as string | undefined);
+    this.biome = biome;
+    setTerrainBiome(biome);
     const index = new RouteIndex(route);
     const { frame } = route;
 
@@ -257,8 +267,9 @@ export class Engine {
       sources: sourcesFor(p0.lon, p0.lat),
       anisotropy: this.renderer.capabilities.getMaxAnisotropy(),
       detail: QUALITY[this.quality].detail,
+      cutWidth: biome.id === 'mediterranean' ? 3.2 : 14,
     });
-    const road = new Road(route, halfWidth);
+    const road = new Road(route, halfWidth, biome);
     const rider = new Rider(style);
     const ghost = new Rider({ ...style, ghost: true });
     ghost.visible = false;
@@ -268,8 +279,12 @@ export class Engine {
     const landmarks = new Landmarks();
     this.scene.add(landmarks);
     const world: World = {
-      route, index, terrain, road, trees: null, buildings: null, cover: null, rider, ghost, halfWidth, shadow, landmarks, roadside: null, props: new Props(), life: new Life(),
+      route, index, terrain, road, trees: null, buildings: null, cover: null, rider, ghost, halfWidth, shadow, landmarks, roadside: null, props: new Props(), life: new Life(), tunnels: new Tunnels(route, halfWidth),
+      // coastal routes: open sea to the horizon beyond the streamed terrain
+      ocean: route.minEle < 40 ? new Ocean() : null,
     };
+    this.scene.add(world.tunnels);
+    if (world.ocean) this.scene.add(world.ocean);
     this.scene.add(world.props, world.life);
     this.world = world;
     if (this.pendingFog) this.setTime(this.timeId);
@@ -303,11 +318,12 @@ export class Engine {
         Promise.all(jobs),
       ]);
       if (this.world !== world) return;
-      const sceneDef = await loadRouteScene(route.id);
       if (sceneDef && this.world === world) await landmarks.build(sceneDef, frame, (x, z) => terrain.groundHeight(x, z));
       if (this.world !== world) return;
       if (route.category !== 'city') {
-        world.roadside = new Roadside(route, halfWidth, (x, z) => terrain.groundHeight(x, z));
+        world.roadside = new Roadside(
+          route, halfWidth, (x, z) => terrain.groundHeight(x, z), biome, (sceneDef?.barriers as BarrierSpan[] | undefined) ?? [],
+        );
         this.scene.add(world.roadside);
       }
       const osm: OsmWorld = parseOsm(route, elements);
@@ -317,7 +333,7 @@ export class Engine {
       decorStage = 'Growing forests';
       await new Promise((r) => setTimeout(r, 0));
       const trees = new Vegetation(route, index, osm, {
-        corridor: baked ? 550 : CORRIDOR, spacing: 6.5, roadHalfWidth: halfWidth, heightAt, baked, renderer: this.renderer,
+        corridor: baked ? 550 : CORRIDOR, spacing: 6.5, roadHalfWidth: halfWidth, heightAt, baked, renderer: this.renderer, biome,
       });
       if (this.world !== world) return;
       world.trees = trees;
@@ -330,7 +346,7 @@ export class Engine {
         .catch((e) => console.warn('life failed', e));
       decorStage = 'Building villages';
       await new Promise((r) => setTimeout(r, 0));
-      const buildings = new Buildings(osm, index, heightAt);
+      const buildings = new Buildings(osm, index, heightAt, 320, biome);
       if (this.world !== world) return;
       world.buildings = buildings;
       this.scene.add(buildings);
@@ -368,6 +384,7 @@ export class Engine {
   private addCover(world: World, osm: OsmWorld | null) {
     const mask = this.waterMask;
     const cover = new GroundCover({
+      biome: this.biome,
       route: world.route,
       index: world.index,
       halfWidth: world.halfWidth,
@@ -517,7 +534,13 @@ export class Engine {
         else mat?.dispose();
       });
     if (w.roadside) this.scene.remove(w.roadside);
-    this.scene.remove(w.props, w.life);
+    this.scene.remove(w.props, w.life, w.tunnels);
+    if (w.ocean) {
+      this.scene.remove(w.ocean);
+      w.ocean.geometry.dispose();
+      w.ocean.material.dispose();
+    }
+    clearTunnels();
     w.props.clear();
     w.life.clear();
     [w.road, w.rider, w.ghost, w.trees, w.buildings, w.roadside].forEach((o) => o && dispose(o));
@@ -621,7 +644,8 @@ export class Engine {
         this.placeRider(rider, b.s, b.dir, route, this.lateral - 1.1 - (i % 2) * 0.9);
         rider.update(dt, b.speed, b.speed > 0.5 ? 88 : 0, 0.6);
       });
-      this.rig.update(this.camera, dt, route, this.riderS, this.riderDir, this.lateral, (x, z) => w.terrain.heightAt(x, z));
+      const inTunnel = w.tunnels.contains(this.riderS);
+      this.rig.update(this.camera, dt, route, this.riderS, this.riderDir, this.lateral, (x, z) => (inTunnel ? NaN : w.terrain.heightAt(x, z)), inTunnel);
       this.cameraOverride?.(this.camera);
       w.terrain.update(this.camera);
       w.trees?.update(this.camera.position, QUALITY[this.quality].trees);
@@ -636,6 +660,7 @@ export class Engine {
       this.sun.position.copy(focus).addScaledVector(atmo.uSunDir.value, 300);
     }
     this.sky.follow(this.camera);
+    this.world?.ocean?.follow(this.camera);
     this.composer.render(dt);
   }
 

@@ -49,3 +49,16 @@ export function coniferTint(day: number, elevation: number, rand: number, larch:
   }
   return out.setRGB(0.36, 0.5, 0.33).multiplyScalar(0.85 + rand * 0.3);
 }
+
+/** Mediterranean evergreens: holm oak dark olive, wild olive and mastic silvery grey-green. */
+export function evergreenBroadTint(rand: number, out: THREE.Color): THREE.Color {
+  const olive = (rand * 5.17) % 1 < 0.3;
+  return olive
+    ? out.setRGB(0.62, 0.68, 0.52).multiplyScalar(0.88 + rand * 0.2)
+    : out.setRGB(0.36, 0.46, 0.27).multiplyScalar(0.82 + rand * 0.28);
+}
+
+/** Aleppo pine: light grey-green needles. */
+export function pineTint(rand: number, out: THREE.Color): THREE.Color {
+  return out.setRGB(0.32, 0.42, 0.27).multiplyScalar(0.85 + rand * 0.25);
+}

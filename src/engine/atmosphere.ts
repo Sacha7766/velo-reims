@@ -65,6 +65,22 @@ export const EARTH_R = 6371000;
 export const WHITE_TEX = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
 WHITE_TEX.needsUpdate = true;
 
+export const MAX_TUNNEL_PTS = 32;
+
+/** Tunnel centre line for lighting and terrain portals (Tunnel.ts). */
+export const tunnelUniforms = {
+  uTunnelPts: { value: Array.from({ length: MAX_TUNNEL_PTS }, () => new THREE.Vector4()) },
+  uTunnelCount: { value: 0 },
+  /** centre xyz + radius; fragments outside skip the tunnel test */
+  uTunnelBound: { value: new THREE.Vector4(0, -1e6, 0, 0) },
+  uTunnelHalf: { value: 4 },
+};
+
+export function clearTunnels() {
+  tunnelUniforms.uTunnelCount.value = 0;
+  tunnelUniforms.uTunnelBound.value.set(0, -1e6, 0, 0);
+}
+
 /** Terrain cast-shadow texture (TerrainShadow.ts) over a world rect. */
 export const terrainShadowUniforms = {
   uTShadow: { value: WHITE_TEX as THREE.Texture },
@@ -213,7 +229,45 @@ float atmoSunVisibility(vec3 wp) {
     float below = max(atmoFogTop(wp.xz) - wp.y, 0.0);
     v *= exp(-uFogLayer * 0.7 * below / max(uSunDir.y, 0.15));
   }
+  // inside a tunnel bore the sun never reaches (the shadow texture describes the mountain surface)
+  v *= 1.0 - atmoTunnel(wp).x;
   return v * atmoCloudShadow(wp);
+}
+`;
+
+/**
+ * Inside a road tunnel: x = 0..1 inside the bore, y = lamp light. Ceiling lamps every 12 m at
+ * 5.8 m above the road, white LED.
+ */
+export const TUNNEL_GLSL = /* glsl */ `
+uniform vec4 uTunnelPts[${MAX_TUNNEL_PTS}];
+uniform int uTunnelCount;
+uniform vec4 uTunnelBound;
+uniform float uTunnelHalf;
+vec2 atmoTunnel(vec3 wp) {
+  if (uTunnelCount < 2 || distance(wp, uTunnelBound.xyz) > uTunnelBound.w) return vec2(0.0);
+  float best = 1e9; float bs = 0.0; float by = 0.0;
+  for (int i = 0; i < ${MAX_TUNNEL_PTS - 1}; i++) {
+    if (i + 1 >= uTunnelCount) break;
+    vec4 a = uTunnelPts[i]; vec4 b = uTunnelPts[i + 1];
+    vec2 ab = b.xz - a.xz;
+    float t = clamp(dot(wp.xz - a.xz, ab) / max(dot(ab, ab), 1e-4), 0.0, 1.0);
+    float d = length(wp.xz - a.xz - ab * t);
+    if (d < best) { best = d; bs = mix(a.w, b.w, t); by = mix(a.y, b.y, t); }
+  }
+  float s0 = uTunnelPts[0].w + 4.0;
+  float s1 = uTunnelPts[uTunnelCount - 1].w - 4.0;
+  float along = smoothstep(s0 - 3.0, s0 + 6.0, bs) * (1.0 - smoothstep(s1 - 6.0, s1 + 3.0, bs));
+  float inside = along * (1.0 - smoothstep(uTunnelHalf - 0.2, uTunnelHalf + 0.6, best)) * (1.0 - smoothstep(by + 6.2, by + 7.0, wp.y)) * step(by - 1.5, wp.y);
+  float sl = (floor((bs - s0) / 12.0) + 0.5) * 12.0 + s0;
+  float ds = bs - sl;
+  float dy = by + 5.8 - wp.y;
+  float lamp = 0.0;
+  for (int k = -1; k <= 1; k++) {
+    float dd = ds - float(k) * 12.0;
+    lamp += 1.0 / (1.0 + (dd * dd + dy * dy + best * best) * 0.09);
+  }
+  return vec2(inside, lamp * inside);
 }
 `;
 
@@ -237,7 +291,7 @@ export function patchMaterial<T extends THREE.Material>(
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (shader, renderer) => {
     prev?.call(mat, shader, renderer);
-    Object.assign(shader.uniforms, atmo, terrainShadowUniforms);
+    Object.assign(shader.uniforms, atmo, terrainShadowUniforms, tunnelUniforms);
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
@@ -279,9 +333,23 @@ gl_Position = projectionMatrix * mvPosition;`,
         `#include <common>
 varying vec3 vAtmoWorld;
 ${ATMO_GLSL}
+${TUNNEL_GLSL}
 ${SUNVIS_GLSL}`,
       )
       .replace('#include <lights_fragment_begin>', LIGHTS_WITH_SUNVIS)
+      .replace(
+        '#include <aomap_fragment>',
+        `#include <aomap_fragment>
+{
+  // tunnels: almost no skylight inside, white ceiling lamps instead
+  vec2 tun = atmoTunnel(vAtmoWorld);
+  if (tun.x > 0.0) {
+    reflectedLight.indirectDiffuse *= 1.0 - 0.93 * tun.x;
+    reflectedLight.indirectSpecular *= 1.0 - 0.9 * tun.x;
+    reflectedLight.indirectDiffuse += diffuseColor.rgb * vec3(1.0, 0.95, 0.86) * tun.y * 0.6;
+  }
+}`,
+      )
       .replace('#include <fog_fragment>', 'gl_FragColor.rgb = atmoApply(gl_FragColor.rgb, vAtmoWorld);');
   };
   (mat.onBeforeCompile as { atmo?: boolean }).atmo = true;

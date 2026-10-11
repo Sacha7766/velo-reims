@@ -23,6 +23,7 @@ export class CameraRig {
   private cineT = 0;
   private cineIdx = 0;
   private heliA = 0;
+  private wasTunnelShot = false;
 
   snap() {
     this.init = false;
@@ -36,8 +37,14 @@ export class CameraRig {
     dir: 1 | -1,
     lateral: number,
     heightAt: (x: number, z: number) => number,
+    inTunnel = false,
   ) {
     let shot: Shot = this.mode === 'cinematic' ? CINE[this.cineIdx] : this.mode;
+    // inside a tunnel only the cameras that stay in the bore make sense
+    const tunnelShot = inTunnel && shot !== 'chase' && shot !== 'first';
+    if (tunnelShot) shot = 'chase';
+    if (tunnelShot !== this.wasTunnelShot) this.init = false;
+    this.wasTunnelShot = tunnelShot;
     if (this.mode === 'cinematic') {
       this.cineT += dt;
       if (this.cineT > 13) {

@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import type { Route } from '../geo/route.ts';
 import { patchMaterial } from './atmosphere.ts';
+import { ALPINE, type Biome } from './biome.ts';
 
 const SHOULDER = 0.55;
 
@@ -19,7 +20,7 @@ function asphaltTextures() {
   return { color: load('color.jpg', true), normal: load('normal.jpg', false), rough: load('rough.jpg', false) };
 }
 
-function roadMaterial(halfWidth: number) {
+function roadMaterial(halfWidth: number, biome: Biome) {
   // CC0 Poly Haven asphalt_02 scan for colour, cracks and micro relief; markings are procedural
   const tex = asphaltTextures();
   const mat = new THREE.MeshStandardMaterial({
@@ -34,6 +35,9 @@ function roadMaterial(halfWidth: number) {
   });
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uHalf = { value: halfWidth };
+    shader.uniforms.uDash = { value: new THREE.Vector2(biome.dash[0], biome.dash[0] + biome.dash[1]) };
+    // Mallorca: sun-bleached lighter asphalt, mostly no edge lines, asphalt up to the wall
+    shader.uniforms.uMed = { value: biome.id === 'mediterranean' ? 1 : 0 };
     shader.uniforms.uAsphalt = { value: tex.color };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec2 roadUv;\nvarying vec2 vRoad;')
@@ -43,6 +47,8 @@ function roadMaterial(halfWidth: number) {
         '#include <common>',
         `#include <common>
 uniform float uHalf;
+uniform vec2 uDash;
+uniform float uMed;
 uniform sampler2D uAsphalt;
 varying vec2 vRoad;
 float gPaint;
@@ -61,7 +67,9 @@ float rn(vec2 p) {
   vec2 p = vec2(across, along);
   vec3 scan = texture2D(uAsphalt, p / ${TILE.toFixed(2)}).rgb;
   vec3 scan2 = texture2D(uAsphalt, p.yx / 7.3 + 0.37).rgb;
-  vec3 asphalt = mix(scan, scan2, 0.3) * 1.36;
+  vec3 asphalt = mix(scan, scan2, 0.3) * mix(1.36, 1.22, uMed);
+  // Ma-2210: resurfaced, few visible cracks
+  asphalt = mix(asphalt, vec3(dot(asphalt, vec3(0.33))) * 0.98 + 0.02, 0.4 * uMed);
   // repair patches and darker fresh tar
   float patches = smoothstep(0.58, 0.72, rn(p * vec2(0.35, 0.06) + 3.1));
   asphalt = mix(asphalt, asphalt * vec3(0.7, 0.7, 0.72), patches);
@@ -72,15 +80,16 @@ float rn(vec2 p) {
   asphalt *= 1.0 - 0.12 * track;
   vec3 paint = vec3(0.86, 0.86, 0.82);
   float wear = 0.75 + 0.25 * rn(p * vec2(4.0, 0.6));
-  float edge = step(abs(a - (uHalf - 0.28)), 0.07);
-  // Austrian rural markings: 6 m dashes with 12 m gaps, 0.12 m wide
-  float dash = step(fract(along / 18.0), 0.333);
+  float edge = step(abs(a - (uHalf - 0.28)), 0.07) * (1.0 - uMed);
+  // centre dashes: Austria 6 m / 12 m, Spain (M-1.3) 3.5 m / 9 m
+  float dash = step(fract(along / uDash.y), uDash.x / uDash.y);
   float centre = step(a, 0.06) * dash * step(2.6, uHalf);
   gPaint = max(edge, centre) * wear;
   vec3 col = mix(asphalt, paint * wear, max(edge, centre));
   // gravel shoulder
   float sh = smoothstep(uHalf - 0.02, uHalf + 0.06, a);
   vec3 gravel = mix(vec3(0.3, 0.29, 0.27), vec3(0.42, 0.41, 0.38), rn(p * 14.0));
+  gravel = mix(gravel, vec3(0.5, 0.46, 0.4) * (0.8 + 0.3 * rn(p * 9.0)), uMed);
   col = mix(col, gravel, sh);
   diffuseColor.rgb = col;
   diffuseColor.a = 1.0 - smoothstep(uHalf + 0.25, uHalf + ${SHOULDER.toFixed(2)}, a);
@@ -94,11 +103,11 @@ roughnessFactor = mix(clamp(roughnessFactor * 0.95, 0.55, 1.0), 0.5, gPaint);`,
   };
   mat.transparent = true;
   mat.depthWrite = true;
-  return patchMaterial(mat, { key: 'road', depthBias: 0.012 });
+  return patchMaterial(mat, { key: `road:${biome.id}`, depthBias: 0.012 });
 }
 
 export class Road extends THREE.Group {
-  constructor(route: Route, halfWidth: number) {
+  constructor(route: Route, halfWidth: number, biome: Biome = ALPINE) {
     super();
     const n = route.n;
     const cols = [-(halfWidth + SHOULDER), -halfWidth, 0, halfWidth, halfWidth + SHOULDER];
@@ -125,7 +134,7 @@ export class Road extends THREE.Group {
         nor[v * 3 + 2] = Math.cos(h) * Math.sin(slope);
       }
     }
-    const mat = roadMaterial(halfWidth);
+    const mat = roadMaterial(halfWidth, biome);
     const tuv = new Float32Array(uv.length);
     for (let k = 0; k < uv.length; k++) tuv[k] = uv[k] / TILE;
     const uvTex = new THREE.BufferAttribute(tuv, 2);

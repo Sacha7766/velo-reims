@@ -1,7 +1,7 @@
 // Route model: raw lon/lat polyline → evenly resampled, smoothed path in world space
 // with DEM-derived elevation, gradient, heading and curvature.
 
-import { DEM_MAX_Z, elevationAtMercSync, preloadDemForPoints } from './elevation.ts';
+import { DEM_MAX_Z, elevationAtMercSync, localDemCovers, preloadDemForPoints } from './elevation.ts';
 import { lonLatToMerc, makeFrame, mercToWorld, type WorldFrame } from './mercator.ts';
 
 export type RouteCategory = 'climb' | 'rolling' | 'flat' | 'city';
@@ -16,6 +16,8 @@ export interface RouteData {
   source: 'brouter' | 'gpx' | 'drawn';
   /** [lon, lat, ele?] */
   coords: number[][];
+  /** Tunnel spans [from, to] in metres along the route (from OSM tunnel=yes). */
+  tunnels?: [number, number][];
 }
 
 export interface Route {
@@ -41,6 +43,8 @@ export interface Route {
   maxEle: number;
   /** World-space bounds [minX, minZ, maxX, maxZ]. */
   bounds: [number, number, number, number];
+  /** Tunnel spans [from, to] in metres along the route. */
+  tunnels: [number, number][];
 }
 
 export const ROUTE_STEP = 4;
@@ -121,7 +125,8 @@ export async function buildRoute(data: RouteData): Promise<Route> {
   }
 
   // elevation from the DEM (consistent with the rendered terrain), GPX as fallback
-  const demZ = Math.min(DEM_MAX_Z - 1, 14);
+  // high-resolution local DEM bakes are used at full zoom
+  const demZ = (await localDemCovers(merc, DEM_MAX_Z)) ? DEM_MAX_Z : Math.min(DEM_MAX_Z - 1, 14);
   await preloadDemForPoints(merc, demZ);
   let ele: Float32Array = new Float32Array(n);
   let missing = 0;
@@ -134,6 +139,13 @@ export async function buildRoute(data: RouteData): Promise<Route> {
     }
   }
   if (missing === n && !Number.isFinite(gpxEle[0])) ele.fill(0);
+  // tunnels: the DEM is the mountain above; the road runs straight between the portals
+  const tunnels = (data.tunnels ?? []).map(([a, b]) => [Math.min(a, b), Math.max(a, b)] as [number, number]);
+  for (const [a, b] of tunnels) {
+    const i0 = Math.max(0, Math.floor(a / step) - 2);
+    const i1 = Math.min(n - 1, Math.ceil(b / step) + 2);
+    for (let i = i0 + 1; i < i1; i++) ele[i] = ele[i0] + ((ele[i1] - ele[i0]) * (i - i0)) / (i1 - i0);
+  }
   // DEM on steep hillsides is noisy where the road is cut in; smooth over ~±60 m
   ele = smooth(ele, Math.round(30 / step), 3);
 
@@ -206,6 +218,7 @@ export async function buildRoute(data: RouteData): Promise<Route> {
     minEle,
     maxEle,
     bounds: [minX, minZ, maxX, maxZ],
+    tunnels,
   };
 }
 

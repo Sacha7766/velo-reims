@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { patchMaterial } from './atmosphere.ts';
 import { groundTextures } from './groundTextures.ts';
+import type { Biome } from './biome.ts';
 
 const blank = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
 blank.needsUpdate = true;
@@ -17,6 +18,13 @@ export const terrainUniforms = {
   uRockTex: { value: blank as THREE.Texture },
   uGravelTex: { value: blank as THREE.Texture },
   uMaskOrigin: { value: new THREE.Vector2(0, 0) },
+  /** Biome: push OSM meadows to mown green (Alps), read grey ground as limestone (karst), photo sea. */
+  uMeadowPush: { value: 1 },
+  uKarst: { value: 0 },
+  uPhotoSea: { value: 0 },
+  /** Mediterranean rock faces (Poly Haven marble_cliff_02, CC0), tri-planar near the camera. */
+  uCliffTex: { value: blank as THREE.Texture },
+  uCliffNor: { value: blank as THREE.Texture },
   uMaskSize: { value: new THREE.Vector2(1, 1) },
 };
 
@@ -29,6 +37,26 @@ export function setWaterMask(tex: THREE.Texture, x0: number, z0: number, w: numb
   terrainUniforms.uMaskSize.value.set(w, h);
   if (old !== blank && old !== tex) old.dispose();
   if (oldC !== blank && oldC !== canopy) oldC.dispose();
+}
+
+let cliffTex: { c: THREE.Texture; n: THREE.Texture } | null = null;
+
+export function setTerrainBiome(b: Biome) {
+  terrainUniforms.uMeadowPush.value = b.meadowPush;
+  terrainUniforms.uKarst.value = b.karst;
+  terrainUniforms.uPhotoSea.value = b.id === 'mediterranean' ? 1 : 0;
+  if (b.karst > 0 && !cliffTex) {
+    const load = (f: string, srgb: boolean) => {
+      const t = new THREE.TextureLoader().load(f);
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.anisotropy = 8;
+      if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    };
+    cliffTex = { c: load('/textures/med/cliff.jpg', true), n: load('/textures/med/cliff_nor.jpg', false) };
+  }
+  terrainUniforms.uCliffTex.value = b.karst > 0 && cliffTex ? cliffTex.c : blank;
+  terrainUniforms.uCliffNor.value = b.karst > 0 && cliffTex ? cliffTex.n : blank;
 }
 
 export function clearWaterMask() {
@@ -68,20 +96,29 @@ uniform sampler2D uGrassTex;
 uniform sampler2D uRockTex;
 uniform sampler2D uGravelTex;
 uniform vec2 uMaskOrigin;
+uniform float uMeadowPush;
+uniform float uKarst;
+uniform float uPhotoSea;
+uniform sampler2D uCliffTex;
+uniform sampler2D uCliffNor;
 uniform vec2 uMaskSize;
 varying vec3 vTWNormal;
 ${NOISE}`,
       )
       .replace(
         '#include <map_fragment>',
-        `vec3 tPert = vec3(0.0);
+        `// tunnel portals: no terrain inside the bore
+if (atmoTunnel(vAtmoWorld).x > 0.5) discard;
+vec3 tPert = vec3(0.0);
 float tWater = 0.0;
 float tDetail = 1.0;
 float tBump = 0.0;
 #ifdef USE_MAP
 {
-  vec3 img = texture2D(map, vMapUv).rgb;
-  vec3 imgB = texture(map, vMapUv, 2.5).rgb;
+  // PNOA orthophotos are cool and bluish compared with the ground seen from the road
+  vec3 photoFix = mix(vec3(1.0), vec3(1.02, 0.95, 0.8), uKarst);
+  vec3 img = texture2D(map, vMapUv).rgb * photoFix;
+  vec3 imgB = texture(map, vMapUv, 2.5).rgb * photoFix;
   vec3 s = sqrt(max(imgB, vec3(0.0)));
   float mx = max(s.r, max(s.g, s.b));
   float mn = min(s.r, min(s.g, s.b));
@@ -99,7 +136,7 @@ float tBump = 0.0;
   bool inMask = lmuv.x > 0.0 && lmuv.y > 0.0 && lmuv.x < 1.0 && lmuv.y < 1.0;
   vec3 land = inMask ? texture2D(uWaterMask, lmuv).rgb : vec3(0.0);
   float canopy = inMask ? smoothstep(0.15, 0.85, texture2D(uCanopy, lmuv).r) : 0.0;
-  float meadow = smoothstep(0.3, 0.8, land.g) * (1.0 - smoothstep(0.3, 0.8, land.b)) * (1.0 - canopy);
+  float meadow = smoothstep(0.3, 0.8, land.g) * (1.0 - smoothstep(0.3, 0.8, land.b)) * (1.0 - canopy) * uMeadowPush;
   float wGrass = max(smoothstep(0.0, 0.07, s.g - max(s.r, s.b) * 0.93), meadow * 0.9) * (1.0 - canopy * 0.85);
   // bright, unsaturated photo pixels are snow only up high: on the Prealps they are mown or dry grass
   float wSnow = smoothstep(0.6, 0.78, L) * (1.0 - smoothstep(0.1, 0.22, sat)) * smoothstep(1500.0, 1950.0, vAtmoWorld.y);
@@ -114,16 +151,23 @@ float tBump = 0.0;
   float greyish = max(
     smoothstep(0.07, 0.025, sat) * smoothstep(0.42, 0.6, L) * (1.0 - smoothstep(0.62, 0.74, L)),
     smoothstep(0.3, 0.8, land.b) * smoothstep(0.12, 0.05, sat));
-  wGrass = max(wGrass, (1.0 - wRock) * (1.0 - wSnow) * (1.0 - greyish) * 0.92 * (1.0 - canopy * 0.85));
+  // karst: pale grey, unsaturated ground is bare limestone pavement, not gravel
+  float limestone = uKarst * smoothstep(0.16, 0.07, sat) * smoothstep(0.3, 0.5, L) * (1.0 - canopy);
+  wRock = max(wRock, limestone);
+  wGrass *= 1.0 - limestone;
+  wGrass = max(wGrass, (1.0 - wRock) * (1.0 - wSnow) * (1.0 - greyish) * 0.92 * (1.0 - canopy * 0.85) * mix(1.0, 0.55, uKarst));
   float wGravel = (1.0 - wGrass) * (1.0 - wRock) * (1.0 - wSnow);
 
   // photo grading
   float tl = dot(img, vec3(0.2126, 0.7152, 0.0722));
-  vec3 tc = pow(max(mix(vec3(tl), img, 1.28), vec3(0.0)), vec3(1.06)) * 1.32;
-  vec3 area = texture(map, vMapUv, 5.0).rgb;
+  // PNOA is exposed brighter than basemap.at: grade the Mediterranean photo gently
+  float gGain = mix(1.32, 0.9, uKarst);
+  float gSat = mix(1.28, 1.18, uKarst);
+  vec3 tc = pow(max(mix(vec3(tl), img, gSat), vec3(0.0)), vec3(mix(1.06, 1.12, uKarst))) * gGain;
+  vec3 area = texture(map, vMapUv, 5.0).rgb * photoFix;
   float la = dot(area, vec3(0.2126, 0.7152, 0.0722));
-  area = pow(max(mix(vec3(la), area, 1.3), vec3(0.0)), vec3(1.06)) * 1.32;
-  vec3 wide = texture(map, vMapUv, 7.5).rgb;
+  area = pow(max(mix(vec3(la), area, gSat), vec3(0.0)), vec3(mix(1.06, 1.12, uKarst))) * gGain;
+  vec3 wide = texture(map, vMapUv, 7.5).rgb * photoFix;
   float lw = dot(wide, vec3(0.2126, 0.7152, 0.0722));
   wide = pow(max(mix(vec3(lw), wide, 1.2), vec3(0.0)), vec3(1.06)) * 1.32;
 
@@ -136,6 +180,8 @@ float tBump = 0.0;
   float rd2 = (texture2D(uRockTex, q.zy * 0.037 + 0.5).r * bw.x + texture2D(uRockTex, q.xz * 0.037 + 0.5).r * bw.y + texture2D(uRockTex, q.xy * 0.037 + 0.5).r * bw.z) * 2.0;
   rd = mix(rd, rd * rd2, 0.6);
   rd *= 0.7 + 0.6 * (texture2D(uRockTex, q.xz * 0.021 + q.y * 0.01).r);
+  // karst pavement is smooth, rounded limestone: much less crackle than Alpine rock
+  rd = 1.0 + (rd - 1.0) * mix(1.0, 0.35, uKarst);
   float gv = texture2D(uGravelTex, p * 0.9).r * 2.0;
   float d = 1.0;
   d = mix(d, gd, wGrass);
@@ -143,28 +189,51 @@ float tBump = 0.0;
   d = mix(d, 1.0 + (gv - 1.0) * 0.55, wGravel * 0.7);
   d = mix(d, 0.97 + 0.06 * gv, wSnow);
   tDetail = mix(1.0, d, near);
-  tBump = (d - 1.0) * near * mix(0.6, 2.2, wRock);
+  tBump = (d - 1.0) * near * mix(0.6, 2.2, wRock) * mix(1.0, 0.45, uKarst);
 
   // close to the camera the photo blurs and smears at grazing angles: keep its colour, not its texels
   float soft = (1.0 - smoothstep(30.0, 180.0, camD));
   vec3 base = mix(tc, area, soft * 0.9);
   // meadows: pull bleached summer-photo grass back to a living green-gold
   float bl = dot(base, vec3(0.3, 0.55, 0.15));
-  float grassy = max(meadow, wGrass * 0.6) * (1.0 - steep) * (1.0 - canopy);
+  float grassy = max(meadow, wGrass * 0.6 * uMeadowPush) * (1.0 - steep) * (1.0 - canopy);
   // two tones: living green and dry straw patches, like mown autumn meadows
   float straw = smoothstep(0.55, 0.8, tNoise(p * 0.035) * 0.7 + tNoise(p * 0.21) * 0.3);
   // mown grass has a fairly constant albedo: clamp bright (snowy or bleached) photo texels
   float blc = min(bl, 0.3 + 0.06 * straw);
   vec3 meadowCol = mix(blc * vec3(0.8, 1.06, 0.5), blc * vec3(1.05, 1.0, 0.62), straw * 0.6) * 1.05;
-  float bright = smoothstep(0.5, 0.75, L) * (1.0 - smoothstep(1500.0, 1950.0, vAtmoWorld.y));
+  float bright = smoothstep(0.5, 0.75, L) * (1.0 - smoothstep(1500.0, 1950.0, vAtmoWorld.y)) * uMeadowPush;
   base = mix(base, meadowCol, clamp(grassy * 0.6 + bright * 0.9 * (1.0 - canopy), 0.0, 1.0));
   // under the canopy: shaded forest floor, leaf litter close up
   vec3 litter = vec3(0.3, 0.22, 0.14) * (0.7 + 0.6 * tNoise(p * 0.7));
-  base = mix(base, base * vec3(0.66, 0.64, 0.6), canopy * 0.75);
-  base = mix(base, litter * (0.6 + 0.4 * dot(base, vec3(0.33))), canopy * near * 0.55);
+  base = mix(base, base * vec3(0.66, 0.64, 0.6), canopy * 0.75 * (1.0 - uKarst));
+  base = mix(base, litter * (0.6 + 0.4 * dot(base, vec3(0.33))), canopy * near * 0.55 * (1.0 - uKarst));
   // steep faces: the photo smears vertically, tint rock from the wide average instead
   vec3 rockTint = mix(wide, vec3(dot(wide, vec3(0.33))) * vec3(1.03, 1.0, 0.95), 0.5);
+  // karst coasts: the blurred photo mixes in the sea; cliffs and cuts are grey limestone
+  rockTint = mix(rockTint, vec3(0.5, 0.48, 0.44) * (0.85 + 0.3 * tNoise(q.xz * 0.08 + q.y * 0.05)), uKarst);
   base = mix(base, rockTint, steep);
+  // limestone weathers warm grey with ochre stains (fresh cuts are orange-ochre)
+  float ochre = smoothstep(0.45, 0.8, tNoise(q.xz * 0.05 + q.y * 0.03));
+  vec3 limeTint = mix(vec3(1.0, 0.95, 0.86), vec3(1.08, 0.88, 0.66), ochre * steep);
+  base *= mix(vec3(1.0), limeTint, uKarst * max(limestone, steep));
+  // rock faces and cuts near the road: photographed fractured limestone, ochre to grey
+  float cliffW = uKarst * smoothstep(0.16, 0.36, slope) * (1.0 - smoothstep(35.0, 110.0, camD));
+  if (cliffW > 0.001) {
+    vec3 cw = pow(abs(wn), vec3(5.0));
+    cw /= cw.x + cw.y + cw.z;
+    float sc = 1.0 / 5.5;
+    vec3 cc = texture2D(uCliffTex, q.zy * sc).rgb * cw.x + texture2D(uCliffTex, q.xz * sc).rgb * cw.y + texture2D(uCliffTex, q.xy * sc).rgb * cw.z;
+    float cl = dot(cc, vec3(0.3, 0.55, 0.15));
+    // mostly grey limestone; ochre where the noise says the face is freshly broken
+    vec3 greyRock = vec3(cl) * vec3(1.04, 1.0, 0.94) * 1.15;
+    vec3 rockC = mix(greyRock, cc * 1.08, 0.35 + 0.6 * ochre);
+    base = mix(base, rockC, cliffW);
+    tBump = mix(tBump, (cl - 0.45) * 4.0, cliffW);
+    tDetail = mix(tDetail, 1.0, cliffW); // the scan carries its own detail
+  }
+  // under pines the Mediterranean floor is dry needle litter, not dark mould
+  base = mix(base, mix(base, vec3(0.5, 0.42, 0.32) * (0.85 + 0.3 * tNoise(p * 0.5)), 0.55), canopy * uKarst);
   tc = base * tDetail;
 
   // water: OSM mask, or sea level
@@ -204,14 +273,18 @@ float tBump = 0.0;
   float n1 = tNoise(wp * 0.35 + vec2(t * 0.11, t * 0.07));
   float n2 = tNoise(wp * 1.3 - vec2(t * 0.23, -t * 0.17));
   float n3 = tNoise(wp * 4.1 + vec2(t * 0.5, t * 0.31));
-  vec3 wnrm = normalize(vec3((n1 - 0.5) * 0.12 + (n2 - 0.5) * 0.08 + (n3 - 0.5) * 0.05, 1.0, (n2 - 0.5) * 0.12 + (n3 - 0.5) * 0.06));
+  float chop = mix(1.0, 2.2, uPhotoSea); // open sea: bigger waves, reflections sample higher sky
+  vec3 wnrm = normalize(vec3(((n1 - 0.5) * 0.12 + (n2 - 0.5) * 0.08 + (n3 - 0.5) * 0.05) * chop, 1.0, ((n2 - 0.5) * 0.12 + (n3 - 0.5) * 0.06) * chop));
   vec3 v = normalize(vAtmoWorld - cameraPosition);
   vec3 r = reflect(v, wnrm);
   r.y = abs(r.y);
-  float fres = 0.04 + 0.96 * pow(1.0 - max(dot(-v, wnrm), 0.0), 5.0);
+  float fres = 0.02 + 0.98 * pow(1.0 - max(dot(-v, wnrm), 0.0), 5.0);
   vec3 deep = vec3(0.012, 0.035, 0.045) + gl_FragColor.rgb * 0.18;
-  vec3 refl = atmoSky(r);
-  float glint = pow(max(dot(r, uSunDir), 0.0), 380.0) * 18.0 + pow(max(dot(r, uSunDir), 0.0), 40.0) * 0.4;
+  // Mediterranean: the orthophoto already shows the water body (turquoise over sand, dark over
+  // seagrass and depth); use it as the refracted colour under the reflections
+  deep = mix(deep, gl_FragColor.rgb * vec3(0.62, 0.78, 0.88), uPhotoSea);
+  vec3 refl = atmoSky(r) * mix(1.0, 0.82, uPhotoSea);
+  float glint = pow(max(dot(r, uSunDir), 0.0), 380.0) * mix(18.0, 9.0, uPhotoSea) + pow(max(dot(r, uSunDir), 0.0), 40.0) * mix(0.4, 0.15, uPhotoSea);
   vec3 water = mix(deep, refl, fres) + uSunColor * glint;
   gl_FragColor.rgb = mix(gl_FragColor.rgb, water, tWater);
 }

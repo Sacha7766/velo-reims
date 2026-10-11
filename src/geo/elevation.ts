@@ -16,14 +16,38 @@ export interface Dem {
 const demUrl = (z: number, x: number, y: number) =>
   `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
 
+// Locally baked tiles from national high-resolution DEMs (scripts/bake-dem.py) win over AWS.
+let localTiles: Promise<Set<string>> | null = null;
+function localIndex(): Promise<Set<string>> {
+  if (!localTiles) {
+    localTiles = fetch('/dem/index.json')
+      .then((r) => (r.ok ? r.json() : { tiles: [] }))
+      .then((j: { tiles: string[] }) => new Set(j.tiles))
+      .catch(() => new Set<string>());
+  }
+  return localTiles;
+}
+
 const pending = new Map<number, Promise<Dem>>();
 const loaded = new Map<number, Dem>();
 const MAX_CACHED = 800;
 
 const key = (z: number, x: number, y: number) => (z * 1048576 + x) * 1048576 + y;
 
+/** True when locally baked tiles at zoom z cover all the given mercator points. */
+export async function localDemCovers(points: Iterable<[number, number]>, z: number): Promise<boolean> {
+  const idx = await localIndex();
+  if (!idx.size) return false;
+  for (const [mx, my] of points) {
+    const [tx, ty] = mercToTile(mx, my, z);
+    if (!idx.has(`${z}/${Math.floor(tx)}/${Math.floor(ty)}`)) return false;
+  }
+  return true;
+}
+
 async function fetchDem(z: number, x: number, y: number): Promise<Dem> {
-  const res = await fetch(demUrl(z, x, y));
+  const local = (await localIndex()).has(`${z}/${x}/${y}`);
+  const res = await fetch(local ? `/dem/${z}/${x}/${y}.png` : demUrl(z, x, y));
   if (!res.ok) throw new Error(`DEM ${z}/${x}/${y}: ${res.status}`);
   const bmp = await createImageBitmap(await res.blob(), {
     colorSpaceConversion: 'none',

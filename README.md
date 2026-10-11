@@ -43,6 +43,8 @@ Distant trees are impostors rendered at start-up from the near models (crossed c
 
 Trees: presets can ship real trees baked from the Meta/WRI 1 m canopy height map with Copernicus leaf type (`public/trees/<id>.bin`, `scripts/bake-trees.py`): every spruce and beech at its real position and height, forest-edge trees keep their low branches. Without a bake, OSM forest polygons are filled. Foliage, grass and bark come from a photographic atlas composed from CC0 scans (`public/textures/foliage.png`, `scripts/bake-foliage.py`); leaf colour follows today's date (beeches colour from the tree line down in October, larches turn gold).
 
+Biomes (`src/engine/biome.ts`) switch the whole look by region. Alpine: spruce, beech, mown meadows, W-beam rails, Flachgau houses. Mediterranean (e.g. Cap de Formentor): Aleppo pines, holm oak and wild olive, carritx tussocks, mastic shrubs, dwarf fan palms, bare limestone, dry-stone parapets, Mallorcan houses with green shutters, the photographed sea colour and an open sea to the horizon. Road tunnels from OSM get a rough rock bore with ceiling lamps. `scripts/match-shots.mjs` renders the game camera from the exact position and heading of street-level photos for side-by-side comparison.
+
 Buildings follow the regional style (Salzburg Flachgau): plaster with a wooden upper storey or gable, wide overhangs, gabled / hipped / half-hipped roofs from OSM `roof:shape`, balconies with geraniums, windows with shutters and sky reflections.
 
 Road: CC0 asphalt scan with cracks and patches, Austrian markings (6 m dashes / 12 m gaps), delineator posts with red reflectors on the right and white on the left (StVO §57), W-beam guard rails wherever the ground drops away and on hairpin outsides, chevron boards at hairpins.
@@ -70,6 +72,9 @@ Not affiliated with Zwift. Trainer protocol support is based on public community
 | Tree positions / heights (Gaisberg) | Meta & WRI Global Canopy Height v2, 1 m (CC BY 4.0) |
 | Leaf type (Gaisberg) | Copernicus HRL Dominant Leaf Type 2018, 10 m |
 | Foliage, bark, asphalt, rocks | Poly Haven and ambientCG scans (CC0) |
+| Aerial photos (Spain, Balearics) | IGN PNOA Máxima Actualidad, 25 cm (CC BY 4.0) |
+| Elevation (Formentor) | IGN MDT05, 5 m, baked to `public/dem` by `scripts/bake-dem.py` (CC BY 4.0) |
+| Street-level references (Formentor) | KartaView (CC BY-SA 4.0) and Wikimedia Commons, used for comparison only, not shipped |
 
 Preset OSM data is baked into `public/osm` because the public Overpass servers are often overloaded. Imported routes query Overpass live (chunked, with fallbacks) and cache the result in IndexedDB.
 

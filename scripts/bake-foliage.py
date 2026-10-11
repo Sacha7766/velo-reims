@@ -22,6 +22,7 @@ from PIL import Image, ImageEnhance, ImageFilter
 from scipy import ndimage
 
 A = sys.argv[1]
+BIOME = sys.argv[2] if len(sys.argv) > 2 else 'alpine'
 S = 2048
 rng = np.random.default_rng(11)
 atlas = Image.new('RGBA', (S, S), (0, 0, 0, 0))
@@ -72,6 +73,10 @@ def paste(dst, src, cx, cy, angle, scale, f=1.0):
     s = s.rotate(angle, resample=Image.BICUBIC, expand=True)
     dst.alpha_composite(s, (int(cx - s.width / 2), int(cy - s.height / 2)))
 
+
+if BIOME == 'mediterranean':
+    exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bake-foliage-med.py')).read())
+    sys.exit(0)
 
 # ---------- spruce branch (top-left 1024²) ----------
 needles = load_rgba('LeafSet019', 'LeafSet019_1K-PNG_Color.png', 'LeafSet019_1K-PNG_Opacity.png')

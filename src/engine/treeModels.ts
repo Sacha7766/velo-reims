@@ -31,26 +31,28 @@ export const REGIONS = {
 };
 type Region = typeof REGIONS.branch;
 
-let atlas: THREE.Texture | null = null;
-let atlasReady: Promise<THREE.Texture> | null = null;
+const atlases = new Map<string, { tex: THREE.Texture; ready: Promise<THREE.Texture> }>();
 
-/** Resolves once the foliage atlas image has loaded (needed to render impostors). */
-export function treeAtlasReady(): Promise<THREE.Texture> {
-  treeAtlas();
-  return atlasReady!;
+/** The foliage atlas of a biome (default: the Alpine one). */
+export function treeAtlas(url = '/textures/foliage.png'): THREE.Texture {
+  let a = atlases.get(url);
+  if (!a) {
+    let done!: (t: THREE.Texture) => void;
+    const ready = new Promise<THREE.Texture>((r) => (done = r));
+    const tex = new THREE.TextureLoader().load(url, (t) => done(t));
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 8;
+    tex.generateMipmaps = true;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    atlases.set(url, (a = { tex, ready }));
+  }
+  return a.tex;
 }
 
-export function treeAtlas(): THREE.Texture {
-  if (atlas) return atlas;
-  let done!: (t: THREE.Texture) => void;
-  atlasReady = new Promise((r) => (done = r));
-  const t = new THREE.TextureLoader().load('/textures/foliage.png', (tex) => done(tex));
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 8;
-  t.generateMipmaps = true;
-  t.minFilter = THREE.LinearMipmapLinearFilter;
-  atlas = t;
-  return t;
+/** Resolves once the foliage atlas image has loaded (needed to render impostors). */
+export function treeAtlasReady(url = '/textures/foliage.png'): Promise<THREE.Texture> {
+  treeAtlas(url);
+  return atlases.get(url)!.ready;
 }
 
 /**
@@ -242,6 +244,70 @@ export function spruceGeometry(seed = 1, crownBase = 0.35): THREE.BufferGeometry
       REGIONS.branch,
       [0.85, 0.85, 1, 1],
     );
+  }
+  return b.build();
+}
+
+/**
+ * Aleppo pine (Pinus halepensis), height 1: a leaning, slightly crooked trunk, a few long main
+ * limbs that fork high up and an open, irregular, flat-topped crown of needle tufts
+ * (atlas BRANCH region = twig with tufts in the Mediterranean atlas).
+ */
+export function pineGeometry(seed = 3, crownBase = 0.45, width = 1): THREE.BufferGeometry {
+  const b = new Builder();
+  const r = rng(seed);
+  const lean = new THREE.Vector3(r() - 0.5, 0, r() - 0.5).multiplyScalar(0.18);
+  const P = (t: number) =>
+    new THREE.Vector3(lean.x * t * t + Math.sin(t * 5 + seed) * 0.012, t, lean.z * t * t + Math.cos(t * 4 + seed) * 0.012);
+  // trunk in three crooked segments
+  const tops = [0, crownBase * 0.55, crownBase, crownBase + (1 - crownBase) * 0.45];
+  for (let k = 0; k < 3; k++) {
+    b.limb(P(tops[k] - (k === 0 ? 0.05 : 0)), P(tops[k + 1]), 0.019 - k * 0.005, 0.015 - k * 0.005, 7, REGIONS.barkDark, 0.4 + k * 0.08, 0.5 + k * 0.08);
+  }
+  const ends: { p: THREE.Vector3; d: THREE.Vector3; s: number }[] = [];
+  const limbs = 7 + Math.floor(r() * 3);
+  for (let k = 0; k < limbs; k++) {
+    const t = crownBase + (1 - crownBase) * (0.05 + 0.6 * (k / limbs) + r() * 0.08);
+    const from = P(Math.min(t, 0.85));
+    const a = (k / limbs) * Math.PI * 2 + r() * 0.9;
+    const up = 0.55 + r() * 0.5; // steep ascending limbs, as in old Aleppo pines
+    const len = (0.2 + r() * 0.16) * width * (1 - (t - crownBase) * 0.45);
+    const dir = new THREE.Vector3(Math.cos(a), up, Math.sin(a)).normalize();
+    const mid = from.clone().addScaledVector(dir, len * 0.55);
+    b.limb(from, mid, 0.008, 0.005, 5, REGIONS.barkDark, 0.45, 0.55);
+    // fork
+    for (const f of [-1, 1]) {
+      const d2 = dir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), f * (0.35 + r() * 0.4));
+      d2.y = Math.max(0.15, d2.y - 0.25 * r());
+      d2.normalize();
+      const end = mid.clone().addScaledVector(d2, len * (0.45 + r() * 0.25));
+      b.limb(mid, end, 0.005, 0.003, 4, REGIONS.barkDark, 0.5, 0.6);
+      ends.push({ p: end, d: d2, s: len });
+    }
+  }
+  // the leader
+  ends.push({ p: P(0.97), d: new THREE.Vector3(0, 1, 0), s: 0.2 });
+  // needle tufts: twig cards spread around each limb end, facing up and out, flat-topped crown
+  for (const e of ends) {
+    const cards = 11 + Math.floor(r() * 5);
+    for (let c = 0; c < cards; c++) {
+      const yaw = r() * Math.PI * 2;
+      const out = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw)).multiplyScalar(0.6).add(e.d.clone().setY(0)).normalize();
+      if (!Number.isFinite(out.x)) out.set(1, 0, 0);
+      const len = 0.075 + r() * 0.06 + e.s * 0.12;
+      const base = e.p.clone().addScaledVector(out, -len * 0.45).add(new THREE.Vector3(0, (r() - 0.6) * 0.09, 0));
+      const tip = base.clone().addScaledVector(out, len).add(new THREE.Vector3(0, len * (r() * 0.25 - 0.05), 0));
+      const side = new THREE.Vector3(-out.z, 0, out.x);
+      // mostly flat sprays (seen from below and above), some tilted
+      // mix of flat sprays and steep ones so the crown has volume from the side
+      const roll = c % 3 === 0 ? (r() < 0.5 ? 1 : -1) * (0.9 + r() * 0.5) : (r() - 0.5) * 1.1;
+      const w = len * 0.42;
+      const off = side.clone().multiplyScalar(Math.cos(roll) * w).setY(Math.sin(roll) * w);
+      const n0 = new THREE.Vector3(0, 1, 0).addScaledVector(out, 0.3).normalize();
+      const height = (e.p.y - crownBase) / (1 - crownBase);
+      const ao0 = 0.45 + 0.3 * height, ao1 = 0.8 + 0.2 * height;
+      b.quad([base.clone().sub(off), tip.clone().sub(off), tip.clone().add(off), base.clone().add(off)], [n0, n0, n0, n0], REGIONS.branch, [ao0, ao1, ao1, ao0], c % 2 === 0, [0.2, 0.8]);
+    }
   }
   return b.build();
 }
