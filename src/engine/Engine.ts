@@ -525,8 +525,8 @@ export class Engine {
     this.world = null;
   }
 
-  /** Pacer riders with name tags, one per W/kg value. */
-  setBots(wkgs: number[]) {
+  /** Pacer riders with name tags, one per W/kg value; `labels` overrides a tag's text (e.g. "KOM 17:52"). */
+  setBots(wkgs: number[], labels?: (string | undefined)[]) {
     for (const r of this.botRiders) {
       this.scene.remove(r);
       r.traverse((o) => {
@@ -550,7 +550,7 @@ export class Engine {
       ctx.fillRect(20, 22, 20, 20);
       ctx.fillStyle = '#eef3f4';
       ctx.font = '600 30px "Barlow Condensed", sans-serif';
-      ctx.fillText(`Pacer ${w.toFixed(1)} W/kg`, 50, 42);
+      ctx.fillText(labels?.[i] ?? `Pacer ${w.toFixed(1)} W/kg`, 50, 42);
       const tex = new THREE.CanvasTexture(c);
       tex.colorSpace = THREE.SRGBColorSpace;
       const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: true, transparent: true, sizeAttenuation: false }));

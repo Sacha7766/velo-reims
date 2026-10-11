@@ -2,6 +2,7 @@ import { del, get, set } from 'idb-keyval';
 import type { RouteData } from '../geo/route.ts';
 import type { ActivePlan } from '../training/plans.ts';
 import type { Workout } from '../workouts/types.ts';
+import { DEFAULT_CUSTOM_DRIVETRAIN } from './drivetrain.ts';
 import type { RiderSettings } from './session.ts';
 import { encodeFit } from './fit.ts';
 import type { RideRecord } from './types.ts';
@@ -23,6 +24,11 @@ export interface AppSettings extends RiderSettings {
   bots: number[];
   /** Master volume 0..1 for ride sounds. */
   volume: number;
+  /** Ghost riders on a Strava segment: at the KOM time and at your PR. */
+  stravaKom: boolean;
+  stravaPr: boolean;
+  /** Strava segment id the ghosts race, null = the longest one on the route. */
+  stravaPacerSegment: number | null;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -42,6 +48,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   holdWatts: 180,
   bots: [],
   volume: 0.6,
+  drivetrain: 'zwift',
+  customDrivetrain: DEFAULT_CUSTOM_DRIVETRAIN,
+  stravaKom: false,
+  stravaPr: false,
+  stravaPacerSegment: null,
 };
 
 const SETTINGS_KEY = 'serpentine.settings';
