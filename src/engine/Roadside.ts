@@ -25,6 +25,8 @@ interface Run {
 
 export class Roadside extends THREE.Group {
   railRuns: Run[] = [];
+  /** OSM retaining walls above the road, holding back the cut. */
+  private cutRuns: Run[] = [];
 
   constructor(
     route: Route,
@@ -33,9 +35,11 @@ export class Roadside extends THREE.Group {
     biome: Biome = ALPINE,
     spans: BarrierSpan[] = [],
     osmBarriers: Barrier[] = [],
+    /** Stretches [from, to] (m) where road cuts are faced with masonry (scenes/<id>.json "cutWalls"). */
+    cutWallSpans: [number, number][] = [],
   ) {
     super();
-    const runs = this.findRailRuns(route, halfWidth, groundAt, biome, osmBarriers);
+    const runs = this.findRailRuns(route, halfWidth, groundAt, biome, osmBarriers, cutWallSpans);
     this.railRuns = runs;
     // split runs by barrier type: scene-file spans first, biome default otherwise
     const typeAt = (i: number) => spans.find((sp) => i * route.step >= sp.from && i * route.step < sp.to)?.barrier ?? biome.barrier;
@@ -51,6 +55,9 @@ export class Roadside extends THREE.Group {
     }
     if (byType.wbeam.length) this.add(this.rails(route, halfWidth, byType.wbeam, groundAt));
     if (byType.stonewall.length) this.add(this.parapets(route, halfWidth, byType.stonewall, groundAt));
+    // masonry cut walls where the road's walls are stone (the Mallorcan roads, not the Alpine ones)
+    const cutWalls = this.cutRuns.filter((r) => typeAt(Math.round((r.a + r.b) / 2)) === 'stonewall');
+    if (cutWalls.length) this.add(this.cutWalls(route, halfWidth, cutWalls, groundAt));
     if (biome.posts === 'at') this.add(this.posts(route, halfWidth, runs, groundAt));
     const chevrons = this.chevrons(route, halfWidth, groundAt);
     if (chevrons) this.add(chevrons);
@@ -59,9 +66,11 @@ export class Roadside extends THREE.Group {
   /** Stretches where the ground beside the road falls away (or hairpin outsides). */
   private findRailRuns(
     route: Route, hw: number, groundAt: (x: number, z: number) => number, biome: Biome, osm: Barrier[],
+    cutWallSpans: [number, number][],
   ): Run[] {
     const n = route.n;
     const need = { [1]: new Uint8Array(n), [-1]: new Uint8Array(n) } as Record<1 | -1, Uint8Array>;
+    const cut = { [1]: new Uint8Array(n), [-1]: new Uint8Array(n) } as Record<1 | -1, Uint8Array>;
     // Mediterranean coast roads have parapets on far smaller drops than Alpine roads have rails
     const minDrop = biome.id === 'mediterranean' ? 1.1 : 2.2;
     // OSM walls / retaining walls / guard rails running along the road edge
@@ -85,10 +94,27 @@ export class Roadside extends THREE.Group {
           if (best < 0 || d < hw - 0.5 || d > hw + 6) continue;
           const h = route.heading[best];
           const side: 1 | -1 = (x - route.x[best]) * Math.cos(h) + (z - route.z[best]) * Math.sin(h) > 0 ? 1 : -1;
-          // a retaining wall above the road is a cut wall, not a parapet: only walls at/below road level
-          const g = groundAt(x, z);
-          if (Number.isFinite(g) && g > route.ele[best] + 1.5) continue;
+          // a retaining wall above the road holds the cut back: a masonry face at the verge, not a parapet.
+          // The ground at the wall line is already flattened to the road, so look 3 m further out
+          const ux = (x - route.x[best]) / (d || 1), uz = (z - route.z[best]) / (d || 1);
+          const g = groundAt(x + ux * 3, z + uz * 3);
+          if (Number.isFinite(g) && g > route.ele[best] + 1.5) {
+            if (b.kind === 'retaining_wall') cut[side][best] = 1;
+            continue;
+          }
           need[side][best] = 1;
+        }
+      }
+    }
+    // OSM rarely maps a road's own retaining walls (Sa Calobra's are hillside terraces): in the scene's
+    // cut-wall stretches every cut over 2.5 m gets a masonry face
+    for (const [from, to] of cutWallSpans) {
+      for (let i = Math.max(0, Math.floor(from / route.step)); i <= Math.min(n - 1, Math.ceil(to / route.step)); i++) {
+        const h = route.heading[i];
+        for (const side of [1, -1] as const) {
+          const d = hw + 4;
+          const g = groundAt(route.x[i] + Math.cos(h) * d * side, route.z[i] + Math.sin(h) * d * side);
+          if (Number.isFinite(g) && g > route.ele[i] + 2.5) cut[side][i] = 1;
         }
       }
     }
@@ -120,34 +146,12 @@ export class Roadside extends THREE.Group {
     const spans = [...route.tunnels, ...route.underpasses.flatMap((u) => [[u.s - 9, u.s + 9], [u.over - 9, u.over + 9]] as [number, number][])];
     for (const [ta, tb] of spans) {
       for (let i = Math.max(0, Math.floor(ta / route.step) - 1); i <= Math.min(n - 1, Math.ceil(tb / route.step) + 1); i++) {
-        need[1][i] = 0;
-        need[-1][i] = 0;
+        need[1][i] = need[-1][i] = 0;
+        cut[1][i] = cut[-1][i] = 0;
       }
     }
-    const runs: Run[] = [];
-    const minLen = Math.round(24 / route.step);
-    const gap = Math.round(30 / route.step);
-    for (const side of [1, -1] as const) {
-      const a = need[side];
-      // close small gaps
-      let last = -1e9;
-      for (let i = 0; i < n; i++) {
-        if (a[i]) {
-          if (i - last > 1 && i - last <= gap) for (let j = last + 1; j < i; j++) a[j] = 1;
-          last = i;
-        }
-      }
-      let start = -1;
-      for (let i = 0; i <= n; i++) {
-        if (i < n && a[i]) {
-          if (start < 0) start = i;
-        } else if (start >= 0) {
-          if (i - start >= minLen) runs.push({ side, a: start, b: i - 1 });
-          start = -1;
-        }
-      }
-    }
-    return runs;
+    this.cutRuns = toRuns(cut, n, Math.round(16 / route.step), Math.round(12 / route.step));
+    return toRuns(need, n, Math.round(24 / route.step), Math.round(30 / route.step));
   }
 
   private rails(route: Route, hw: number, runs: Run[], groundAt: (x: number, z: number) => number): THREE.Group {
@@ -307,70 +311,71 @@ export class Roadside extends THREE.Group {
     geo.setIndex(idx);
     geo.computeVertexNormals();
     geo.computeBoundingSphere();
-    // Poly Haven rock_wall_04 (CC0): rubble masonry, shifted to pale limestone
-    const load = (f: string, srgb: boolean) => {
-      const t = new THREE.TextureLoader().load(f);
-      t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      t.anisotropy = 8;
-      if (srgb) t.colorSpace = THREE.SRGBColorSpace;
-      return t;
-    };
-    const wallTex = load('/textures/med/wall.jpg', true);
-    const wallNor = load('/textures/med/wall_nor.jpg', false);
-    wallNor.repeat.set(0.5, 0.5); // same mapping as the colour scan in the shader
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      roughness: 0.95,
-      normalMap: wallNor,
-      normalScale: new THREE.Vector2(1.4, 1.4),
-    });
-    mat.onBeforeCompile = (shader) => {
-      shader.uniforms.uWallTex = { value: wallTex };
-      shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nvarying vec2 vWall;\nvarying vec3 vWallN;')
-        .replace('#include <uv_vertex>', '#include <uv_vertex>\nvWall = uv;\nvWallN = normalize(mat3(modelMatrix) * normal);');
-      shader.fragmentShader = shader.fragmentShader
-        .replace(
-          '#include <common>',
-          `#include <common>
-varying vec2 vWall;
-varying vec3 vWallN;
-uniform sampler2D uWallTex;
-float gStone = 0.0;
-float wHash(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 15731.7); }
-float wNoise(vec2 p) {
-  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(wHash(i), wHash(i + vec2(1, 0)), f.x), mix(wHash(i + vec2(0, 1)), wHash(i + vec2(1, 1)), f.x), f.y);
-}`,
-        )
-        .replace(
-          '#include <color_fragment>',
-          `#include <color_fragment>
-{
-  float along = vWall.x;
-  float v = vWall.y;
-  float cap = smoothstep(0.55, 0.8, normalize(vWallN).y);
-  // rubble masonry: irregular courses of pale limestone blocks with darker mortar joints
-  float h = v * 4.2;
-  float row = floor(h);
-  float bx = along / (0.38 + 0.22 * wHash(vec2(row, 3.0))) + wHash(vec2(row, 7.0)) * 3.0;
-  float jy = smoothstep(0.0, 0.1, fract(h)) * smoothstep(1.0, 0.88, fract(h));
-  float jx = smoothstep(0.0, 0.08, fract(bx)) * smoothstep(1.0, 0.92, fract(bx));
-  float stone = wHash(vec2(floor(bx), row));
-  // the scanned wall, 2 m per repeat; v runs ~0.45 m per unit up the face
-  vec3 scan = texture2D(uWallTex, vec2(along / 2.0, v / 2.0)).rgb;
-  float sl = dot(scan, vec3(0.3, 0.55, 0.15));
-  vec3 wallCol = mix(vec3(sl) * vec3(1.1, 1.05, 0.95), scan, 0.25) * 1.55;
-  // the cap is smooth lime mortar, a little lighter, weathered with dark lichen dots
-  vec3 capCol = vec3(0.56, 0.54, 0.49) * (0.85 + 0.2 * wNoise(vec2(along * 2.0, v * 20.0)));
-  capCol *= 1.0 - 0.25 * smoothstep(0.75, 0.9, wNoise(vec2(along * 7.0, v * 40.0)));
-  diffuseColor.rgb = mix(wallCol, capCol, cap);
-  gStone *= 1.0 - cap;
-}`,
-        )
-        ;
-    };
-    const mesh = new THREE.Mesh(geo, patchMaterial(mat, { key: 'parapet' }));
+    const mesh = new THREE.Mesh(geo, masonry());
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return mesh;
+  }
+
+  /**
+   * A retaining wall holding back a road cut: rubble masonry right at the asphalt edge (as on the
+   * Tramuntana roads, and in front of the terrain's coarse slope where the cut starts), from the road up
+   * to the ground behind it (1.2–6 m), capped and leaning back slightly.
+   */
+  private cutWalls(route: Route, hw: number, runs: Run[], groundAt: (x: number, z: number) => number): THREE.Mesh {
+    const pos: number[] = [];
+    const uv: number[] = [];
+    const idx: number[] = [];
+    for (const run of runs) {
+      const base = pos.length / 3;
+      const count = run.b - run.a + 1;
+      // height from the ground 1.5 m behind the face, smoothed along the wall so its top runs evenly
+      const tops: number[] = [];
+      for (let i = run.a; i <= run.b; i++) {
+        const h = route.heading[i];
+        const d = hw + 0.1 + 2.2;
+        const g = groundAt(route.x[i] + Math.cos(h) * d * run.side, route.z[i] + Math.sin(h) * d * run.side);
+        tops.push(Math.min(6, Math.max(1.2, (Number.isFinite(g) ? g : route.ele[i] + 2) - route.ele[i])));
+      }
+      const top = tops.map((_, k) => {
+        let sum = 0, w = 0;
+        for (let j = Math.max(0, k - 3); j <= Math.min(tops.length - 1, k + 3); j++) { sum += tops[j]; w++; }
+        return sum / w;
+      });
+      // (outward from the face, height from the road, share of the top height): a battered foot that starts
+      // on the asphalt edge, the face, the cap, the back into the hill
+      const prof: [number, number, number][] = [
+        [-0.3, -0.3, 0], [-0.06, 1.1, 0], [0.12, 0, 1], [0.17, 0.06, 1], [0.55, 0.08, 1], [0.6, -0.4, 1],
+      ];
+      for (let k = 0; k < count; k++) {
+        const i = run.a + k;
+        const h = route.heading[i];
+        const ox = Math.cos(h) * run.side, oz = Math.sin(h) * run.side;
+        const cx = route.x[i] + ox * (hw + 0.1), cz = route.z[i] + oz * (hw + 0.1);
+        const y = route.ele[i] + 0.05;
+        for (const [o, up, f] of prof) {
+          const yy = y + up + top[k] * f;
+          pos.push(cx + ox * o, yy, cz + oz * o);
+          // same mapping as the parapet: u along, v in metres up the face (+2.5)
+          uv.push(i * route.step, yy - y + 2.5);
+        }
+      }
+      const P = prof.length;
+      for (let k = 0; k < count - 1; k++) {
+        for (let j = 0; j < P - 1; j++) {
+          const a = base + k * P + j, b = a + 1, c = a + P, d = c + 1;
+          if (run.side > 0) idx.push(a, b, c, b, d, c);
+          else idx.push(a, c, b, b, c, d);
+        }
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    geo.computeBoundingSphere();
+    const mesh = new THREE.Mesh(geo, masonry());
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     return mesh;
@@ -480,4 +485,101 @@ float wNoise(vec2 p) {
     }
     return g;
   }
+}
+
+/** Runs of flagged samples per side: gaps up to `gap` samples closed, runs shorter than `minLen` dropped. */
+function toRuns(need: Record<1 | -1, Uint8Array>, n: number, minLen: number, gap: number): Run[] {
+  const runs: Run[] = [];
+  for (const side of [1, -1] as const) {
+    const a = need[side];
+    let last = -1e9;
+    for (let i = 0; i < n; i++) {
+      if (a[i]) {
+        if (i - last > 1 && i - last <= gap) for (let j = last + 1; j < i; j++) a[j] = 1;
+        last = i;
+      }
+    }
+    let start = -1;
+    for (let i = 0; i <= n; i++) {
+      if (i < n && a[i]) {
+        if (start < 0) start = i;
+      } else if (start >= 0) {
+        if (i - start >= minLen) runs.push({ side, a: start, b: i - 1 });
+        start = -1;
+      }
+    }
+  }
+  return runs;
+}
+
+let masonryMat: THREE.Material | null = null;
+
+/** Rubble limestone masonry with a lime-mortar cap: parapets and the walls holding back road cuts. */
+function masonry(): THREE.Material {
+  if (masonryMat) return masonryMat;
+  // Poly Haven rock_wall_04 (CC0): rubble masonry, shifted to pale limestone
+  const load = (f: string, srgb: boolean) => {
+    const t = new THREE.TextureLoader().load(f);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 8;
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  };
+  const wallTex = load('/textures/med/wall.jpg', true);
+  const wallNor = load('/textures/med/wall_nor.jpg', false);
+  wallNor.repeat.set(0.5, 0.5); // same mapping as the colour scan in the shader
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.95,
+    normalMap: wallNor,
+    normalScale: new THREE.Vector2(1.4, 1.4),
+  });
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uWallTex = { value: wallTex };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vWall;\nvarying vec3 vWallN;')
+      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvWall = uv;\nvWallN = normalize(mat3(modelMatrix) * normal);');
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+varying vec2 vWall;
+varying vec3 vWallN;
+uniform sampler2D uWallTex;
+float gStone = 0.0;
+float wHash(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 15731.7); }
+float wNoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(wHash(i), wHash(i + vec2(1, 0)), f.x), mix(wHash(i + vec2(0, 1)), wHash(i + vec2(1, 1)), f.x), f.y);
+}`,
+      )
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+{
+  float along = vWall.x;
+  float v = vWall.y;
+  float cap = smoothstep(0.55, 0.8, normalize(vWallN).y);
+  // rubble masonry: irregular courses of pale limestone blocks with darker mortar joints
+  float h = v * 4.2;
+  float row = floor(h);
+  float bx = along / (0.38 + 0.22 * wHash(vec2(row, 3.0))) + wHash(vec2(row, 7.0)) * 3.0;
+  float jy = smoothstep(0.0, 0.1, fract(h)) * smoothstep(1.0, 0.88, fract(h));
+  float jx = smoothstep(0.0, 0.08, fract(bx)) * smoothstep(1.0, 0.92, fract(bx));
+  float stone = wHash(vec2(floor(bx), row));
+  // the scanned wall, 2 m per repeat; v runs ~0.45 m per unit up the face
+  vec3 scan = texture2D(uWallTex, vec2(along / 2.0, v / 2.0)).rgb;
+  float sl = dot(scan, vec3(0.3, 0.55, 0.15));
+  vec3 wallCol = mix(vec3(sl) * vec3(1.1, 1.05, 0.95), scan, 0.25) * 1.55;
+  // the cap is smooth lime mortar, a little lighter, weathered with dark lichen dots
+  vec3 capCol = vec3(0.56, 0.54, 0.49) * (0.85 + 0.2 * wNoise(vec2(along * 2.0, v * 20.0)));
+  capCol *= 1.0 - 0.25 * smoothstep(0.75, 0.9, wNoise(vec2(along * 7.0, v * 40.0)));
+  diffuseColor.rgb = mix(wallCol, capCol, cap);
+  gStone *= 1.0 - cap;
+}`,
+      )
+      ;
+  };
+  masonryMat = patchMaterial(mat, { key: 'parapet' });
+  return masonryMat;
 }

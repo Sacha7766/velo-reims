@@ -25,6 +25,9 @@ export const terrainUniforms = {
   /** Mediterranean rock faces (Poly Haven marble_cliff_02, CC0), tri-planar near the camera. */
   uCliffTex: { value: blank as THREE.Texture },
   uCliffNor: { value: blank as THREE.Texture },
+  /** Slope range where the cliff scan takes over, and the share of warm ochre in it (biome.cliffSlope, rockOchre). */
+  uCliffSlope: { value: new THREE.Vector2(0.42, 0.62) },
+  uRockOchre: { value: 1 },
   uMaskSize: { value: new THREE.Vector2(1, 1) },
 };
 
@@ -45,6 +48,8 @@ export function setTerrainBiome(b: Biome) {
   terrainUniforms.uMeadowPush.value = b.meadowPush;
   terrainUniforms.uKarst.value = b.karst;
   terrainUniforms.uPhotoSea.value = b.id === 'mediterranean' ? 1 : 0;
+  terrainUniforms.uCliffSlope.value.set(...(b.cliffSlope ?? [0.42, 0.62]));
+  terrainUniforms.uRockOchre.value = b.rockOchre ?? 1;
   if (b.karst > 0 && !cliffTex) {
     const load = (f: string, srgb: boolean) => {
       const t = new THREE.TextureLoader().load(f);
@@ -98,6 +103,8 @@ uniform sampler2D uGravelTex;
 uniform vec2 uMaskOrigin;
 uniform float uMeadowPush;
 uniform float uKarst;
+uniform vec2 uCliffSlope;
+uniform float uRockOchre;
 uniform float uPhotoSea;
 uniform sampler2D uCliffTex;
 uniform sampler2D uCliffNor;
@@ -219,7 +226,7 @@ float tBump = 0.0;
   rockTint = mix(rockTint, vec3(0.5, 0.48, 0.44) * (0.85 + 0.3 * tNoise(q.xz * 0.08 + q.y * 0.05)), uKarst);
   base = mix(base, rockTint, steep);
   // limestone weathers warm grey with ochre stains (fresh cuts are orange-ochre)
-  float ochre = smoothstep(0.45, 0.8, tNoise(q.xz * 0.05 + q.y * 0.03));
+  float ochre = smoothstep(0.45, 0.8, tNoise(q.xz * 0.05 + q.y * 0.03)) * uRockOchre;
   vec3 limeTint = mix(vec3(1.0, 0.95, 0.86), vec3(1.08, 0.88, 0.66), ochre * steep);
   base *= mix(vec3(1.0), limeTint, uKarst * max(limestone, steep));
   // bare limestone reads beige-grey, never snow-white
@@ -238,7 +245,7 @@ float tBump = 0.0;
   // rock faces and cuts near the road: photographed fractured limestone, ochre to grey
   float cliffNear = 1.0 - smoothstep(35.0, 110.0, camD);
   // rock only on steep faces; ~50° banks above road cuts stay garrigue
-  float cliffW = uKarst * smoothstep(0.42, 0.62, slope) * (1.0 - smoothstep(900.0, 1600.0, camD)) * mix(0.75, 1.0, cliffNear);
+  float cliffW = uKarst * smoothstep(uCliffSlope.x, uCliffSlope.y, slope) * (1.0 - smoothstep(900.0, 1600.0, camD)) * mix(0.75, 1.0, cliffNear);
   if (cliffW > 0.001) {
     vec3 cw = pow(abs(wn), vec3(5.0));
     cw /= cw.x + cw.y + cw.z;
@@ -246,11 +253,13 @@ float tBump = 0.0;
     float sc = mix(1.0 / 40.0, 1.0 / 5.5, cliffNear);
     vec3 cc = texture2D(uCliffTex, q.zy * sc).rgb * cw.x + texture2D(uCliffTex, q.xz * sc).rgb * cw.y + texture2D(uCliffTex, q.xy * sc).rgb * cw.z;
     float cl = dot(cc, vec3(0.3, 0.55, 0.15));
-    // mostly grey limestone; ochre where the noise says the face is freshly broken
-    vec3 greyRock = vec3(cl) * vec3(1.04, 1.0, 0.94) * 1.15;
+    // mostly grey limestone; ochre where the noise says the face is freshly broken. Grey Tramuntana
+    // rock (low uRockOchre) is paler and calmer than the scan: lift it and flatten its streaks
+    float clg = mix(cl, 0.55, 0.35 * (1.0 - uRockOchre));
+    vec3 greyRock = vec3(clg) * vec3(1.04, 1.0, 0.94) * 1.15 * mix(1.45, 1.0, uRockOchre);
     // fresh road cuts: warm ochre limestone in horizontal beds
     float bed = 0.86 + 0.14 * sin(q.y * 4.2 + tNoise(q.xz * 0.3) * 3.0) + 0.06 * sin(q.y * 11.0);
-    vec3 rockC = mix(greyRock, cc * 1.12, 0.55 + 0.4 * ochre) * bed;
+    vec3 rockC = mix(greyRock, cc * 1.12, 0.15 + (0.4 + 0.4 * ochre) * uRockOchre) * bed;
     base = mix(base, rockC, cliffW);
     tBump = mix(tBump, (cl - 0.45) * 4.0 * cliffNear, cliffW);
     tDetail = mix(tDetail, 1.0, cliffW); // the scan carries its own detail

@@ -102,3 +102,10 @@ Baseline scorecard review (`research/sa-calobra/review-2026-10-11.md`, round 2 o
 spot): REJECT, mean 2.63: ground 2, vegetation 2, road 3, built 3, light 3, life 2, rider 4, place 2. Next: grey
 limestone instead of speckled beige cuts, thinner tree groups below 4.5 km if the canopy data allows, rubble
 retaining walls on the drop side at 4–6 km, sea in the views from the knot, the viewpoint shelter at the knot.
+
+Round 3 (2026-10-11): grey limestone cuts and banks (`biomeTweaks`), rubble retaining walls facing the cuts at
+4.0–6.1 km (`cutWalls`), the viewpoint shelter and P/WC sign on the loop spur, and no trees where the road works
+moved the ground by more than 1.5 m (the floating conifer at 9.6 km, crowns over the road at 2.6 km). REJECT,
+mean 2.75 (ground 2→3, nothing dropped). Open: sea in the H5/H6 frames (a framing question: the sea lies north,
+the shots look south), vegetation density on 0.3–4.5 km (canopy survey data), the oversize chevrons in the loop,
+an overhead knot shot (the drone camera stays low there).

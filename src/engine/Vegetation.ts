@@ -158,6 +158,8 @@ export interface VegetationOptions {
   spacing: number;
   roadHalfWidth: number;
   heightAt: (x: number, z: number) => number;
+  /** The DEM before road cuts and fills; trees whose ground the road works moved are left out. */
+  rawHeightAt?: (x: number, z: number) => number;
   /** Real trees from a canopy height model; replaces OSM forest polygons when present. */
   baked?: BakedTrees | null;
   /** Day of year for foliage colour (defaults to today). */
@@ -332,6 +334,9 @@ export class Vegetation extends THREE.Group {
       if (mx >= 0 && mz >= 0 && mx < W && mz < H && mask[mz * W + mx]) continue;
       const y = o.heightAt(x, z);
       if (!Number.isFinite(y)) continue;
+      // a cut took the tree's ground away, or a fill buried it: it hung in the air above the slope
+      const raw = o.rawHeightAt?.(x, z) ?? y;
+      if (Math.abs(raw - y) > 1.5) continue;
       const r1 = hash2(i, 17), r2 = hash2(i, 29);
       const conifer = t.kind[i] === 1;
       // forest edges along the road keep their lower branches, like open-grown trees

@@ -321,7 +321,8 @@ export class Engine {
   async loadWorld(route: Route, style: RiderStyle, onProgress: (p: LoadProgress) => void, halfWidth = 3.1) {
     this.unloadWorld();
     const sceneDef = await loadRouteScene(route.id);
-    const biome = biomeFor(route, sceneDef?.biome as string | undefined);
+    // scenes/<id>.json "biomeTweaks" adjust the regional look for one route (Sa Calobra's grey rock)
+    const biome = biomeFor(route, sceneDef?.biome as string | undefined, sceneDef?.biomeTweaks as Partial<Biome> | undefined);
     this.biome = biome;
     setTerrainBiome(biome);
     const index = new RouteIndex(route);
@@ -401,6 +402,7 @@ export class Engine {
         world.roadside = new Roadside(
           route, halfWidth, (x, z) => terrain.groundHeight(x, z), biome,
           (sceneDef?.barriers as BarrierSpan[] | undefined) ?? [], osm.barriers,
+          (sceneDef?.cutWalls as [number, number][] | undefined) ?? [],
         );
         this.scene.add(world.roadside);
         world.signs = new Signs(route, halfWidth, (x, z) => terrain.groundHeight(x, z), biome);
@@ -413,6 +415,7 @@ export class Engine {
       await new Promise((r) => setTimeout(r, 0));
       const trees = new Vegetation(route, index, osm, {
         corridor: baked ? 550 : CORRIDOR, spacing: 6.5, roadHalfWidth: halfWidth, heightAt, baked, renderer: this.renderer, biome,
+        rawHeightAt: (x, z) => terrain.heightAt(x, z),
       });
       if (this.world !== world) return;
       world.trees = trees;

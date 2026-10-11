@@ -38,6 +38,10 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
 - **The second tunnel was dark but had no portal cut.** The tunnel shader handled only a route's first tunnel.
   Fix: per-tunnel spans, bounds and lamp flags in one point list (`MAX_TUNNELS` 4). Where: `atmosphere.ts`
   `TUNNEL_GLSL`, `Tunnel.ts`.
+- **Sa Calobra's road cuts looked like smooth beige plaster.** Most of a "cut" is the ~50° bank above the rock
+  face, which the karst shader kept as garrigue, and the cliff scan leans warm ochre (right for Formentor, wrong for
+  grey Tramuntana limestone). Fix: per-route `biomeTweaks` in `scenes/<id>.json` (`cliffSlope` where the scan takes
+  over, `rockOchre`); grey rock is lifted and its streaks flattened. Where: `biome.ts`, `terrainMaterial.ts`.
 
 ## Placement and geometry
 
@@ -55,6 +59,15 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   the lower pass 7 m over the 160 m before it, builds a short underpass whose bore is the Blender bridge, and gives
   the ground under the bridge a flat floor (sloped terrain triangles stuck out of the arch as pale spikes before).
   Where: `route.ts` `findUnderpasses`, `Tunnel.ts`, `Terrain.flatten`.
+- **No retaining walls although OSM has 168 on Sa Calobra.** They are hillside terrace walls (marges), a median
+  120 m from the road; OSM rarely maps a road's own walls. And the old test read the ground at the wall line, which
+  is flattened to the road, so every wall looked "at road level". Fix: classify walls by the ground 3 m further out,
+  and face road cuts with masonry where the scene says so (`cutWalls` spans, cuts over 2.5 m), at the asphalt edge
+  with a battered foot that hides the terrain's coarse teeth at the cut base. Where: `Roadside.ts` `cutWalls`.
+- **A conifer hung in the air over the road in the knot's loop.** Trees stood on the flattened ground where the road
+  cut had removed theirs (or on fresh fill), and the coarse terrain mesh showed the slope below them. Fix: no tree
+  where the road works moved the ground more than 1.5 m (2.6 % of Sa Calobra's trees, under 1 % elsewhere).
+  Where: `Vegetation.placeBaked` (`rawHeightAt`).
 
 ## Data and bakes
 

@@ -34,6 +34,10 @@ export interface Biome {
   meadowPush: number;
   /** Grey photo pixels are bare limestone (karst) rather than gravel. */
   karst: number;
+  /** Karst: slope (1 − normal.y) where the cliff scan takes over; lower makes the banks above cuts rock too. */
+  cliffSlope?: [number, number];
+  /** Karst: how much of the rock is warm ochre (Formentor's fresh cuts) rather than grey (Tramuntana). */
+  rockOchre?: number;
   /** Delineator posts and the barrier on drop-offs. */
   posts: 'at' | 'es';
   barrier: 'wbeam' | 'stonewall';
@@ -89,7 +93,12 @@ export const MEDITERRANEAN: Biome = {
 const BIOMES: Record<BiomeId, Biome> = { alpine: ALPINE, mediterranean: MEDITERRANEAN };
 
 /** Mediterranean climate south of ~43.5° N in Europe and around the basin; Alpine otherwise. */
-export function biomeFor(route: Route, override?: string): Biome {
+export function biomeFor(route: Route, override?: string, tweaks?: Partial<Biome>): Biome {
+  const base = pickBiome(route, override);
+  return tweaks ? { ...base, ...tweaks } : base;
+}
+
+function pickBiome(route: Route, override?: string): Biome {
   if (override && override in BIOMES) return BIOMES[override as BiomeId];
   const lat = route.lat[0];
   const lon = route.lon[0];
