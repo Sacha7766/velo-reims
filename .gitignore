@@ -9,6 +9,9 @@ research/*/photos
 research/*/data
 research/*/assets
 research/*/streetlevel
+# reference boards are contact sheets of those photos: local only, rebuild with docs/art/README.md
+research/*/board*.jpg
 *.fit
-.claude/
+.claude/*
+!.claude/agents/
 __pycache__/

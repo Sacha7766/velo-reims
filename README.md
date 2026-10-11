@@ -116,3 +116,5 @@ node scripts/bake-osm.mjs gaisberg --from=<overpass dump>    # rich OSM bake fro
 `?ride=<preset>&sim=1&workout=<id>&at=<metres>&cam=drone&time=golden` starts a ride directly (used for screenshots).
 
 Layout: `src/geo` (projection, DEM, imagery, OSM, routes), `src/engine` (Three.js terrain LOD, road, trees, buildings, rider, sky, camera), `src/devices` (Web Bluetooth), `src/workouts`, `src/sim` (physics, session, stats, FIT, storage), `src/ui`.
+
+Visual work follows a brief-first, separate-reviewer loop: see [CLAUDE.md](CLAUDE.md) for the rules, [docs/art/](docs/art/README.md) for the art direction, per-route briefs and the review scorecard, and [docs/lessons.md](docs/lessons.md) for what past fixes taught us.
