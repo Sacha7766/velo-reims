@@ -8,10 +8,12 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { Plugin } from 'vite';
+import { createStrava } from './strava.ts';
 
 const ROOT = process.env.SERPENTINE_DATA ?? join(homedir(), 'Documents', 'Serpentine');
 const RIDES = join(ROOT, 'rides');
 const INDEX = join(RIDES, 'index.json');
+const strava = createStrava(ROOT);
 
 interface IndexEntry {
   id: string;
@@ -72,6 +74,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   const parts = url.pathname.split('/').filter(Boolean); // after /api
   try {
     if (parts[0] === 'health') return send(res, 200, { ok: true, dir: RIDES });
+    if (parts[0] === 'strava') return strava(req, res, url, parts);
     if (parts[0] === 'open' && req.method === 'POST') {
       mkdirSync(RIDES, { recursive: true });
       exec(`open ${JSON.stringify(RIDES)}`);

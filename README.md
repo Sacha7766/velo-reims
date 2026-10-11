@@ -15,7 +15,7 @@ Before pairing, quit Zwift and Zwift Companion. A trainer accepts only one contr
 - **Segments:** each route gets timed segments (full climb, steepest kilometre, hills, a sprint) with live delta to your record.
 - **Pacers:** ride with bots at 2.0–4.0 W/kg; sitting in their draft cuts your drag by 30 %. With ERG on, the trainer holds the target power while you still move through the world. Without ERG, the real gradient drives the resistance.
 - **Trainer difficulty:** the share of the real gradient sent to the trainer. 100 % feels every percent of the road; Zwift's default is 50 %. Change it mid-ride with `−` / `=` or the Ride's D-pad up/down.
-- **Virtual gears:** 24 gears (Zwift's ratios 0.75–5.49, gear 12 neutral). On a KICKR Core Zwift One or Zwift Hub the trainer runs the gears natively over Zwift's trainer protocol; other FTMS trainers get them emulated through the gradient.
+- **Virtual gears:** 24 gears (Zwift's ratios 0.75–5.49, gear 12 neutral) or a real drivetrain (see Drivetrain below). On a KICKR Core Zwift One or Zwift Hub the trainer runs the gears natively over Zwift's trainer protocol; other FTMS trainers get them emulated through the gradient.
 - **Hold watts:** the trainer holds a fixed power for the whole ride; the shifters change it by ±10 W. In ERG workouts the shifters scale intensity by ±5 %.
 - **History:** every ride is saved as `.json` + Strava-ready `.fit` in `~/Documents/Serpentine/rides` (override with `SERPENTINE_DATA`). The History screen shows totals, weekly training load, climb records and best efforts.
 - **Ghost:** your fastest summit on a route rides with you, with a live time gap.
@@ -26,6 +26,20 @@ Keys: `1`–`5` camera (chase, drone, moto, rider, cinematic) · `Space` pause �
 Zwift Ride: left hood shifts easier, right hood harder · D-pad up/down difficulty · D-pad left/right camera · A start / ERG · B pause · Y hide HUD · Z skip interval.
 
 No trainer at hand? Turn on **Keyboard simulator** under Devices.
+
+## Drivetrain
+
+Settings → Drivetrain replaces Zwift's 24 virtual ratios with the gears of a real bike: road compact 50/34 11-32, semi-compact 52/36 11-30, standard 53/39 11-28, gravel 1x 40 10-44, or your own chainrings and cassette. With two chainrings the list follows how you really shift (small ring for the easy half, big ring for the hard half, no cross-chaining, near-duplicate ratios removed). The HUD shows the gear as `34×28`. The ratio sent to the trainer is chainring/cog, scaled by the wheel circumference against the KICKR's 700c reference. The settings page shows speed and watts at 60 rpm in your easiest gear on 5 / 10 / 15 %; for a realistic feel set trainer difficulty to 100 % (**Real road feel** button).
+
+## Strava segments
+
+Preset routes can show their Strava segments with the KOM and your PR, live deltas on the HUD, and ghost riders at KOM pace and at your PR pace. Strava's leaderboards are not open to third-party apps, so this uses the official API only: segment details (`xoms`, your `athlete_segment_stats`), explore and starred segments. Nothing is scraped; times are labelled "from Strava".
+
+1. Create an API application at <https://www.strava.com/settings/api>. Authorization Callback Domain: `localhost`.
+2. Open Settings → Strava, paste the Client ID and Client Secret, Save, then **Connect to Strava** and approve. The callback is `http://localhost:5199/api/strava/callback`.
+3. Pick a preset route (first the Gaisberg): the Ride tab lists the segments found on it and offers KOM / PR ghosts. Starting the ride merges them into the route's segments.
+
+Credentials and tokens are stored in `strava.json` in the data folder (`~/Documents/Serpentine`, or `SERPENTINE_DATA`), never in the repo, and refreshed automatically. Segments per route are cached for 7 days in `strava-segments-<route>.json` (`/api/strava/segments?route=gaisberg&refresh=1` forces a refresh). On a Strava rate limit (HTTP 429) the cached list is served. Segment positions along the route are computed on the raw route coordinates with haversine distances, which is within a fraction of a percent of the resampled route the app rides.
 
 ## Trainers
 

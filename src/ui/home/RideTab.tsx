@@ -10,6 +10,7 @@ import {
   CATEGORIES, CATEGORY_LABEL, matchesCategory, Profile, RouteShape, RouteStatsLine, useRouteStats, workoutMeta,
   type RideMode, type RouteEntry,
 } from './shared.tsx';
+import { StravaSegments } from './StravaSegments.tsx';
 import { WorkoutDetail, WorkoutList } from './WorkoutLibrary.tsx';
 
 export interface RideTabProps {
@@ -212,6 +213,8 @@ export function RideTab(p: RideTabProps) {
             </div>
           </div>
         </section>
+
+        {p.route && <StravaSegments routeId={p.route.data.id} preset={p.route.data.source === 'brouter'} settings={p.settings} set={p.set} />}
 
         <StartBar {...p} />
       </main>

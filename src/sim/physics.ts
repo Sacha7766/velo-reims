@@ -38,6 +38,14 @@ export function cornerSpeed(radius: number): number {
   return Math.sqrt(5.5 * Math.max(radius, 3));
 }
 
+/** Power (W) needed to hold a steady speed (m/s) on a grade: gravity + rolling + air, through the drivetrain. */
+export function powerAtSpeed(v: number, gradePct: number, altitude: number, p: PhysicsParams): number {
+  const g = 9.80665;
+  const th = Math.atan(gradePct / 100);
+  const force = p.mass * g * (Math.sin(th) + p.crr * Math.cos(th)) + 0.5 * airDensity(altitude) * p.cda * v * v;
+  return Math.max(0, (force * v) / p.drivetrain);
+}
+
 /** Steady-state speed for a power on a grade (used for estimates in the UI). */
 export function steadySpeed(power: number, gradePct: number, altitude: number, p: PhysicsParams): number {
   let v = 5;

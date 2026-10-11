@@ -6,6 +6,8 @@ import { pointAt, type Route, type RoutePoint } from '../geo/route.ts';
 import { stateAt } from '../workouts/player.ts';
 import type { Workout, WorkoutState } from '../workouts/types.ts';
 import { cornerSpeed, DEFAULT_PHYSICS, stepSpeed, type PhysicsParams } from './physics.ts';
+import { gearList, resolveDrivetrain, startGearIndex, trainerRatio, ZWIFT_RATIOS, type CustomDrivetrain, type Drivetrain, type Gear } from './drivetrain.ts';
+import { constantPowerForTime, PACER_START_SPEED } from './strava.ts';
 import { normalizedPower } from './stats.ts';
 import type { RideRecord, RideSample } from './types.ts';
 import type { Segment } from './segments.ts';
@@ -17,6 +19,9 @@ export interface RiderSettings {
   bikeWeight: number;
   /** Trainer difficulty: share of the real gradient sent to the trainer (0..1). */
   difficulty: number;
+  /** Drivetrain preset id (see sim/drivetrain.ts), 'zwift' = Zwift's 24 virtual gears. */
+  drivetrain: string;
+  customDrivetrain: CustomDrivetrain;
 }
 
 export interface SessionConfig {
@@ -34,6 +39,8 @@ export interface SessionConfig {
   segmentBests?: Record<string, number>;
   /** Pacer bots, in W/kg. */
   bots?: number[];
+  /** Ghost riders that race a Strava segment at KOM pace and / or at your PR pace. */
+  pacers?: { segmentId: string; kom: boolean; pr: boolean };
 }
 
 export interface BotState {
@@ -44,6 +51,14 @@ export interface BotState {
   distance: number;
   /** Metres ahead of the rider (negative = behind). */
   gap: number;
+  /** Name tag override; set on segment pacers ("KOM 17:52"). */
+  label?: string;
+  /** Segment pacers only: constant power, the segment they race and whether they are running. */
+  power?: number;
+  segmentId?: string;
+  segStart?: number;
+  segEnd?: number;
+  active?: boolean;
 }
 
 export interface LiveSegment {
@@ -54,13 +69,14 @@ export interface LiveSegment {
   pr: number | null;
   /** Seconds vs the PR pace at this point (negative = ahead). */
   delta: number | null;
+  /** Strava segments: the KOM time and the live delta to it. */
+  kom: number | null;
+  komDelta: number | null;
+  strava: boolean;
 }
 
 /** Zwift's default 24 virtual gears (chainring/cog ratio); gear 12 = 2.40 is neutral. */
-export const GEAR_RATIOS = [
-  0.75, 0.87, 0.99, 1.11, 1.23, 1.38, 1.53, 1.68, 1.86, 2.04, 2.22, 2.4,
-  2.61, 2.82, 3.03, 3.24, 3.49, 3.74, 3.99, 4.24, 4.54, 4.84, 5.14, 5.49,
-];
+export const GEAR_RATIOS = ZWIFT_RATIOS;
 export const NEUTRAL_GEAR = 12;
 
 export type SessionEvent = 'summit' | 'lap' | 'segment-start' | 'segment-pr' | 'segment-end' | 'ramp-done';
@@ -132,10 +148,13 @@ export class RideSession {
   private listeners = new Set<() => void>();
   private segments: Segment[] = [];
   private segmentBests: Record<string, number> = {};
-  private segRun: { seg: Segment; t0: number; power: number; n: number } | null = null;
+  private segRuns: { seg: Segment; t0: number; power: number; n: number }[] = [];
   private efforts: { id: string; name: string; time: number; power: number }[] = [];
   private rampWindow: { power: number; cadence: number; target: number | null }[] = [];
   private st: LiveState;
+  readonly drivetrain: Drivetrain;
+  /** Virtual gears of the selected drivetrain, easiest first. */
+  readonly gears: Gear[];
 
   constructor(cfg: SessionConfig, hub: DeviceHub) {
     this.route = cfg.route;
@@ -144,6 +163,11 @@ export class RideSession {
     this.ghost = cfg.ghost;
     this.hub = hub;
     this.physics = { ...DEFAULT_PHYSICS, mass: cfg.settings.weight + cfg.settings.bikeWeight };
+    this.drivetrain = resolveDrivetrain(cfg.settings.drivetrain, cfg.settings.customDrivetrain);
+    this.gears = gearList(this.drivetrain);
+    const openStep = Math.max(1, Math.round(300 / this.route.step));
+    const openGrade = ((this.route.ele[Math.min(this.route.n - 1, openStep)] - this.route.ele[0]) / (openStep * this.route.step)) * 100;
+    const startGear = startGearIndex(this.drivetrain, this.gears, openGrade) + 1;
     const p0 = pointAt(this.route, 0);
     this.gainRef = p0.ele;
     this.st = {
@@ -153,7 +177,7 @@ export class RideSession {
       workoutElapsed: 0, erg: (cfg.erg && !!cfg.workout) || cfg.holdWatts !== null, targetPower: null, trainerMode: 'idle',
       ghostS: cfg.ghost ? 0 : null, ghostDir: 1, ghostGap: null, summitTime: null, banner: null,
       difficulty: cfg.settings.difficulty,
-      gear: cfg.gears ? NEUTRAL_GEAR : null,
+      gear: cfg.gears ? startGear : null,
       holdWatts: cfg.holdWatts,
       bias: 1,
       segment: null,
@@ -163,8 +187,37 @@ export class RideSession {
     };
     this.segments = cfg.segments ?? [];
     this.segmentBests = { ...(cfg.segmentBests ?? {}) };
+    this.st.bots.push(...this.buildPacers(cfg.pacers));
     hub.setRiderWeights(cfg.settings.weight, cfg.settings.bikeWeight);
-    hub.setGearRatio(cfg.gears ? GEAR_RATIOS[NEUTRAL_GEAR - 1] : null);
+    hub.setGearRatio(cfg.gears ? trainerRatio(this.drivetrain, this.gears[startGear - 1]) : null);
+  }
+
+  /** The reference time to beat on a segment: the Strava PR or your own best, whichever is faster. */
+  private prTime(seg: Segment): number | null {
+    const mine = this.segmentBests[seg.id] ?? null;
+    const theirs = seg.strava?.pr ?? null;
+    return mine !== null && theirs !== null ? Math.min(mine, theirs) : (mine ?? theirs);
+  }
+
+  /** Ghost riders for the KOM / PR of a Strava segment: constant power that finishes it in that time. */
+  private buildPacers(cfg: SessionConfig['pacers']): BotState[] {
+    const seg = cfg && this.segments.find((g) => g.id === cfg.segmentId && g.strava);
+    if (!cfg || !seg) return [];
+    const out: BotState[] = [];
+    const add = (label: string, time: number | null) => {
+      if (time === null) return;
+      const power = constantPowerForTime(this.route, seg.start, seg.end, time, this.physics);
+      if (power === null) return;
+      out.push({ wkg: power / this.settings.weight, s: seg.start, dir: 1, speed: 0, distance: 0, gap: 0, label: `${label} ${fmtTime(time)}`, power, segmentId: seg.id, segStart: seg.start, segEnd: seg.end, active: false });
+    };
+    if (cfg.kom) add('KOM', seg.strava!.kom);
+    if (cfg.pr) add('Your PR', this.prTime(seg));
+    return out;
+  }
+
+  /** The rider crossed a segment start line: pacers for that segment set off. */
+  private startPacers(seg: Segment) {
+    this.st.bots = this.st.bots.map((b) => (b.segmentId === seg.id ? { ...b, s: seg.start, speed: PACER_START_SPEED, active: true, distance: 0, gap: 0 } : b));
   }
 
   /**
@@ -185,10 +238,10 @@ export class RideSession {
       return 'bias';
     }
     if (st.gear === null) return 'limit';
-    const next = Math.min(GEAR_RATIOS.length, Math.max(1, st.gear + dir));
+    const next = Math.min(this.gears.length, Math.max(1, st.gear + dir));
     if (next === st.gear) return 'limit';
     st.gear = next;
-    this.hub.setGearRatio(GEAR_RATIOS[next - 1]);
+    this.hub.setGearRatio(trainerRatio(this.drivetrain, this.gears[next - 1]));
     this.emit();
     return 'gear';
   }
@@ -280,7 +333,7 @@ export class RideSession {
     const route = this.route;
     const p = pointAt(route, st.s, tmp);
     const grade = p.grade * st.dir;
-    st.drafting = st.bots.some((b) => b.gap > 0.5 && b.gap < 7 && b.dir === st.dir);
+    st.drafting = st.bots.some((b) => !b.segmentId && b.gap > 0.5 && b.gap < 7 && b.dir === st.dir);
     const phys = st.drafting ? { ...this.physics, cda: this.physics.cda * 0.7 } : this.physics;
     const prevS = st.s;
     let v = stepSpeed(st.speed, power, grade, p.ele, dt, phys);
@@ -385,6 +438,7 @@ export class RideSession {
     const st = this.st;
     const L = this.route.length;
     st.bots = st.bots.map((b) => {
+      if (b.segmentId) return this.stepPacer(b, dt);
       const p = pointAt(this.route, b.s, tmp);
       const speed = stepSpeed(b.speed, b.wkg * this.settings.weight, p.grade * b.dir, p.ele, dt, this.physics);
       let s = b.s + speed * dt * b.dir;
@@ -402,28 +456,67 @@ export class RideSession {
     });
   }
 
+  /** Segment pacer: waits at the start line, rides the segment at its constant power, returns to the line. */
+  private stepPacer(b: BotState, dt: number): BotState {
+    if (!b.active) return b;
+    const p = pointAt(this.route, b.s, tmp);
+    const speed = stepSpeed(b.speed, b.power ?? 0, p.grade, p.ele, dt, this.physics);
+    const s = b.s + speed * dt;
+    const end = b.segEnd ?? this.route.length;
+    if (s >= end) return { ...b, s: b.segStart ?? 0, speed: 0, active: false, gap: 0 };
+    return { ...b, s, speed, distance: b.distance + speed * dt, gap: s - this.st.s };
+  }
+
   private updateSegments(prevS: number, power: number) {
     const st = this.st;
     if (st.dir !== 1) {
-      this.segRun = null;
+      this.segRuns = [];
       st.segment = null;
       return;
     }
-    const run = this.segRun;
-    if (!run) {
-      const seg = this.segments.find((g) => prevS < g.start && st.s >= g.start);
-      if (seg) {
-        this.segRun = { seg, t0: st.elapsed, power: 0, n: 0 };
-        this.banner(seg.name, `${((seg.end - seg.start) / 1000).toFixed(1)} km at ${seg.avgGrade.toFixed(1)} %`, 3);
+    // runs can overlap (a Strava segment inside the full climb)
+    for (const seg of this.segments) {
+      if (prevS < seg.start && st.s >= seg.start && !this.segRuns.some((r) => r.seg.id === seg.id)) {
+        this.segRuns.push({ seg, t0: st.elapsed, power: 0, n: 0 });
+        const sub = `${((seg.end - seg.start) / 1000).toFixed(1)} km at ${seg.avgGrade.toFixed(1)} %`;
+        this.banner(seg.name, seg.strava ? `${sub}, from Strava` : sub, 3);
+        this.startPacers(seg);
         this.fire('segment-start');
       }
-      if (!this.segRun) return;
     }
-    const r = this.segRun!;
-    r.power += power;
-    r.n++;
+    for (const r of [...this.segRuns]) {
+      r.power += power;
+      r.n++;
+      const t = st.elapsed - r.t0;
+      if (!(st.s >= r.seg.end || (this.route.loop && st.s < prevS))) continue;
+      const pr = this.prTime(r.seg);
+      const kom = r.seg.strava?.kom ?? null;
+      const effort = { id: r.seg.id, name: r.seg.name, time: t, power: r.power / Math.max(r.n, 1) };
+      this.efforts.push(effort);
+      const isPr = pr === null || t < pr;
+      const best = this.segmentBests[r.seg.id];
+      if (best === undefined || t < best) this.segmentBests[r.seg.id] = t;
+      const beatKom = kom !== null && t < kom;
+      this.banner(
+        beatKom ? 'Faster than the KOM' : isPr ? (pr === null ? `${r.seg.name} done` : 'New record') : r.seg.name,
+        beatKom
+          ? `${fmtTime(t)}, KOM ${fmtTime(kom)}`
+          : isPr && pr !== null
+            ? `${fmtTime(t)}, ${fmtTime(pr - t)} faster than before`
+            : `${fmtTime(t)} at ${Math.round(effort.power)} W`,
+        6,
+      );
+      this.fire(isPr && pr !== null ? 'segment-pr' : 'segment-end');
+      this.segRuns = this.segRuns.filter((x) => x !== r);
+    }
+    const r = this.segRuns[this.segRuns.length - 1];
+    if (!r) {
+      st.segment = null;
+      return;
+    }
     const t = st.elapsed - r.t0;
-    const pr = this.segmentBests[r.seg.id] ?? null;
+    const pr = this.prTime(r.seg);
+    const kom = r.seg.strava?.kom ?? null;
     const frac = Math.min(1, Math.max(0, (st.s - r.seg.start) / (r.seg.end - r.seg.start)));
     st.segment = {
       id: r.seg.id,
@@ -432,21 +525,10 @@ export class RideSession {
       remaining: Math.max(0, r.seg.end - st.s),
       pr,
       delta: pr !== null && frac > 0.05 ? t - pr * frac : null,
+      kom,
+      komDelta: kom !== null && frac > 0.05 ? t - kom * frac : null,
+      strava: !!r.seg.strava,
     };
-    if (st.s >= r.seg.end || (this.route.loop && st.s < prevS)) {
-      const effort = { id: r.seg.id, name: r.seg.name, time: t, power: r.power / Math.max(r.n, 1) };
-      this.efforts.push(effort);
-      const isPr = pr === null || t < pr;
-      if (isPr) this.segmentBests[r.seg.id] = t;
-      this.banner(
-        isPr ? (pr === null ? `${r.seg.name} done` : 'New record') : r.seg.name,
-        isPr && pr !== null ? `${fmtTime(t)}, ${fmtTime(pr - t)} faster than before` : `${fmtTime(t)} at ${Math.round(effort.power)} W`,
-        6,
-      );
-      this.fire(isPr && pr !== null ? 'segment-pr' : 'segment-end');
-      this.segRun = null;
-      st.segment = null;
-    }
   }
 
   private updateRamp(power: number, cadence: number) {
@@ -520,7 +602,7 @@ export class RideSession {
   jump(s: number) {
     this.st.s = Math.min(Math.max(s, 0), this.route.length);
     this.gainRef = pointAt(this.route, this.st.s).ele;
-    this.st.bots = this.st.bots.map((b) => ({ ...b, s: this.st.s }));
+    this.st.bots = this.st.bots.map((b) => (b.segmentId ? b : { ...b, s: this.st.s }));
   }
 
   get summitTime() {

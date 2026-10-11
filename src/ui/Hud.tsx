@@ -4,7 +4,7 @@ import { CAMERA_MODES, type CameraMode } from '../engine/CameraRig.ts';
 import type { RideAudio } from '../audio/RideAudio.ts';
 import type { Engine } from '../engine/Engine.ts';
 import type { Route } from '../geo/route.ts';
-import { GEAR_RATIOS, type RideSession } from '../sim/session.ts';
+import type { RideSession } from '../sim/session.ts';
 import type { AppSettings } from '../sim/storage.ts';
 import { fmtTime, gradeColor, int, km, zoneColor } from './format.ts';
 
@@ -172,7 +172,7 @@ export function Hud({
     [st.s, st.ghostS, profile],
   );
   const mapRef = useCanvas(
-    (c) => drawMinimap(c, route, st.s, st.ghostS, st.bots.map((b) => b.s)),
+    (c) => drawMinimap(c, route, st.s, st.ghostS, st.bots.filter((b) => b.active !== false).map((b) => b.s)),
     [st.s, st.ghostS, st.bots, route],
   );
 
@@ -204,9 +204,16 @@ export function Hud({
         ) : st.gear !== null && !st.erg ? (
           <div className="gearbox">
             <span className="g-label">Gear</span>
-            <span className="g-val">{st.gear}</span>
+            {session.drivetrain.id === 'zwift' ? (
+              <span className="g-val">{st.gear}</span>
+            ) : (
+              <span className="g-val">
+                {session.gears[st.gear - 1]?.label}
+                <small className="g-num">{st.gear}</small>
+              </span>
+            )}
             <span className="g-ticks" aria-hidden>
-              {GEAR_RATIOS.map((_, i) => (
+              {session.gears.map((_, i) => (
                 <i key={i} className={i < st.gear! ? 'on' : ''} />
               ))}
             </span>
@@ -257,14 +264,16 @@ export function Hud({
           )}
           {route.category === 'climb' && st.dir === -1 && <span>Descending</span>}
         </div>
-        {st.bots.length > 0 && (
+        {st.bots.some((b) => b.active !== false) && (
           <ul className="pacers">
-            {st.bots.map((b, i) => (
+            {st.bots.map((b, i) =>
+              b.active === false ? null : (
               <li key={i}>
                 <i style={{ background: BOT_COLORS[i % BOT_COLORS.length] }} />
-                {b.wkg.toFixed(1)} W/kg <b>{b.gap >= 0 ? `+${Math.round(b.gap)}` : Math.round(b.gap)} m</b>
+                {b.label ?? `${b.wkg.toFixed(1)} W/kg`} <b>{b.gap >= 0 ? `+${Math.round(b.gap)}` : Math.round(b.gap)} m</b>
               </li>
-            ))}
+              ),
+            )}
           </ul>
         )}
         {st.drafting && <div className="drafting">In the draft</div>}
@@ -338,10 +347,23 @@ export function Hud({
           <span className="seg-name">{st.segment.name}</span>
           <span className="seg-time">{fmtTime(st.segment.elapsed)}</span>
           <span className="seg-rest">{st.segment.remaining > 999 ? `${km(st.segment.remaining)} km` : `${Math.round(st.segment.remaining)} m`} to go</span>
+          {st.segment.strava && (st.segment.kom !== null || st.segment.pr !== null) && (
+            <span className="seg-refs">
+              {st.segment.kom !== null && <span>KOM {fmtTime(st.segment.kom)}</span>}
+              {st.segment.pr !== null && <span>PR {fmtTime(st.segment.pr)}</span>}
+              <small>from Strava</small>
+            </span>
+          )}
+          {st.segment.strava && st.segment.komDelta !== null && (
+            <span className={`seg-delta ${st.segment.komDelta <= 0 ? 'ahead' : 'behind'}`}>
+              {st.segment.komDelta <= 0 ? '−' : '+'}
+              {fmtTime(Math.abs(st.segment.komDelta))} vs KOM
+            </span>
+          )}
           {st.segment.delta !== null && (
             <span className={`seg-delta ${st.segment.delta <= 0 ? 'ahead' : 'behind'}`}>
               {st.segment.delta <= 0 ? '−' : '+'}
-              {fmtTime(Math.abs(st.segment.delta))} vs record
+              {fmtTime(Math.abs(st.segment.delta))} vs {st.segment.strava ? 'PR' : 'record'}
             </span>
           )}
         </div>

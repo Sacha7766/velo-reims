@@ -6,7 +6,8 @@ import { RideAudio } from '../audio/RideAudio.ts';
 import { sourcesFor } from '../geo/imagery.ts';
 import { prefetchRoute } from '../geo/prefetch.ts';
 import { buildRoute, findHairpins, type RouteData } from '../geo/route.ts';
-import { findSegments } from '../sim/segments.ts';
+import { findSegments, stravaToSegments, type Segment } from '../sim/segments.ts';
+import { fetchStravaSegments, getStravaStatus } from '../sim/stravaApi.ts';
 import { RideSession } from '../sim/session.ts';
 import { rideStats } from '../sim/stats.ts';
 import { bestRideFor, deleteRide, getRide, listCustomRoutes, listRides, loadSettings, saveRide, saveSettings, type AppSettings } from '../sim/storage.ts';
@@ -37,6 +38,7 @@ export function App() {
   const [ride, setRide] = useState<Ride | null>(null);
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const lastStart = useRef<StartRequest | null>(null);
   const prefetchAbort = useRef<AbortController | null>(null);
   const [audio] = useState(() => new RideAudio());
@@ -50,6 +52,22 @@ export function App() {
     (window as unknown as { engine: Engine }).engine = e;
     void hub.reconnectKnown();
     return () => e.dispose();
+  }, []);
+
+  // back from the Strava authorisation: /?strava=connected|denied|error|unconfigured
+  useEffect(() => {
+    const q = new URLSearchParams(location.search);
+    const result = q.get('strava');
+    if (!result) return;
+    q.delete('strava');
+    history.replaceState(null, '', `${location.pathname}${q.size ? `?${q}` : ''}`);
+    setHomeTab('settings');
+    if (result === 'connected') {
+      void getStravaStatus(true);
+      setNotice('Strava connected. Segments on preset routes will show up.');
+    } else setError(result === 'denied' ? 'Strava access was not granted.' : 'Could not connect to Strava. Check the Client ID and secret under Settings.');
+    const t = setTimeout(() => setNotice(null), 5000);
+    return () => clearTimeout(t);
   }, []);
 
   useEffect(() => {
@@ -87,6 +105,11 @@ export function App() {
     setScreen('loading');
     try {
       const route = await buildRoute(req.route);
+      // Strava segments for preset routes: fetched while the world loads, never waited on for more than 4 s
+      const stravaSegs: Promise<Segment[]> =
+        req.route.source === 'brouter'
+          ? Promise.race([fetchStravaSegments(route.id).then(stravaToSegments), new Promise<Segment[]>((r) => setTimeout(() => r([]), 4000))]).catch(() => [])
+          : Promise.resolve([]);
       engine.setTime(cfg.time);
       engine.paused = false;
       engine.riderS = debug?.at ?? 0;
@@ -100,7 +123,12 @@ export function App() {
         if (r.routeId !== route.id) continue;
         for (const e of r.segments ?? []) segmentBests[e.id] = Math.min(segmentBests[e.id] ?? Infinity, e.time);
       }
-      engine.setBots(cfg.bots);
+      const segments = [...findSegments(route), ...(await stravaSegs)].sort((a, b) => a.start - b.start);
+      const stravaOnly = segments.filter((g) => g.strava);
+      const pacerSeg =
+        (cfg.stravaKom || cfg.stravaPr) && stravaOnly.length
+          ? (stravaOnly.find((g) => g.strava!.id === cfg.stravaPacerSegment) ?? stravaOnly.reduce((a, b) => (b.end - b.start > a.end - a.start ? b : a)))
+          : null;
       prefetchAbort.current?.abort();
       prefetchAbort.current = new AbortController();
       const p0 = route;
@@ -109,16 +137,25 @@ export function App() {
         {
           route,
           workout: req.workout,
-          settings: { ftp: cfg.ftp, weight: cfg.weight, bikeWeight: cfg.bikeWeight, difficulty: cfg.difficulty },
+          settings: {
+            ftp: cfg.ftp, weight: cfg.weight, bikeWeight: cfg.bikeWeight, difficulty: cfg.difficulty,
+            drivetrain: cfg.drivetrain, customDrivetrain: cfg.customDrivetrain,
+          },
           ghost: best?.ride ?? null,
           erg: cfg.erg,
           holdWatts: req.workout ? null : req.holdWatts,
           gears: cfg.gears,
-          segments: findSegments(route),
+          segments,
           segmentBests,
           bots: cfg.bots,
+          pacers: pacerSeg ? { segmentId: pacerSeg.id, kom: cfg.stravaKom, pr: cfg.stravaPr } : undefined,
         },
         hub,
+      );
+      // user pacers first, then the segment ghosts with their own name tags
+      engine.setBots(
+        session.state.bots.map((b) => b.wkg),
+        session.state.bots.map((b) => b.label),
       );
       if (debug?.at) session.jump(debug.at);
       let pedal = 0;
@@ -284,6 +321,11 @@ export function App() {
           {error && (
             <div className="toast error" role="alert" onClick={() => setError(null)}>
               {error}
+            </div>
+          )}
+          {!error && notice && (
+            <div className="toast" role="status" onClick={() => setNotice(null)}>
+              {notice}
             </div>
           )}
         </>

@@ -2,14 +2,30 @@
 // and on rolling/flat routes the notable hills and a sprint straight.
 
 import type { Route } from '../geo/route.ts';
+import type { StravaSegment } from './strava.ts';
 
 export interface Segment {
   id: string;
   name: string;
   start: number; // m
   end: number; // m
-  kind: 'climb' | 'steep' | 'hill' | 'sprint';
+  kind: 'climb' | 'steep' | 'hill' | 'sprint' | 'strava';
   avgGrade: number;
+  /** Strava segments: record times in seconds, from the official API. */
+  strava?: { id: number; kom: number | null; qom: number | null; pr: number | null };
+}
+
+/** Timed segments from Strava (preset routes), ready to merge into a ride's segment list. */
+export function stravaToSegments(list: StravaSegment[]): Segment[] {
+  return list.map((g) => ({
+    id: `strava-${g.id}`,
+    name: g.name,
+    start: g.startS,
+    end: g.endS,
+    kind: 'strava',
+    avgGrade: g.averageGrade,
+    strava: { id: g.id, kom: g.kom, qom: g.qom, pr: g.prSeconds },
+  }));
 }
 
 function avgGrade(r: Route, a: number, b: number): number {

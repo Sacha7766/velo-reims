@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { clearTileCache, tileCacheStats } from '../../geo/tileCache.ts';
 import { openRidesFolder, type AppSettings } from '../../sim/storage.ts';
+import { DrivetrainSection } from './DrivetrainSection.tsx';
 import { ColorField, DevicesPanel, NumberField } from './shared.tsx';
+import { StravaCard } from './StravaCard.tsx';
 
 export function SettingsTab({
   settings,
@@ -45,13 +47,17 @@ export function SettingsTab({
         </label>
         <label className="toggle">
           <input type="checkbox" checked={settings.gears} onChange={(e) => set('gears', e.target.checked)} />
-          <span>Virtual gears, 24 gears on the shifters or the [ and ] keys</span>
+          <span>Virtual gears on the shifters or the [ and ] keys</span>
         </label>
         <label className="toggle">
           <input type="checkbox" checked={settings.erg} onChange={(e) => set('erg', e.target.checked)} />
           <span>Start workouts in ERG mode</span>
         </label>
       </section>
+
+      <DrivetrainSection settings={settings} set={set} />
+
+      <StravaCard />
 
       <section className="settings-devices">
         <h2>Devices</h2>
