@@ -1129,6 +1129,9 @@ h2 {
 /* ---------- HUD ---------- */
 
 .hud {
+  /* read from the saddle, ~2 m away: sizes are designed at 1117 px of screen height and scale with it */
+  --u: clamp(0.7px, 0.0895vh, 1.8px);
+  --label: #c4d0d5;
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -1136,100 +1139,132 @@ h2 {
   font-variant-numeric: tabular-nums;
 }
 
+/* the two top groups sit on a shade so labels hold up against a bright sky */
+.hud-panel {
+  padding: calc(14 * var(--u)) calc(20 * var(--u)) calc(16 * var(--u));
+  border-radius: calc(14 * var(--u));
+  background: rgba(13, 27, 36, 0.56);
+  backdrop-filter: blur(6px);
+}
+
 .hud button {
   pointer-events: auto;
 }
 
-.hud-power {
+.hud-left {
   position: absolute;
-  top: 22px;
-  left: 32px;
+  top: calc(18 * var(--u));
+  left: calc(24 * var(--u));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(14 * var(--u));
 }
 
 .hud-power .big {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: calc(8 * var(--u));
 }
 
 .hud-power .value {
   font-family: var(--cond);
   font-weight: 700;
-  font-size: 104px;
+  font-size: calc(172 * var(--u));
   line-height: 0.85;
   letter-spacing: -0.01em;
 }
 
 .hud-power .unit {
   font-family: var(--cond);
-  font-size: 30px;
+  font-size: calc(52 * var(--u));
   font-weight: 600;
   color: var(--mist);
 }
 
 .zone-bar {
-  height: 6px;
-  width: 200px;
-  margin: 10px 0 8px;
-  border-radius: 3px;
+  height: calc(8 * var(--u));
+  width: calc(340 * var(--u));
+  margin: calc(12 * var(--u)) 0 calc(14 * var(--u));
+  border-radius: calc(4 * var(--u));
   background: var(--zone);
   box-shadow: 0 0 16px var(--zone);
   transition: background 0.4s;
 }
 
 .hud-power .sub {
+  margin-top: calc(10 * var(--u));
+  font-size: calc(26 * var(--u));
+  color: var(--label);
+}
+
+/* stats that belong together: effort under the power, the climb under the map */
+.hud-group {
   display: flex;
-  gap: 16px;
-  font-size: 16px;
+  gap: calc(36 * var(--u));
 }
 
-.hud-power .target {
-  font-family: var(--cond);
-  font-weight: 600;
-  font-size: 20px;
+.stat.target .s-val {
   color: var(--signal);
-  line-height: 1;
 }
 
-.hud-power .target.hit {
+.stat.target.hit .s-val {
   color: var(--g0);
+}
+
+.hud-group.climb {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  justify-content: end;
+  gap: calc(12 * var(--u)) calc(36 * var(--u));
+}
+
+.hud-group.climb .stat {
+  align-items: flex-end;
+}
+
+.stat.grade .s-val {
+  text-decoration: underline;
+  text-decoration-color: var(--grade);
+  text-decoration-thickness: calc(7 * var(--u));
+  text-underline-offset: calc(7 * var(--u));
 }
 
 .gearbox {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  margin-top: 10px;
+  gap: calc(14 * var(--u));
+  margin-top: calc(14 * var(--u));
 }
 
 .g-label {
-  font-size: 14px;
-  color: var(--mist);
+  font-size: calc(27 * var(--u));
+  color: var(--label);
 }
 
 .g-val {
   font-family: var(--cond);
   font-weight: 700;
-  font-size: 34px;
+  font-size: calc(62 * var(--u));
   line-height: 1;
   min-width: 1.4ch;
 }
 
 .g-hint {
-  font-size: 13px;
-  color: var(--mist);
+  font-size: calc(20 * var(--u));
+  color: var(--label);
 }
 
 .g-ticks {
   display: flex;
-  gap: 2px;
+  gap: calc(3 * var(--u));
   align-self: center;
 }
 
 .g-ticks i {
-  width: 4px;
-  height: 12px;
-  border-radius: 1px;
+  width: calc(6 * var(--u));
+  height: calc(22 * var(--u));
+  border-radius: calc(1.5 * var(--u));
   background: rgba(238, 243, 244, 0.22);
 }
 
@@ -1237,65 +1272,32 @@ h2 {
   background: var(--snow);
 }
 
-.hud-grade {
-  position: absolute;
-  top: 18px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  filter: drop-shadow(0 6px 16px rgba(5, 12, 16, 0.45));
-}
-
-.grade-sign-num {
-  font-family: var(--cond);
-  font-weight: 700;
-  font-size: 27px;
-  text-shadow: none;
-}
-
-.kehre {
-  margin-top: 4px;
-  font-family: var(--cond);
-  font-weight: 600;
-  font-size: 18px;
-}
-
 .hud-map {
   position: absolute;
-  top: 22px;
-  right: 28px;
-  width: 210px;
+  top: calc(18 * var(--u));
+  right: calc(24 * var(--u));
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 8px;
+  gap: calc(12 * var(--u));
 }
 
 .minimap {
-  width: 190px;
-  height: 160px;
-  border-radius: 10px;
-  background: rgba(13, 27, 36, 0.38);
-  backdrop-filter: blur(3px);
+  display: block;
+  width: calc(250 * var(--u));
+  height: calc(200 * var(--u));
+  margin: 0 0 calc(6 * var(--u)) auto;
 }
 
 .summit {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  font-size: 15px;
+  font-size: calc(26 * var(--u));
 }
 
-.summit .ele {
-  color: var(--snow);
-}
-
-.summit .ele b {
-  font-family: var(--cond);
-  font-size: 28px;
-  font-weight: 600;
+.summit:not(:empty) {
+  margin-top: calc(10 * var(--u));
 }
 
 .summit .battery-low {
@@ -1306,8 +1308,8 @@ h2 {
 .summit .battery-low.critical {
   color: var(--snow);
   background: var(--sign-red);
-  border-radius: 3px;
-  padding: 1px 6px;
+  border-radius: calc(4 * var(--u));
+  padding: calc(2 * var(--u)) calc(8 * var(--u));
 }
 
 .summit .lead-in {
@@ -1317,42 +1319,39 @@ h2 {
 .pacers {
   list-style: none;
   margin: 0;
-  padding: 0;
-  font-size: 14px;
+  padding: calc(8 * var(--u)) calc(16 * var(--u));
+  font-size: calc(26 * var(--u));
   text-align: right;
 }
 
 .pacers i {
   display: inline-block;
-  width: 9px;
-  height: 9px;
+  width: calc(14 * var(--u));
+  height: calc(14 * var(--u));
   border-radius: 50%;
-  margin-right: 6px;
+  margin-right: calc(8 * var(--u));
 }
 
 .pacers b {
   font-family: var(--cond);
-  font-size: 18px;
-  margin-left: 6px;
+  font-size: calc(36 * var(--u));
+  margin-left: calc(8 * var(--u));
 }
 
 .drafting {
   font-family: var(--cond);
   font-weight: 600;
-  font-size: 16px;
+  font-size: calc(28 * var(--u));
   color: var(--g0);
 }
 
 .segment {
-  position: absolute;
-  top: 250px;
-  left: 32px;
-  min-width: 210px;
+  min-width: calc(320 * var(--u));
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 2px 12px;
-  padding: 10px 14px;
-  border-radius: 6px;
+  gap: calc(4 * var(--u)) calc(16 * var(--u));
+  padding: calc(14 * var(--u)) calc(18 * var(--u));
+  border-radius: calc(8 * var(--u));
   background: rgba(13, 27, 36, 0.7);
   text-shadow: none;
 }
@@ -1361,27 +1360,27 @@ h2 {
   grid-column: 1 / -1;
   font-family: var(--cond);
   font-weight: 600;
-  font-size: 18px;
+  font-size: calc(28 * var(--u));
 }
 
 .seg-time {
   font-family: var(--cond);
   font-weight: 700;
-  font-size: 30px;
+  font-size: calc(56 * var(--u));
   line-height: 1;
 }
 
 .seg-rest {
   align-self: end;
-  font-size: 13px;
-  color: var(--mist);
+  font-size: calc(27 * var(--u));
+  color: var(--label);
 }
 
 .seg-delta {
   grid-column: 1 / -1;
   font-family: var(--cond);
   font-weight: 600;
-  font-size: 17px;
+  font-size: calc(30 * var(--u));
 }
 
 .seg-delta.ahead {
@@ -1423,7 +1422,7 @@ h2 {
 .ghost-gap {
   font-family: var(--cond);
   font-weight: 700;
-  font-size: 24px;
+  font-size: calc(44 * var(--u));
   color: var(--ghost);
 }
 
@@ -1433,8 +1432,8 @@ h2 {
 
 .ghost-gap span {
   font-weight: 500;
-  font-size: 15px;
-  color: var(--mist);
+  font-size: calc(22 * var(--u));
+  color: var(--label);
 }
 
 .hud-bottom {
@@ -1442,11 +1441,11 @@ h2 {
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 60px 32px 14px;
+  padding: calc(80 * var(--u)) calc(34 * var(--u)) calc(14 * var(--u));
   background: linear-gradient(to top, rgba(13, 27, 36, 0.86) 0%, rgba(13, 27, 36, 0.55) 55%, rgba(13, 27, 36, 0) 100%);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: calc(12 * var(--u));
 }
 
 .hud-row {
@@ -1457,7 +1456,7 @@ h2 {
 
 .hud-stats {
   display: flex;
-  gap: 30px;
+  gap: calc(44 * var(--u));
 }
 
 .stat {
@@ -1468,41 +1467,43 @@ h2 {
 .s-val {
   font-family: var(--cond);
   font-weight: 600;
-  font-size: 38px;
+  font-size: calc(64 * var(--u));
   line-height: 1;
 }
 
 .s-unit {
-  font-size: 13px;
-  color: var(--mist);
+  margin-top: calc(2 * var(--u));
+  font-size: calc(27 * var(--u));
+  color: var(--label);
 }
 
 .hud-workout .interval {
   display: flex;
   align-items: baseline;
-  gap: 18px;
-  margin-bottom: 6px;
+  gap: calc(26 * var(--u));
+  margin-bottom: calc(8 * var(--u));
+  font-size: calc(30 * var(--u));
 }
 
 .hud-workout .now,
 .hud-workout .left {
   font-family: var(--cond);
   font-weight: 700;
-  font-size: 34px;
+  font-size: calc(66 * var(--u));
   line-height: 1;
 }
 
 .hud-workout .next {
-  color: var(--mist);
+  color: var(--label);
 }
 
 .hud-workout .mode {
   margin-left: auto;
   font-family: var(--cond);
   font-weight: 600;
-  font-size: 15px;
-  padding: 2px 8px;
-  border-radius: 3px;
+  font-size: calc(30 * var(--u));
+  padding: calc(2 * var(--u)) calc(10 * var(--u));
+  border-radius: calc(4 * var(--u));
   box-shadow: inset 0 0 0 1px var(--line);
 }
 
@@ -1513,7 +1514,7 @@ h2 {
 
 .hud-profile {
   width: 100%;
-  height: 92px;
+  height: calc(96 * var(--u));
   display: block;
 }
 
@@ -1545,15 +1546,15 @@ h2 {
 
 .coach {
   position: absolute;
-  top: 168px;
+  top: calc(26 * var(--u));
   left: 50%;
   transform: translateX(-50%);
-  max-width: min(640px, 80vw);
+  max-width: min(calc(720 * var(--u)), 40vw);
   text-align: center;
   background: rgba(13, 27, 36, 0.74);
-  padding: 10px 20px;
-  border-radius: 6px;
-  font-size: 18px;
+  padding: calc(12 * var(--u)) calc(24 * var(--u));
+  border-radius: calc(8 * var(--u));
+  font-size: calc(28 * var(--u));
   text-shadow: none;
 }
 
@@ -1577,7 +1578,7 @@ h2 {
 }
 
 .b-sub {
-  font-size: 20px;
+  font-size: calc(28 * var(--u));
 }
 
 @keyframes banner {
@@ -1618,6 +1619,14 @@ h2 {
 
 .o-sub {
   font-size: 19px;
+}
+
+.hud .o-sub {
+  font-size: calc(32 * var(--u));
+}
+
+.hud .warn {
+  font-size: calc(24 * var(--u));
 }
 
 .o-actions {
@@ -3252,7 +3261,7 @@ a.btn {
 }
 
 .g-num {
-  font-size: 14px;
+  font-size: calc(24 * var(--u));
   font-weight: 500;
   color: var(--mist);
   margin-left: 6px;
@@ -3265,14 +3274,14 @@ a.btn {
   align-items: baseline;
   font-family: var(--cond);
   font-weight: 600;
-  font-size: 16px;
+  font-size: calc(26 * var(--u));
 }
 
 .seg-refs small {
   font-family: inherit;
   font-weight: 400;
-  font-size: 12px;
-  color: var(--mist);
+  font-size: calc(18 * var(--u));
+  color: var(--label);
 }
 
 /* ---------- rider profiles ---------- */

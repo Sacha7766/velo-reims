@@ -20,6 +20,7 @@ Before pairing, quit Zwift and Zwift Companion. A trainer accepts only one contr
 - **History:** every ride is saved as `.json` + Strava-ready `.fit` in `~/Documents/Serpentine/rides` (override with `SERPENTINE_DATA`). The History screen shows totals, weekly training load, climb records and best efforts.
 - **Ghost:** your fastest summit on a route rides with you, with a live time gap.
 - The ride starts as soon as you pedal. At the summit you roll back down and loop.
+- **HUD for the saddle:** sized to read from about 2 m and scaled with the screen height. Top left is your effort (power, W/kg, cadence, heart rate, gear), top right the climb (gradient, VAM over the last 30 s, km and hm to the top, altitude, hairpin count), along the bottom the ride totals.
 - **Nothing gets lost:** a ride in progress is kept in the browser every 5 s. If the laptop dies, the browser crashes or the page reloads, Home offers to carry on where you stopped, save the ride as it is, or discard it. While you ride the display stays awake, and leaving the page asks first. Unplugged and below 20 % battery, the HUD tells you to plug in.
 
 Keys: `1`–`5` camera (chase, drone, moto, rider, cinematic) · `Space` pause · `E` ERG on/off · `Tab` skip interval · `[` `]` gears · `−` `=` difficulty · `↑` `↓` simulator watts (Shift = ±50) · `H` hide HUD · `Esc` end ride.
@@ -103,6 +104,7 @@ npm run bake-osm      # re-bake OSM corridors for presets
 npm run e2e           # Playwright: home → ride → summary → .fit (dev server must run)
 node scripts/test-devices.ts && node scripts/test-workouts.ts && node scripts/test-fit.ts
 node scripts/shots-set.mjs <prefix> 9900:cinematic 3200:chase:inversion   # QA stills, HUD hidden
+node scripts/hud-shots.mjs <prefix>                                          # HUD as read from the saddle (2 m)
 node scripts/flyover.mjs inversion 48 shots/gaisberg/flyover.mp4           # scripted drone film (ffmpeg)
 ```
 

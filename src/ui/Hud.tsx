@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { hub } from '../devices/index.ts';
 import { CAMERA_MODES, type CameraMode } from '../engine/CameraRig.ts';
 import type { RideAudio } from '../audio/RideAudio.ts';
@@ -7,8 +7,6 @@ import type { Route } from '../geo/route.ts';
 import type { RideSession } from '../sim/session.ts';
 import type { AppSettings } from '../sim/storage.ts';
 import { fmtTime, gradeColor, int, km, zoneColor } from './format.ts';
-
-import { GradeSign } from './GradeSign.tsx';
 import { useBattery, useCanvas, useHub, useSession } from './hooks.ts';
 import { drawProfile } from './profile.ts';
 import { WorkoutChart } from './WorkoutChart.tsx';
@@ -195,85 +193,114 @@ export function Hud({
 
   return (
     <div className="hud">
-      <div className="hud-power" style={{ ['--zone' as string]: zoneColor(st.power3s / ftp) }}>
-        <div className="big">
-          <span className="value">{Math.round(st.power3s)}</span>
-          <span className="unit">W</span>
-        </div>
-        <div className="zone-bar" />
-        {st.erg && st.holdWatts !== null && !workout ? (
-          <div className="gearbox">
-            <span className="g-label">Holding</span>
-            <span className="g-val">{st.holdWatts} W</span>
-            <span className="g-hint">shifters ±10 W</span>
+      <div className="hud-left">
+        <div className="hud-power hud-panel" style={{ ['--zone' as string]: zoneColor(st.power3s / ftp) }}>
+          <div className="big">
+            <span className="value">{Math.round(st.power3s)}</span>
+            <span className="unit">W</span>
           </div>
-        ) : st.gear !== null && !st.erg ? (
-          <div className="gearbox">
-            <span className="g-label">Gear</span>
-            {session.drivetrain.id === 'zwift' ? (
-              <span className="g-val">{st.gear}</span>
-            ) : (
-              <span className="g-val">
-                {session.gears[st.gear - 1]?.label}
-                <small className="g-num">{st.gear}</small>
+          <div className="zone-bar" />
+          <div className="hud-group">
+            <Stat value={wkg.toFixed(1)} unit="W/kg" />
+            {st.targetPower !== null && (
+              <Stat
+                value={String(st.targetPower)}
+                unit="target W"
+                className={`target ${Math.abs(st.power3s - st.targetPower) < st.targetPower * 0.05 ? 'hit' : ''}`}
+              />
+            )}
+            <Stat value={st.cadence ? String(Math.round(st.cadence)) : '–'} unit="rpm" />
+            <Stat value={st.heartRate !== null ? String(Math.round(st.heartRate)) : '–'} unit="bpm" />
+          </div>
+          {st.erg && st.holdWatts !== null && !workout ? (
+            <div className="gearbox">
+              <span className="g-label">Holding</span>
+              <span className="g-val">{st.holdWatts} W</span>
+              <span className="g-hint">shifters ±10 W</span>
+            </div>
+          ) : st.gear !== null && !st.erg ? (
+            <div className="gearbox">
+              <span className="g-label">Gear</span>
+              {session.drivetrain.id === 'zwift' ? (
+                <span className="g-val">{st.gear}</span>
+              ) : (
+                <span className="g-val">
+                  {session.gears[st.gear - 1]?.label}
+                  <small className="g-num">{st.gear}</small>
+                </span>
+              )}
+              <span className="g-ticks" aria-hidden>
+                {session.gears.map((_, i) => (
+                  <i key={i} className={i < st.gear! ? 'on' : ''} />
+                ))}
+              </span>
+            </div>
+          ) : null}
+          {st.erg && workout && st.bias !== 1 && (
+            <div className="gearbox">
+              <span className="g-label">Intensity</span>
+              <span className="g-val">{Math.round(st.bias * 100)} %</span>
+            </div>
+          )}
+          {st.trainerMode === 'sim' && <div className="sub">Difficulty {Math.round(st.difficulty * 100)} %</div>}
+        </div>
+        {st.segment && (
+          <div className="segment">
+            <span className="seg-name">{st.segment.name}</span>
+            <span className="seg-time">{fmtTime(st.segment.elapsed)}</span>
+            <span className="seg-rest">{st.segment.remaining > 999 ? `${km(st.segment.remaining)} km` : `${Math.round(st.segment.remaining)} m`} to go</span>
+            {st.segment.strava && (st.segment.kom !== null || st.segment.pr !== null) && (
+              <span className="seg-refs">
+                {st.segment.kom !== null && <span>KOM {fmtTime(st.segment.kom)}</span>}
+                {st.segment.pr !== null && <span>PR {fmtTime(st.segment.pr)}</span>}
+                <small>from Strava</small>
               </span>
             )}
-            <span className="g-ticks" aria-hidden>
-              {session.gears.map((_, i) => (
-                <i key={i} className={i < st.gear! ? 'on' : ''} />
-              ))}
-            </span>
+            {st.segment.strava && st.segment.komDelta !== null && (
+              <span className={`seg-delta ${st.segment.komDelta <= 0 ? 'ahead' : 'behind'}`}>
+                {st.segment.komDelta <= 0 ? '−' : '+'}
+                {fmtTime(Math.abs(st.segment.komDelta))} vs KOM
+              </span>
+            )}
+            {st.segment.delta !== null && (
+              <span className={`seg-delta ${st.segment.delta <= 0 ? 'ahead' : 'behind'}`}>
+                {st.segment.delta <= 0 ? '−' : '+'}
+                {fmtTime(Math.abs(st.segment.delta))} vs {st.segment.strava ? 'PR' : 'record'}
+              </span>
+            )}
           </div>
-        ) : null}
-        {st.erg && workout && st.bias !== 1 && (
-          <div className="gearbox">
-            <span className="g-label">Intensity</span>
-            <span className="g-val">{Math.round(st.bias * 100)} %</span>
-          </div>
-        )}
-        <div className="sub">
-          <span>{wkg.toFixed(1)} W/kg</span>
-          {st.targetPower !== null && (
-            <span className={`target ${Math.abs(st.power3s - st.targetPower) < st.targetPower * 0.05 ? 'hit' : ''}`}>
-              target {st.targetPower}
-            </span>
-          )}
-          {st.trainerMode === 'sim' && <span className="muted">slope {Math.round(st.difficulty * 100)} %</span>}
-        </div>
-      </div>
-
-      <div className="hud-grade">
-        <GradeSign grade={st.grade} />
-        {hairpins.length >= 3 && st.dir === 1 && (
-          <p className="kehre">
-            Kehre {Math.min(passed + 1, hairpins.length)} of {hairpins.length}
-          </p>
         )}
       </div>
 
       <div className="hud-map">
-        <canvas ref={mapRef} className="minimap" />
-        <div className="summit">
-          <span className="ele">
-            <b>{int(st.ele)}</b> m
-          </span>
-          {lowBattery !== null && <span className={`battery-low${lowBattery <= 10 ? ' critical' : ''}`}>Battery {lowBattery} %, plug in the charger</span>}
-          {toClimb !== null && <span className="lead-in">Easy lead-in, climb in {km(toClimb)} km</span>}
-          {route.category === 'climb' && toTop !== null && hmToTop !== null && (
-            <span>
-              {km(toTop)} km and {int(hmToTop)} hm to the top
-            </span>
-          )}
-          {route.category !== 'climb' && (
-            <span>
-              {route.loop ? `Lap ${st.lap}, ` : ''}
-              {km(Math.max(0, st.dir === 1 ? route.length - st.s : st.s))} km to go
-            </span>
-          )}
-          {route.category === 'climb' && st.dir === -1 && <span>Descending</span>}
+        <div className="hud-panel">
+          <canvas ref={mapRef} className="minimap" />
+          {/* in pairs: the slope now, what is left, where you are */}
+          <div className="hud-group climb">
+            <Stat value={`${fmtGrade(st.grade)} %`} unit="gradient" className="grade" style={{ ['--grade' as string]: gradeColor(st.grade) }} />
+            <Stat value={st.vam !== null && st.vam > 0 ? String(Math.round(st.vam / 10) * 10) : '–'} unit="VAM m/h" />
+            {route.category === 'climb' && toTop !== null && hmToTop !== null && (
+              <>
+                <Stat value={km(toTop)} unit="km to the top" />
+                <Stat value={int(hmToTop)} unit="hm to go" />
+              </>
+            )}
+            {route.category !== 'climb' && (
+              <Stat value={km(Math.max(0, st.dir === 1 ? route.length - st.s : st.s))} unit={route.loop ? `km to go, lap ${st.lap}` : 'km to go'} />
+            )}
+            <Stat value={int(st.ele)} unit="m altitude" />
+            {hairpins.length >= 3 && st.dir === 1 && (
+              <Stat value={`${Math.min(passed + 1, hairpins.length)}/${hairpins.length}`} unit="Kehre" />
+            )}
+          </div>
+          <div className="summit">
+            {lowBattery !== null && <span className={`battery-low${lowBattery <= 10 ? ' critical' : ''}`}>Battery {lowBattery} %, plug in the charger</span>}
+            {toClimb !== null && <span className="lead-in">Easy lead-in, climb in {km(toClimb)} km</span>}
+            {route.category === 'climb' && st.dir === -1 && <span>Descending</span>}
+          </div>
         </div>
         {st.bots.some((b) => b.active !== false) && (
-          <ul className="pacers">
+          <ul className="pacers hud-panel">
             {st.bots.map((b, i) =>
               b.active === false ? null : (
               <li key={i}>
@@ -296,14 +323,12 @@ export function Hud({
       <div className="hud-bottom">
         <div className="hud-row">
           <div className="hud-stats">
-            <Stat value={(st.speed * 3.6).toFixed(1)} unit="km/h" />
-            <Stat value={km(st.distance, 2)} unit="km ridden" />
             <Stat value={fmtTime(st.elapsed)} unit="time" />
+            <Stat value={km(st.distance, 1)} unit="km ridden" />
+            <Stat value={(st.speed * 3.6).toFixed(1)} unit="km/h" />
             <Stat value={int(st.gain)} unit="hm climbed" />
           </div>
           <div className="hud-stats">
-            <Stat value={st.heartRate !== null ? String(Math.round(st.heartRate)) : '–'} unit="bpm" />
-            <Stat value={st.cadence ? String(Math.round(st.cadence)) : '–'} unit="rpm" />
             <Stat value={Math.round(st.np) ? String(Math.round(st.np)) : '–'} unit="W normalized" />
             <Stat value={String(Math.round(st.kj))} unit="kJ" />
           </div>
@@ -350,32 +375,6 @@ export function Hud({
         </div>
       </div>
 
-      {st.segment && (
-        <div className="segment">
-          <span className="seg-name">{st.segment.name}</span>
-          <span className="seg-time">{fmtTime(st.segment.elapsed)}</span>
-          <span className="seg-rest">{st.segment.remaining > 999 ? `${km(st.segment.remaining)} km` : `${Math.round(st.segment.remaining)} m`} to go</span>
-          {st.segment.strava && (st.segment.kom !== null || st.segment.pr !== null) && (
-            <span className="seg-refs">
-              {st.segment.kom !== null && <span>KOM {fmtTime(st.segment.kom)}</span>}
-              {st.segment.pr !== null && <span>PR {fmtTime(st.segment.pr)}</span>}
-              <small>from Strava</small>
-            </span>
-          )}
-          {st.segment.strava && st.segment.komDelta !== null && (
-            <span className={`seg-delta ${st.segment.komDelta <= 0 ? 'ahead' : 'behind'}`}>
-              {st.segment.komDelta <= 0 ? '−' : '+'}
-              {fmtTime(Math.abs(st.segment.komDelta))} vs KOM
-            </span>
-          )}
-          {st.segment.delta !== null && (
-            <span className={`seg-delta ${st.segment.delta <= 0 ? 'ahead' : 'behind'}`}>
-              {st.segment.delta <= 0 ? '−' : '+'}
-              {fmtTime(Math.abs(st.segment.delta))} vs {st.segment.strava ? 'PR' : 'record'}
-            </span>
-          )}
-        </div>
-      )}
       {message && <div className="coach">{message}</div>}
       {st.banner && (
         <div className="banner" key={st.banner.text}>
@@ -415,9 +414,15 @@ export function Hud({
   );
 }
 
-function Stat({ value, unit }: { value: string; unit: string }) {
+/** Whole percent, with a real minus sign downhill. */
+function fmtGrade(g: number): string {
+  const r = Math.round(g);
+  return r < 0 ? `−${-r}` : String(r);
+}
+
+function Stat({ value, unit, className, style }: { value: string; unit: string; className?: string; style?: CSSProperties }) {
   return (
-    <div className="stat">
+    <div className={`stat${className ? ` ${className}` : ''}`} style={style}>
       <span className="s-val">{value}</span>
       <span className="s-unit">{unit}</span>
     </div>

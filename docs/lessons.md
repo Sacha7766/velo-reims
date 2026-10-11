@@ -100,3 +100,10 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   "your best" compare only rides with the same lead-in setting. Where: `session.ts` `feltGrade`, `segments.ts`.
 - **Number fields jumped to 500 W, 150 kg or 20 kg.** Clamping on every keystroke. Fix: `NumberInput` applies
   in-range values live and clamps on blur. Where: `src/ui/home/shared.tsx`.
+- **The HUD couldn't be read from the saddle.** The laptop stands about 2 m away; labels were 13–16 px and most
+  numbers 38 px, and stats sat in mixed rows (heart rate next to kJ). 1 arcminute at 2 m is about 2.9 CSS px on a
+  16" MacBook, so shrinking a screenshot by 2.9 shows what 20/20 vision resolves there (`scripts/hud-shots.mjs`).
+  Fix: sizes in one unit that scales with screen height (`--u`, 1 px at 1117 px tall), values 62–172 and labels
+  24 at that height, three groups (effort top left, climb top right, ride totals at the bottom) on translucent
+  panels so labels hold against a bright sky; the big gradient sign gave way to a gradient figure with a colour
+  underline, and VAM (30 s) joined the climb group. Where: `Hud.tsx`, `.hud` rules in `styles.css`, `session.ts`.

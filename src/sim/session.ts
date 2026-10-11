@@ -103,6 +103,8 @@ export interface LiveState {
   grade: number;
   ele: number;
   gain: number;
+  /** Climbing rate over the last 30 s, m/h (VAM); null for the first few seconds. */
+  vam: number | null;
   avgPower: number;
   np: number;
   kj: number;
@@ -148,6 +150,8 @@ export interface SessionSnapshot {
 
 const tmp: Partial<RoutePoint> = {};
 
+/** Seconds of altitude change behind the VAM readout: long enough to be steady, short enough to follow a ramp. */
+const VAM_WINDOW = 30;
 /** Lead-in: at most this gradient (%) on the way up, a third of the real one below it. */
 const LEAD_IN_MAX_GRADE = 2;
 /** Metres before the climb over which the lead-in gradient blends into the real one. */
@@ -196,7 +200,7 @@ export class RideSession {
     this.gainRef = p0.ele;
     this.st = {
       status: 'ready', elapsed: 0, movingTime: 0, s: 0, dir: 1, lap: 1, distance: 0, speed: 0,
-      power: 0, power3s: 0, cadence: 0, heartRate: null, grade: p0.grade, ele: p0.ele, gain: 0,
+      power: 0, power3s: 0, cadence: 0, heartRate: null, grade: p0.grade, ele: p0.ele, gain: 0, vam: null,
       avgPower: 0, np: 0, kj: 0, workout: cfg.workout ? stateAt(cfg.workout, 0, cfg.settings.ftp) : null,
       workoutElapsed: 0, erg: (cfg.erg && !!cfg.workout) || cfg.holdWatts !== null, targetPower: null, trainerMode: 'idle',
       ghostS: cfg.ghost ? 0 : null, ghostDir: 1, ghostGap: null, summitTime: null, banner: null,
@@ -474,6 +478,9 @@ export class RideSession {
       });
       const n = this.samples.length;
       st.avgPower = st.avgPower + (power - st.avgPower) / n;
+      const back = this.samples[Math.max(0, n - 1 - VAM_WINDOW)];
+      const span = (this.samples[n - 1].t - back.t) / 1000;
+      st.vam = span >= 10 ? ((here.ele - back.alt) / span) * 3600 : null;
       if (this.workout?.id === RAMP_TEST_ID && st.rampFtp === null) this.updateRamp(power, cadence);
       if (++this.npAcc >= 5) {
         this.npAcc = 0;

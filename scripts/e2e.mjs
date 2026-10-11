@@ -35,8 +35,8 @@ await page.screenshot({ path: 'shots/e2e-riding.png' });
 const hud = await page.evaluate(() => ({
   power: document.querySelector('.hud-power .value')?.textContent,
   stats: [...document.querySelectorAll('.hud-stats .stat')].map((s) => s.textContent),
+  groups: [...document.querySelectorAll('.hud-group .stat')].map((s) => s.textContent),
   interval: document.querySelector('.hud-workout .interval')?.textContent,
-  grade: document.querySelector('.grade-sign')?.getAttribute('aria-label'),
 }));
 step(`riding: ${JSON.stringify(hud)}`);
 await page.keyboard.press('Digit2');

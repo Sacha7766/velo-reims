@@ -126,6 +126,7 @@ From `research/gaisberg/qa-sweep.md` (2026-10-11). Each needs re-checking in the
 | 2026-10-11 | The summit roundabout must be ridden; the road can't just end | The real road has a loop at the top | Done (202 m loop) |
 | 2026-10-11 | The rider should be more detailed and higher-res | Close camera shows the low-poly rider | Done (Blender rider, 71k tris) |
 | 2026-10-11 | "can we get for gaisberg like 5-10 min easy lead in route?" | Warm up before the climb starts | Done: 2.9 km from Gnigl on the B158, easy resistance, about 7–10 min |
+| 2026-10-11 | Get rid of the big gradient sign; numbers bigger and grouped; show VAM | It's annoying to see all the time, and the laptop is 2 m away so the small numbers can't be read | Done: sign removed, HUD in three groups sized for 2 m, VAM (30 s) in the climb group (all routes) |
 
 ## Status
 
