@@ -151,6 +151,8 @@ export class RideSession {
   private segRuns: { seg: Segment; t0: number; power: number; n: number }[] = [];
   private efforts: { id: string; name: string; time: number; power: number }[] = [];
   private rampWindow: { power: number; cadence: number; target: number | null }[] = [];
+  /** Gradient last handed to the trainer, eased for momentum. */
+  private simGrade: number | null = null;
   private st: LiveState;
   readonly drivetrain: Drivetrain;
   /** Virtual gears of the selected drivetrain, easiest first. */
@@ -394,7 +396,12 @@ export class RideSession {
     } else {
       const ahead = pointAt(route, st.s + 4 * st.dir, tmp).grade * st.dir;
       const factor = ahead >= 0 ? this.settings.difficulty : this.settings.difficulty * 0.7;
-      this.hub.setMode({ kind: 'sim', params: { grade: ahead * factor, crr: 0.004, cw: 0.51 } });
+      // momentum: on the road ~85 kg of bike and rider carry you a few seconds into a ramp, a trainer's
+      // flywheel far less, so steeper gradient eases in over ~4 s (and lets go faster when it flattens)
+      const want = ahead * factor;
+      if (this.simGrade === null || st.trainerMode !== 'sim') this.simGrade = want;
+      else this.simGrade += (want - this.simGrade) * (1 - Math.exp(-dt / (want > this.simGrade ? 4 : 1.5)));
+      this.hub.setMode({ kind: 'sim', params: { grade: this.simGrade, crr: 0.004, cw: 0.51 } });
       st.trainerMode = 'sim';
     }
 
