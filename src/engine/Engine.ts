@@ -9,7 +9,7 @@ import {
   VignetteEffect,
 } from 'postprocessing';
 import { N8AOPostPass } from 'n8ao';
-import { DEM_MAX_Z, heightAtMerc, preloadDemForBox } from '../geo/elevation.ts';
+import { DEM_MAX_Z, preloadDemForBox } from '../geo/elevation.ts';
 import { sourcesFor } from '../geo/imagery.ts';
 import { loadOsmElements, parseOsm, type OsmWorld, type Polygon } from '../geo/osm.ts';
 import { pointAt, RouteIndex, type Route, type RoutePoint } from '../geo/route.ts';
@@ -314,7 +314,8 @@ export class Engine {
           ),
         );
       }
-      const heightAt = (x: number, z: number) => heightAtMerc(x / frame.k + frame.mx0, -z / frame.k + frame.my0, DEM_MAX_Z);
+      // the rendered ground (road cuts and fills included): trees and houses must stand on it
+      const heightAt = (x: number, z: number) => terrain.groundHeight(x, z);
       const [elements, baked] = await Promise.all([
         loadOsmElements(route, CORRIDOR, (done, total) => (decorStage = `OpenStreetMap ${done + 1} of ${total}`)),
         loadBakedTrees(route.id, frame),
@@ -322,7 +323,7 @@ export class Engine {
       ]);
       if (this.world !== world) return;
       if (sceneDef && this.world === world) {
-        await landmarks.build(sceneDef, frame, (x, z) => terrain.groundHeight(x, z), (x, z) => index.nearest(x, z, halfWidth + 2.6).index >= 0);
+        await landmarks.build(sceneDef, frame, (x, z) => terrain.groundHeight(x, z), (x, z) => index.nearest(x, z, halfWidth + 3.8).index >= 0);
       }
       if (this.world !== world) return;
       const osm: OsmWorld = parseOsm(route, elements);
@@ -693,6 +694,14 @@ export class Engine {
         : w.rider.position;
       this.sun.target.position.copy(focus);
       this.sun.position.copy(focus).addScaledVector(atmo.uSunDir.value, 300);
+      // shadow area grows with the camera's distance so its edge stays out of view
+      const want = Math.min(140, Math.max(32, this.camera.position.distanceTo(focus) * 1.3));
+      const sc = this.sun.shadow.camera;
+      if (Math.abs(sc.right - want) > want * 0.15) {
+        sc.left = sc.bottom = -want;
+        sc.right = sc.top = want;
+        sc.updateProjectionMatrix();
+      }
     }
     this.sky.follow(this.camera);
     this.world?.ocean?.follow(this.camera);

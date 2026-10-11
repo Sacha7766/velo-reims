@@ -225,6 +225,16 @@ float tBump = 0.0;
   // bare limestone reads beige-grey, never snow-white
   float bL = dot(base, vec3(0.3, 0.55, 0.15));
   base = mix(base, base * min(1.0, 0.62 / max(bL, 1e-3)) * vec3(1.0, 0.97, 0.88), uKarst * limestone);
+  // de-light: aerial photos carry the cast shadows of the flight's sun, and we light the ground
+  // again; lift near-black photo shadows towards a floor, keeping their hue
+  {
+    float dl = dot(base, vec3(0.3, 0.55, 0.15));
+    float lifted = sqrt(dl * dl + 0.055 * 0.055);
+    // photo shadows are blue (skylight only): lift them towards a vegetation hue, not their own
+    vec3 vegHue = mix(vec3(0.82, 1.0, 0.68), vec3(1.0, 0.98, 0.8), uKarst);
+    float darkW = smoothstep(0.09, 0.02, dl);
+    base = mix(base * (lifted / max(dl, 1e-3)), vegHue * lifted, darkW * 0.8);
+  }
   // rock faces and cuts near the road: photographed fractured limestone, ochre to grey
   float cliffNear = 1.0 - smoothstep(35.0, 110.0, camD);
   // rock only on steep faces; ~50° banks above road cuts stay garrigue
@@ -250,18 +260,24 @@ float tBump = 0.0;
   // Mediterranean soil is mid grey-brown (terra rossa, needle litter); the orthophoto's
   // sun-bleached open ground photographs far brighter than it looks from the road
   float soilL = dot(base, vec3(0.3, 0.55, 0.15));
-  float soilCap = mix(0.36, 0.5, max(limestone, steep));
+  float soilCap = mix(0.2, 0.38, max(limestone, steep));
   base = mix(base, base * min(1.0, soilCap / max(soilL, 1e-3)) * vec3(1.0, 0.95, 0.88), uKarst);
+  // the orthophoto's real road is often wider than or offset from our asphalt ribbon: grey,
+  // unsaturated photo pixels in the road corridor become verge (grass in the Alps)
+  float photoRoad = verge * smoothstep(0.14, 0.06, sat) * (1.0 - uKarst) * (1.0 - steep);
+  vec3 vergeGrass = vec3(0.13, 0.18, 0.08) * (0.85 + 0.3 * tNoise(p * 0.8)) * (0.9 + 0.2 * gd);
+  base = mix(base, vergeGrass, photoRoad * 0.9);
   // road verges: grey-brown dirt with pale rubble (not the orthophoto's grey asphalt)
   float rubble = smoothstep(0.72, 0.8, tNoise(p * 2.3)) * 0.5 + smoothstep(0.78, 0.86, tNoise(p * 6.1 + 3.0)) * 0.5;
-  vec3 dirt = mix(vec3(0.42, 0.36, 0.3), vec3(0.62, 0.59, 0.52), rubble) * (0.82 + 0.3 * tNoise(p * 0.9));
+  vec3 dirt = mix(vec3(0.34, 0.29, 0.24), vec3(0.46, 0.44, 0.39), rubble * 0.6) * (0.82 + 0.3 * tNoise(p * 0.9));
   base = mix(base, dirt, uKarst * verge * (1.0 - steep * 0.6) * 0.85);
   tc = base * tDetail;
 
   // water: OSM mask, or sea level
   vec2 muv = (p - uMaskOrigin) / uMaskSize;
   float mask = (muv.x > 0.0 && muv.y > 0.0 && muv.x < 1.0 && muv.y < 1.0) ? texture2D(uWaterMask, muv).r : 0.0;
-  float sea = (1.0 - smoothstep(0.4, 1.6, vAtmoWorld.y)) * (1.0 - smoothstep(0.01, 0.04, slope));
+  // DEM sea level (national DEMs store the sea as 0); coastal flats a metre up are land
+  float sea = (1.0 - smoothstep(mix(0.4, 0.08, uPhotoSea), mix(1.6, 0.35, uPhotoSea), vAtmoWorld.y)) * (1.0 - smoothstep(0.01, 0.04, slope)) * (1.0 - canopy) * (1.0 - verge);
   tWater = clamp(max(smoothstep(0.35, 0.75, mask), sea), 0.0, 1.0);
   diffuseColor.rgb *= tc;
 }

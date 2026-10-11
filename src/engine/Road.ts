@@ -1,7 +1,7 @@
 // Asphalt ribbon along the route with procedural markings, plus Alpine roadside posts.
 
 import * as THREE from 'three';
-import type { Route, TurnPath } from '../geo/route.ts';
+import type { Route } from '../geo/route.ts';
 import { patchMaterial } from './atmosphere.ts';
 import { ALPINE, type Biome } from './biome.ts';
 
@@ -90,12 +90,14 @@ float rn(vec2 p) {
   vec3 col = mix(asphalt, paint * wear, max(edge, centre));
   // gravel shoulder
   float sh = smoothstep(uHalf - 0.02, uHalf + 0.06, a);
-  vec3 gravel = mix(vec3(0.3, 0.29, 0.27), vec3(0.42, 0.41, 0.38), rn(p * 14.0));
+  // a thin dark seam of grit and soil where the asphalt meets the verge
+  vec3 gravel = mix(vec3(0.15, 0.14, 0.11), vec3(0.22, 0.2, 0.16), rn(p * 6.0));
   // Mallorca: the asphalt crumbles into the red-brown dusty verge
   gravel = mix(gravel, vec3(0.42, 0.33, 0.25) * (0.8 + 0.3 * rn(p * 9.0)), uMed);
   col = mix(col, gravel, sh);
   diffuseColor.rgb = col;
-  diffuseColor.a = 1.0 - smoothstep(uHalf + 0.25, uHalf + ${SHOULDER.toFixed(2)}, a);
+  // a narrow strip of gravel then the verge (wide soft fades read as a grey smear)
+  diffuseColor.a = 1.0 - smoothstep(uHalf + 0.04, uHalf + 0.22, a);
 }`,
       )
       .replace(
@@ -129,7 +131,6 @@ export class Road extends THREE.Group {
       if (!t) continue;
       const step = t.length / (t.n - 1);
       this.strip({ n: t.loopN, step, x: t.x, z: t.z, ele: t.ele, heading: t.heading, grade: t.grade }, halfWidth, mat, 100000);
-      this.turningCircleFill(t, halfWidth, mat);
     }
     // rural delineator posts and guard rails need the terrain: Roadside.ts
     if (route.category === 'city') this.add(lamps(route, halfWidth));
@@ -193,43 +194,6 @@ export class Road extends THREE.Group {
     }
   }
 
-  /** A small closed turnaround (turning circle) gets its middle paved too. */
-  private turningCircleFill(t: TurnPath, halfWidth: number, mat: THREE.Material) {
-    let cx = 0, cz = 0, ce = 0;
-    for (let i = 0; i < t.loopN; i++) {
-      cx += t.x[i] / t.loopN;
-      cz += t.z[i] / t.loopN;
-      ce += t.ele[i] / t.loopN;
-    }
-    let rMin = Infinity, rMax = 0;
-    for (let i = 0; i < t.loopN; i++) {
-      const d = Math.hypot(t.x[i] - cx, t.z[i] - cz);
-      rMin = Math.min(rMin, d);
-      rMax = Math.max(rMax, d);
-    }
-    const loopLen = (t.length * (t.loopN - 1)) / (t.n - 1);
-    if (loopLen > 110 || rMax > 16) return; // a real loop round a block or summit: no fill
-    const r = rMin + halfWidth * 0.9;
-    const geo = new THREE.CircleGeometry(r, 40).rotateX(-Math.PI / 2);
-    const count = geo.getAttribute('position').count;
-    // plain asphalt: across = 1.5 m (between centre dash and edge line), no markings
-    const ruv = new Float32Array(count * 2);
-    const tuv = new Float32Array(count * 2);
-    const p = geo.getAttribute('position');
-    for (let i = 0; i < count; i++) {
-      ruv[i * 2] = 1.5;
-      ruv[i * 2 + 1] = -50;
-      tuv[i * 2] = p.getX(i) / TILE;
-      tuv[i * 2 + 1] = p.getZ(i) / TILE;
-    }
-    geo.setAttribute('roadUv', new THREE.BufferAttribute(ruv, 2));
-    geo.setAttribute('uv', new THREE.BufferAttribute(tuv, 2));
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(cx, ce + 0.05, cz);
-    mesh.receiveShadow = true;
-    mesh.renderOrder = 1;
-    this.add(mesh);
-  }
 }
 
 /** Street lamps every 32 m, alternating sides (city routes). */

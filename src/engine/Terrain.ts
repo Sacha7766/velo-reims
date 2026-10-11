@@ -390,9 +390,7 @@ export class Terrain extends THREE.Group {
   /** Blend raw terrain towards the road: embankments below, cuts above; untouched over tunnels. */
   private flatten(x: number, z: number, h: number): number {
     const { routeIndex, roadHalfWidth, route } = this.opts;
-    // steep cuts carve up to ~40 m into the hillside; the bank must meet the natural slope
-    // inside the search radius so the surface stays continuous
-    const near = routeIndex.nearest(x, z, roadHalfWidth + (this.opts.cutWidth < 8 ? 42 : 17));
+    const near = routeIndex.nearest(x, z, roadHalfWidth + 17);
     if (near.index < 0) return h;
     const s = near.f * route.step;
     if (!near.turn) for (const [a, b] of route.tunnels) if (s > a + 4 && s < b - 4) return h;
@@ -405,13 +403,18 @@ export class Terrain extends THREE.Group {
       const faceH = 4.5 + 2.5 * Math.sin(s * 0.013) * Math.sin(s * 0.0071 + 1.3);
       const faceW = faceH * 0.22;
       const profile = dd < faceW ? road + (faceH * dd) / faceW : road + faceH + (dd - faceW) * 1.15;
-      return Math.min(h, Math.max(road, profile));
+      const carved = Math.min(h, Math.max(road, profile));
+      // only a narrow band is reshaped; beyond ~10 m the real hillside (cliffs included) takes over
+      return carved + (h - carved) * smooth01((dd - 7) / 6);
     }
     if (near.dist > roadHalfWidth + 17) return h;
+    // under the asphalt the ground sits 0.45 m low (no z-fighting); beside it the verge comes
+    // back up to just below road level, so there is no ditch along the edge
+    const verge = road + 0.39 * smooth01((near.dist - roadHalfWidth + 0.2) / 1.0);
     // fills ease out into the slope over 14 m
     const width = cut ? Math.max(this.opts.cutWidth, (h - road) * 0.6) : 14;
     const w = 1 - smooth01((near.dist - roadHalfWidth - (cut ? 0.6 : 2.5)) / width);
-    return h + (road - h) * w;
+    return h + (verge - h) * w;
   }
 
   /** Terrain height (no road flattening) at a world position, NaN when not loaded. */

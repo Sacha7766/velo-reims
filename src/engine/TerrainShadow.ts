@@ -8,8 +8,8 @@ import { DEM_MAX_Z, heightAtMerc, preloadDemForBox } from '../geo/elevation.ts';
 import type { WorldFrame } from '../geo/mercator.ts';
 import { atmo, terrainShadowUniforms, WHITE_TEX } from './atmosphere.ts';
 
-const FIELD = 1024; // heightfield texels per side
-const OUT = 2048; // shadow texels per side
+const FIELD = 2048; // heightfield texels per side
+const OUT = 4096; // shadow texels per side
 
 
 interface Field {
@@ -110,7 +110,8 @@ export class TerrainShadow {
     const cx = (bounds[0] + bounds[2]) / 2;
     const cz = (bounds[1] + bounds[3]) / 2;
     const extent = Math.max(bounds[2] - bounds[0], bounds[3] - bounds[1]);
-    const nearSize = extent + 12000;
+    // near field: the route plus ~2 km (a few metres per texel); far field catches distant ridges
+    const nearSize = extent + 4000;
     const farSize = Math.max(64000, nearSize * 3);
     // far first: near-field gaps (failed tiles) fall back to the coarse heights
     const far = await this.field(frame, cx, cz, farSize, 11);

@@ -66,7 +66,8 @@ export class Tunnels extends THREE.Group {
       const ang = Math.PI * (1 - t);
       out.push([Math.cos(ang) * W, BORE.wall + Math.sin(ang) * (BORE.apex - BORE.wall)]);
     }
-    out.push([W, BORE.wall], [W, -0.3]);
+    // close the bore with a floor under the road (else the sky shows beside the asphalt)
+    out.push([W, BORE.wall], [W, -0.3], [-W, -0.3]);
     return out;
   }
 
@@ -182,50 +183,50 @@ export class Tunnels extends THREE.Group {
 
 let rockMat: THREE.MeshStandardMaterial | null = null;
 
-/** Rough grey limestone, procedural (no texture): mottled colour and a noisy bump. */
+/** Rough-hewn limestone: the CC0 cliff scan, tri-planar in world metres, with its normal map. */
 function rockMaterial(): THREE.MeshStandardMaterial {
   if (rockMat) return rockMat;
-  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95 });
+  const load = (f: string, srgb: boolean) => {
+    const t = new THREE.TextureLoader().load(f);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 8;
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  };
+  const col = load('/textures/med/cliff.jpg', true);
+  const nor = load('/textures/med/cliff_nor.jpg', false);
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92 });
   mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uRkCol = { value: col };
+    shader.uniforms.uRkNor = { value: nor };
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec2 vRk;\nvarying vec3 vRkW;')
-      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvRk = uv;\nvRkW = (modelMatrix * vec4(position, 1.0)).xyz;');
-    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vRkW;\nvarying vec3 vRkN;')
       .replace(
-        '#include <common>',
-        `#include <common>
-varying vec2 vRk;
-varying vec3 vRkW;
-float rkH(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-float rkN(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(rkH(i), rkH(i + vec2(1, 0)), f.x), mix(rkH(i + vec2(0, 1)), rkH(i + vec2(1, 1)), f.x), f.y); }
-float rkF(vec2 p) { return rkN(p) * 0.5 + rkN(p * 2.3) * 0.3 + rkN(p * 5.1) * 0.2; }
-float rk3(vec3 p) {
-  // 3D value noise from two 2D lookups (cheap, isotropic enough for rock)
-  return 0.5 * (rkF(p.xy + p.z * 1.7) + rkF(p.zy * 1.13 + p.x * 0.9));
-}`,
-      )
+        '#include <begin_vertex>',
+        '#include <begin_vertex>\nvRkW = (modelMatrix * vec4(position, 1.0)).xyz;\nvRkN = normalize(mat3(modelMatrix) * normal);',
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform sampler2D uRkCol;\nuniform sampler2D uRkNor;\nvarying vec3 vRkW;\nvarying vec3 vRkN;')
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-// isotropic world-space noise: no stretching along or across the bore
-vec3 rw = vRkW * 0.9;
-vec2 rp = rw.xy + rw.z;
-float rf = rk3(rw);
-diffuseColor.rgb = mix(vec3(0.3, 0.29, 0.27), vec3(0.52, 0.48, 0.42), rf) * (0.85 + 0.3 * rk3(rw * 3.0));
-diffuseColor.rgb *= 1.0 - 0.3 * smoothstep(0.62, 0.9, rk3(rw * 1.3 + 7.0)); // damp dark patches`,
+vec3 rkw = pow(abs(normalize(vRkN)), vec3(4.0));
+rkw /= rkw.x + rkw.y + rkw.z;
+float rks = 1.0 / 3.5;
+vec3 rkc = texture2D(uRkCol, vRkW.zy * rks).rgb * rkw.x + texture2D(uRkCol, vRkW.xz * rks).rgb * rkw.y + texture2D(uRkCol, vRkW.xy * rks).rgb * rkw.z;
+float rkl = dot(rkc, vec3(0.3, 0.55, 0.15));
+// bored rock is greyer and darker than the sunlit cuts outside, a little damp near the floor
+diffuseColor.rgb = mix(vec3(rkl), rkc, 0.35) * vec3(0.95, 0.93, 0.88) * 0.85;`,
       )
       .replace(
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
 {
-  float e = 0.06;
-  float h0 = rk3(rw * 2.0);
-  vec3 bump = vec3(rk3(rw * 2.0 + vec3(e, 0.0, 0.0)) - h0, rk3(rw * 2.0 + vec3(0.0, e, 0.0)) - h0, 0.0) * 6.0;
-  normal = normalize(normal + bump.x * normalize(dFdx(vViewPosition)) + bump.y * normalize(dFdy(vViewPosition)));
+  vec3 tn = (texture2D(uRkNor, vRkW.zy * rks).xyz * rkw.x + texture2D(uRkNor, vRkW.xz * rks).xyz * rkw.y + texture2D(uRkNor, vRkW.xy * rks).xyz * rkw.z) * 2.0 - 1.0;
+  normal = normalize(normal + (viewMatrix * vec4(tn.x, tn.y, 0.0, 0.0)).xyz * 1.2);
 }`,
       );
   };
-  rockMat = patchMaterial(mat, { key: 'tunnelrock' });
+  rockMat = patchMaterial(mat, { key: 'tunnelrock2' });
   return rockMat;
 }

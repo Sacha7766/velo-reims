@@ -219,6 +219,11 @@ float atmoCloudShadow(vec3 wp) {
   float dens = smoothstep(cover - 0.05, cover + 0.3, v + 0.03);
   return 1.0 - 0.82 * dens;
 }
+float atmoShadowFade(vec4 c) {
+  vec2 q = c.xy / c.w;
+  float e = min(min(q.x, q.y), min(1.0 - q.x, 1.0 - q.y));
+  return smoothstep(0.0, 0.15, e);
+}
 float atmoSunVisibility(vec3 wp) {
   float v = 1.0;
   if (uTShadowRect.w > 0.5) {
@@ -273,10 +278,17 @@ vec2 atmoTunnel(vec3 wp) {
 
 const LIGHTS_WITH_SUNVIS =
   'float atmoSunVis = atmoSunVisibility(vAtmoWorld);\n' +
-  THREE.ShaderChunk.lights_fragment_begin.replace(
-    'getDirectionalLightInfo( directionalLight, directLight );',
-    'getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= atmoSunVis;',
-  );
+  THREE.ShaderChunk.lights_fragment_begin
+    .replace(
+      'getDirectionalLightInfo( directionalLight, directLight );',
+      'getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= atmoSunVis;',
+    )
+    // the sun's shadow map covers a box around the rider: fade shadows out towards its edge
+    // so they never end in a straight line
+    .replace(
+      'directLight.color *= ( directLight.visible && receiveShadow ) ? getShadow( directionalShadowMap[ i ], directionalLightShadow.shadowMapSize, directionalLightShadow.shadowIntensity, directionalLightShadow.shadowBias, directionalLightShadow.shadowRadius, vDirectionalShadowCoord[ i ] ) : 1.0;',
+      'directLight.color *= ( directLight.visible && receiveShadow ) ? mix( 1.0, getShadow( directionalShadowMap[ i ], directionalLightShadow.shadowMapSize, directionalLightShadow.shadowIntensity, directionalLightShadow.shadowBias, directionalLightShadow.shadowRadius, vDirectionalShadowCoord[ i ] ), atmoShadowFade( vDirectionalShadowCoord[ i ] ) ) : 1.0;',
+    );
 
 /**
  * Inject curvature + aerial perspective into a built-in material.
