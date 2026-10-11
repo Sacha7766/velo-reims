@@ -141,6 +141,37 @@ export function RouteStatsLine({ entry }: { entry: RouteEntry }) {
   );
 }
 
+/** Number input that lets you type freely: in-range values apply as you type, anything else
+ * (empty, half-typed "2" for 250) waits and is clamped when you leave the field or press Enter. */
+export function NumberInput({
+  value, min, max, step = 1, onChange,
+}: { value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = (s: string) => {
+    const v = Number(s);
+    if (s.trim() !== '' && Number.isFinite(v)) onChange(Math.min(max, Math.max(min, v)));
+    setDraft(null);
+  };
+  return (
+    <input
+      type="number"
+      inputMode="decimal"
+      value={draft ?? value}
+      min={min}
+      max={max}
+      step={step}
+      onChange={(e) => {
+        const s = e.target.value;
+        setDraft(s);
+        const v = Number(s);
+        if (s.trim() !== '' && v >= min && v <= max) onChange(v);
+      }}
+      onBlur={(e) => commit(e.target.value)}
+      onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+    />
+  );
+}
+
 export function NumberField({
   label, unit, value, min, max, step = 1, onChange,
 }: { label: string; unit: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) {
@@ -148,7 +179,7 @@ export function NumberField({
     <label className="num-field">
       <span>{label}</span>
       <span className="num-input">
-        <input type="number" value={value} min={min} max={max} step={step} onChange={(e) => onChange(Math.min(max, Math.max(min, Number(e.target.value) || min)))} />
+        <NumberInput value={value} min={min} max={max} step={step} onChange={onChange} />
         <i>{unit}</i>
       </span>
     </label>

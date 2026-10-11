@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { DRIVETRAINS, gearList, metresPerRev, parseTeeth, resolveDrivetrain } from '../../sim/drivetrain.ts';
 import { DEFAULT_PHYSICS, powerAtSpeed } from '../../sim/physics.ts';
 import type { AppSettings } from '../../sim/storage.ts';
+import { NumberInput } from './shared.tsx';
 
 const CADENCE = 60;
 const GRADES = [5, 10, 15];
@@ -69,17 +70,7 @@ export function DrivetrainSection({
           </label>
           <label className="text-field">
             <span>Wheel circumference (m)</span>
-            <input
-              type="number"
-              min={1.5}
-              max={2.6}
-              step={0.005}
-              value={custom.wheelCircumference}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                if (v >= 1.5 && v <= 2.6) patch({ wheelCircumference: v });
-              }}
-            />
+            <NumberInput min={1.5} max={2.6} step={0.005} value={custom.wheelCircumference} onChange={(v) => patch({ wheelCircumference: v })} />
           </label>
         </>
       )}
