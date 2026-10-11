@@ -22,6 +22,19 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   before "fixing" a shadow.
 - **Grey band along the road edge.** The road's shoulder alpha ramp was wide and light (the terrain wasn't the
   cause). Fix: a narrow, dark gravel seam. Where: `Road.ts`.
+- **The GPU ran flat out, even on an M5 Max (45–57 fps at 1×, 31 fps at full Retina).** The logarithmic depth
+  buffer writes `gl_FragDepth` in every fragment shader, which switches off early depth testing and the hidden-surface
+  removal of Apple's tile GPUs: every hidden tree card and blade of grass was shaded. Fix: a reversed float depth
+  buffer (`reversedDepthBuffer`, needs `EXT_clip_control`) keeps the near-to-horizon precision without depth writes.
+  Forest climb: 31 → 87 fps at 2×; at the real settings 44 fps at 1× → a steady 60 fps at 1.6×, GPU busy 89 % → 63 %.
+  Trees went from the dearest feature (+40 % fps when hidden) to nearly free. Where: `Engine` constructor.
+- **Reversed depth: black frame, then darkened slopes, then self-shadowed walls.** Three library gaps, each found
+  by rendering the same paused frame with `?depth=log` and without and diffing (`atmo.uTime` fixed, AO and sun
+  shadows toggled one at a time). A bare `THREE.Camera` throws when three re-projects it (use an
+  `OrthographicCamera`, `TerrainShadow.ts`); N8AO 2.0.1's full-screen quads depth-test and fail, and its post pass
+  builds the half-res depth shader without `REVERSEDEPTH` (wrong normals); three 0.186's PCF shadow lookup adds the
+  bias without flipping it. Fixes in `Engine` (AO render wrapper, `shadow.bias` sign). After them the frames match
+  to under 1/255 on average at six spots. Re-check with `?depth=log` after upgrading three or N8AO.
 
 ## Placement and geometry
 
@@ -69,10 +82,11 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   ride / Discard; a ride asks before the page unloads; a screen wake lock keeps the display on. Where:
   `src/sim/unfinished.ts`, `RideSession.snapshot/resume`, `App.tsx`.
 - **The battery drained 50 % an hour.** The GPU was flat out the whole ride: at 1× on the forest climbs the scene
-  makes 45–57 fps on an M5 Max, so a 60 fps cap changes nothing there. Trees and 4× MSAA cost the most (each about
-  +40 % fps when off); AO and the sun shadows little. Fix: unplugged, the Fast preset without MSAA at 30 fps (GPU
-  busy ~90 % → ~40 %); the cap still stops 120 Hz rendering where the GPU has room. Measure with
-  `ioreg -r -c IOAccelerator` "Device Utilization %" in a visible window; `SystemLoad` is useless while charging.
+  made 45–57 fps on an M5 Max, so a 60 fps cap changed nothing there. The real cause was the logarithmic depth buffer
+  (see Rendering). Fix: reversed depth, plus a battery saver when unplugged: 30 fps, Beautiful drops to Balanced
+  (GPU busy 42 % → 36 % at 30 fps; Fast without MSAA only 2 points less and loses the soft tree edges). Measure with
+  `ioreg -r -c IOAccelerator` "Device Utilization %" in a visible window; busy % is relative to the GPU clock, so
+  compare frame rate and render scale too. `SystemLoad` in AppleSmartBattery updates only every few minutes.
   Where: `Engine.setBatterySaver`, `Engine.loop`.
 - **Opening the app could take over someone else's trainer.** `reconnectKnown` silently reconnected the last
   trainer. Fix: rider profiles each keep their own saved devices; "Who's riding?" comes before any reconnect; a

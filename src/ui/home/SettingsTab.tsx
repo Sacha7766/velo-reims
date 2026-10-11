@@ -97,7 +97,7 @@ export function SettingsTab({
         <p className="muted small">120 fps is only smoother on a ProMotion display and takes about twice the power of 60.</p>
         <label className="toggle">
           <input type="checkbox" checked={settings.batterySaver} onChange={(e) => set('batterySaver', e.target.checked)} />
-          <span>Save battery when the laptop is unplugged (Fast graphics, 30 fps)</span>
+          <span>Save battery when the laptop is unplugged (30 fps, Balanced graphics)</span>
         </label>
         <label className="slider">
           <span>

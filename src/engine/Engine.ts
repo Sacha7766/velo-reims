@@ -70,6 +70,17 @@ const QUALITY = {
 };
 
 const CORRIDOR = 420;
+
+/** EXT_clip_control (Chrome 120+) lets three.js run a reversed depth buffer. */
+function reversedDepthSupported() {
+  // ?depth=log: the old buffer, for comparison shots after a three.js or N8AO upgrade
+  if (new URLSearchParams(location.search).get('depth') === 'log') return false;
+  const gl = document.createElement('canvas').getContext('webgl2');
+  const ok = !!gl?.getExtension('EXT_clip_control');
+  gl?.getExtension('WEBGL_lose_context')?.loseContext();
+  return ok;
+}
+
 const tmp: Partial<RoutePoint> = {};
 
 export class Engine {
@@ -111,7 +122,7 @@ export class Engine {
   paused = false;
   /** Frames per second at most. Without a cap a 120 Hz ProMotion display renders (and drains) twice as often. */
   private fpsCap = 60;
-  /** Battery saver: the Fast preset without antialiasing, at most 30 fps. */
+  /** Battery saver: at most 30 fps, Beautiful drops to Balanced. */
   private saving = false;
   private lastFrame = -Infinity;
   /** Scripted camera (flyover capture): replaces the rig's camera each frame. */
@@ -122,11 +133,16 @@ export class Engine {
   constructor(canvas: HTMLCanvasElement, quality: Quality = 'high') {
     this.canvas = canvas;
     this.quality = quality;
+    const reversed = reversedDepthSupported();
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: false,
       powerPreference: 'high-performance',
-      logarithmicDepthBuffer: true,
+      // 0.25 m to the horizon needs more than a plain depth buffer. A logarithmic one writes depth in every
+      // fragment shader, which switches off the GPU's hidden-surface removal: on Apple GPUs that halved the
+      // frame rate in the forest. A reversed float depth buffer keeps the precision without that cost.
+      logarithmicDepthBuffer: !reversed,
+      reversedDepthBuffer: reversed,
       stencil: false,
     });
     this.renderer.shadowMap.enabled = true;
@@ -150,6 +166,23 @@ export class Engine {
       depthAwareUpsampling: true,
     });
     this.ao.setQualityMode('Medium');
+    // Two fixes for N8AO 2.0.1 with a reversed depth buffer. Its full-screen quads keep depth testing on and
+    // fail it (black frame), and the post pass builds its half-res depth shader without REVERSEDEPTH (wrong
+    // normals: every slope darkens itself). N8AO swaps materials when it reconfigures, so this runs per frame.
+    const aoRender = this.ao.render.bind(this.ao);
+    this.ao.render = (...args) => {
+      const passes = this.ao as unknown as Record<string, { _mesh?: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial> } | null>;
+      for (const v of Object.values(passes)) {
+        const mat = v?._mesh?.material;
+        if (mat) mat.depthTest = false;
+      }
+      const downsample = passes.depthDownsampleQuad?._mesh?.material;
+      if (this.renderer.capabilities.reversedDepthBuffer && downsample && !downsample.fragmentShader.startsWith('#define REVERSEDEPTH')) {
+        downsample.fragmentShader = `#define REVERSEDEPTH\n${downsample.fragmentShader}`;
+        downsample.needsUpdate = true;
+      }
+      aoRender(...args);
+    };
     this.composer.addPass(this.ao);
     this.composer.addPass(
       new EffectPass(
@@ -166,7 +199,9 @@ export class Engine {
     sc.right = sc.top = 32;
     sc.near = 1;
     sc.far = 700;
-    this.sun.shadow.bias = -0.0004;
+    // three 0.186's PCF shadow lookup adds the bias without flipping it for a reversed depth buffer (its other
+    // shadow types do), so the sign flips here or lit walls shadow themselves
+    this.sun.shadow.bias = this.renderer.capabilities.reversedDepthBuffer ? 0.0004 : -0.0004;
     this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun, this.sun.target, this.hemi, this.sky);
     this.setQuality(quality);
@@ -188,13 +223,12 @@ export class Engine {
   }
 
   /**
-   * Unplugged. The GPU runs flat out on the forest climbs (trees and 4× MSAA cost the most), so capping
-   * frames alone saves little there: this drops to the Fast preset without MSAA and at most 30 fps.
+   * Unplugged. Half the frames is most of the saving; Balanced takes a little more off (GPU busy 42 % → 36 %
+   * at 30 fps on the forest climb). Fast without MSAA saved only 2 points more and loses the soft tree edges.
    */
   setBatterySaver(on: boolean) {
     if (on === this.saving) return;
     this.saving = on;
-    this.composer.multisampling = on ? 0 : 4;
     this.setQuality(this.quality);
   }
 
@@ -202,9 +236,9 @@ export class Engine {
     return this.saving ? Math.min(30, this.fpsCap) : this.fpsCap;
   }
 
-  /** The quality preset in use: the chosen one, or Fast while saving battery. */
+  /** The quality preset in use: the chosen one, Beautiful dropping to Balanced while saving battery. */
   private get preset() {
-    return QUALITY[this.saving ? 'low' : this.quality];
+    return QUALITY[this.saving && this.quality === 'high' ? 'medium' : this.quality];
   }
 
   private get maxScale() {

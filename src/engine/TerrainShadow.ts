@@ -81,7 +81,8 @@ export class TerrainShadow {
     depthBuffer: false,
   });
   private quad: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
-  private cam = new THREE.Camera();
+  // a real projection camera: with a reversed depth buffer three updates every camera's projection
+  private cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private lastSun = new THREE.Vector3();
   private disposed = false;
 

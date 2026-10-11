@@ -34,7 +34,7 @@ export interface AppSettings extends RiderSettings {
   leadIn: boolean;
   /** Frames per second at most; 120 only helps on a ProMotion display and costs twice the power of 60. */
   frameRate: 30 | 60 | 120;
-  /** Unplugged: Fast graphics without antialiasing, at most 30 fps (Engine.setBatterySaver). */
+  /** Unplugged: at most 30 fps, Beautiful drops to Balanced (Engine.setBatterySaver). */
   batterySaver: boolean;
 }
 
