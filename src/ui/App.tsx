@@ -158,9 +158,10 @@ export function App() {
         session.state.bots.map((b) => b.label),
       );
       if (debug?.at) session.jump(debug.at);
+      (window as unknown as { __session: RideSession }).__session = session;
       let pedal = 0;
       let envT = 0;
-      let env = { forest: 0, urban: 0 };
+      let env: ReturnType<typeof engine.environment> = { forest: 0, urban: 0, sea: 0, biome: 'alpine' };
       session.onEvent((e) => {
         if (e === 'summit') audio.summit();
         else if (e === 'segment-start') audio.segmentStart();
@@ -199,6 +200,8 @@ export function App() {
           altitude: st.ele,
           forest: env.forest,
           urban: env.urban,
+          sea: env.sea,
+          biome: env.biome,
           descending: st.grade < -2,
         });
       });
@@ -252,7 +255,7 @@ export function App() {
     }
     setSummary({ record: rec, stats, summitTime, previousBest: prev?.summary.summitTime ?? null });
     prefetchAbort.current?.abort();
-    audio.update(0.1, { speed: 0, power: 0, cadence: 0, grade: 0, altitude: 0, forest: 0, urban: 0, descending: false });
+    audio.update(0.1, { speed: 0, power: 0, cadence: 0, grade: 0, altitude: 0, forest: 0, urban: 0, sea: 0, biome: 'alpine', descending: false });
     engine.unloadWorld();
     engine.paused = true;
     setRide(null);

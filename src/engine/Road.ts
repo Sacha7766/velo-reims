@@ -1,7 +1,7 @@
 // Asphalt ribbon along the route with procedural markings, plus Alpine roadside posts.
 
 import * as THREE from 'three';
-import type { Route } from '../geo/route.ts';
+import type { Route, TurnPath } from '../geo/route.ts';
 import { patchMaterial } from './atmosphere.ts';
 import { ALPINE, type Biome } from './biome.ts';
 
@@ -67,8 +67,10 @@ float rn(vec2 p) {
   vec2 p = vec2(across, along);
   vec3 scan = texture2D(uAsphalt, p / ${TILE.toFixed(2)}).rgb;
   vec3 scan2 = texture2D(uAsphalt, p.yx / 7.3 + 0.37).rgb;
-  vec3 asphalt = mix(scan, scan2, 0.3) * mix(1.36, 1.22, uMed);
-  // Ma-2210: resurfaced, few visible cracks
+  // Ma-2210: resurfaced, lighter grey, few visible cracks (blurred scan = cracks fade out)
+  vec3 scanSoft = texture(uAsphalt, p / ${TILE.toFixed(2)}, 2.5).rgb;
+  scan = mix(scan, scanSoft, 0.65 * uMed);
+  vec3 asphalt = mix(scan, scan2, 0.3) * mix(1.36, 1.5, uMed);
   asphalt = mix(asphalt, vec3(dot(asphalt, vec3(0.33))) * 0.98 + 0.02, 0.4 * uMed);
   // repair patches and darker fresh tar
   float patches = smoothstep(0.58, 0.72, rn(p * vec2(0.35, 0.06) + 3.1));
@@ -107,35 +109,59 @@ roughnessFactor = mix(clamp(roughnessFactor * 0.95, 0.55, 1.0), 0.5, gPaint);`,
   return patchMaterial(mat, { key: `road:${biome.id}`, depthBias: 0.012 });
 }
 
+interface Strip {
+  n: number;
+  step: number;
+  x: ArrayLike<number>;
+  z: ArrayLike<number>;
+  ele: ArrayLike<number>;
+  heading: ArrayLike<number>;
+  grade: ArrayLike<number>;
+}
+
 export class Road extends THREE.Group {
   constructor(route: Route, halfWidth: number, biome: Biome = ALPINE) {
     super();
-    const n = route.n;
+    const mat = roadMaterial(halfWidth, biome);
+    this.strip(route, halfWidth, mat, 0);
+    // turnarounds at both ends of point-to-point routes (the loop part; the rejoin leg is road)
+    for (const t of [route.turnEnd, route.turnStart]) {
+      if (!t) continue;
+      const step = t.length / (t.n - 1);
+      this.strip({ n: t.loopN, step, x: t.x, z: t.z, ele: t.ele, heading: t.heading, grade: t.grade }, halfWidth, mat, 100000);
+      this.turningCircleFill(t, halfWidth, mat);
+    }
+    // rural delineator posts and guard rails need the terrain: Roadside.ts
+    if (route.category === 'city') this.add(lamps(route, halfWidth));
+  }
+
+  /** Asphalt ribbon along a polyline, in chunks so frustum culling works on long routes. */
+  private strip(r: Strip, halfWidth: number, mat: THREE.Material, along0: number) {
+    const n = r.n;
+    if (n < 2) return;
     const cols = [-(halfWidth + SHOULDER), -halfWidth, 0, halfWidth, halfWidth + SHOULDER];
     const drop = [-0.12, 0, 0, 0, -0.12];
     const pos = new Float32Array(n * cols.length * 3);
     const uv = new Float32Array(n * cols.length * 2);
     const nor = new Float32Array(n * cols.length * 3);
-    // build in chunks so frustum culling works on long routes
-    const origin = new THREE.Vector3(route.x[0], route.ele[0], route.z[0]);
+    const origin = new THREE.Vector3(r.x[0], r.ele[0], r.z[0]);
     for (let i = 0; i < n; i++) {
-      const h = route.heading[i];
+      const h = r.heading[i];
       const rx = Math.cos(h);
       const rz = Math.sin(h);
-      const slope = Math.atan(route.grade[i] / 100);
+      const slope = Math.atan(r.grade[i] / 100);
       for (let c = 0; c < cols.length; c++) {
         const v = i * cols.length + c;
-        pos[v * 3] = route.x[i] + rx * cols[c] - origin.x;
-        pos[v * 3 + 1] = route.ele[i] + 0.06 + drop[c] - origin.y;
-        pos[v * 3 + 2] = route.z[i] + rz * cols[c] - origin.z;
+        pos[v * 3] = r.x[i] + rx * cols[c] - origin.x;
+        pos[v * 3 + 1] = r.ele[i] + 0.06 + drop[c] - origin.y;
+        pos[v * 3 + 2] = r.z[i] + rz * cols[c] - origin.z;
         uv[v * 2] = cols[c];
-        uv[v * 2 + 1] = i * route.step;
+        uv[v * 2 + 1] = along0 + i * r.step;
         nor[v * 3] = -Math.sin(h) * Math.sin(slope);
         nor[v * 3 + 1] = Math.cos(slope);
         nor[v * 3 + 2] = Math.cos(h) * Math.sin(slope);
       }
     }
-    const mat = roadMaterial(halfWidth, biome);
     const tuv = new Float32Array(uv.length);
     for (let k = 0; k < uv.length; k++) tuv[k] = uv[k] / TILE;
     const uvTex = new THREE.BufferAttribute(tuv, 2);
@@ -165,8 +191,44 @@ export class Road extends THREE.Group {
       mesh.renderOrder = 1;
       this.add(mesh);
     }
-    // rural delineator posts and guard rails need the terrain: Roadside.ts
-    if (route.category === 'city') this.add(lamps(route, halfWidth));
+  }
+
+  /** A small closed turnaround (turning circle) gets its middle paved too. */
+  private turningCircleFill(t: TurnPath, halfWidth: number, mat: THREE.Material) {
+    let cx = 0, cz = 0, ce = 0;
+    for (let i = 0; i < t.loopN; i++) {
+      cx += t.x[i] / t.loopN;
+      cz += t.z[i] / t.loopN;
+      ce += t.ele[i] / t.loopN;
+    }
+    let rMin = Infinity, rMax = 0;
+    for (let i = 0; i < t.loopN; i++) {
+      const d = Math.hypot(t.x[i] - cx, t.z[i] - cz);
+      rMin = Math.min(rMin, d);
+      rMax = Math.max(rMax, d);
+    }
+    const loopLen = (t.length * (t.loopN - 1)) / (t.n - 1);
+    if (loopLen > 110 || rMax > 16) return; // a real loop round a block or summit: no fill
+    const r = rMin + halfWidth * 0.9;
+    const geo = new THREE.CircleGeometry(r, 40).rotateX(-Math.PI / 2);
+    const count = geo.getAttribute('position').count;
+    // plain asphalt: across = 1.5 m (between centre dash and edge line), no markings
+    const ruv = new Float32Array(count * 2);
+    const tuv = new Float32Array(count * 2);
+    const p = geo.getAttribute('position');
+    for (let i = 0; i < count; i++) {
+      ruv[i * 2] = 1.5;
+      ruv[i * 2 + 1] = -50;
+      tuv[i * 2] = p.getX(i) / TILE;
+      tuv[i * 2 + 1] = p.getZ(i) / TILE;
+    }
+    geo.setAttribute('roadUv', new THREE.BufferAttribute(ruv, 2));
+    geo.setAttribute('uv', new THREE.BufferAttribute(tuv, 2));
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(cx, ce + 0.05, cz);
+    mesh.receiveShadow = true;
+    mesh.renderOrder = 1;
+    this.add(mesh);
   }
 }
 

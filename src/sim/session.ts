@@ -2,7 +2,7 @@
 // (SIM grade or ERG target), runs the workout clock, records 1 Hz samples, races a ghost.
 
 import type { DeviceHub } from '../devices/types.ts';
-import { pointAt, type Route, type RoutePoint } from '../geo/route.ts';
+import { advance, pointAt, positionAt, type Route, type RoutePoint } from '../geo/route.ts';
 import { stateAt } from '../workouts/player.ts';
 import type { Workout, WorkoutState } from '../workouts/types.ts';
 import { cornerSpeed, DEFAULT_PHYSICS, stepSpeed, type PhysicsParams } from './physics.ts';
@@ -341,30 +341,32 @@ export class RideSession {
     if (v > vmax) v = Math.max(vmax, v - 6 * dt);
     st.speed = v;
     if (v > 0.3) st.movingTime += dt;
-    st.s += v * dt * st.dir;
+    const mv = advance(route, st.s, st.dir, v * dt);
     st.distance += v * dt;
     if (route.loop) {
-      if (st.s >= route.length) {
-        st.s -= route.length;
+      st.s = mv.s;
+      if (mv.enteredEnd) {
         st.lap++;
         this.laps.push(this.samples.length);
         this.banner(`Lap ${st.lap}`, `${fmtTime(st.elapsed)} so far`, 4);
         this.fire('lap');
       }
-    } else if (st.dir === 1 && st.s >= route.length) {
-      st.s = route.length - (st.s - route.length);
-      st.dir = -1;
-      st.lap++;
-      if (st.summitTime === null) st.summitTime = st.elapsed;
-      this.laps.push(this.samples.length);
-      this.banner('Summit', `${Math.round(route.maxEle)} m in ${fmtTime(st.elapsed)}. Rolling back down.`, 7);
-      this.fire('summit');
-    } else if (st.dir === -1 && st.s <= 0) {
-      st.s = -st.s;
-      st.dir = 1;
-      st.lap++;
-      this.laps.push(this.samples.length);
-      this.banner(`Lap ${Math.ceil(st.lap / 2)}`, 'Back up we go', 4);
+    } else {
+      st.s = mv.s;
+      st.dir = mv.dir;
+      if (mv.enteredEnd && st.summitTime === null) {
+        st.summitTime = st.elapsed;
+        this.banner('Summit', `${Math.round(route.maxEle)} m in ${fmtTime(st.elapsed)}. Round the top and back down.`, 7);
+        this.fire('summit');
+      }
+      if (mv.turned === 'end') {
+        st.lap++;
+        this.laps.push(this.samples.length);
+      } else if (mv.turned === 'start') {
+        st.lap++;
+        this.laps.push(this.samples.length);
+        this.banner(`Lap ${Math.ceil(st.lap / 2)}`, 'Back up we go', 4);
+      }
     }
     const here = pointAt(route, st.s, tmp);
     st.grade = here.grade * st.dir;
@@ -436,21 +438,11 @@ export class RideSession {
 
   private updateBots(dt: number) {
     const st = this.st;
-    const L = this.route.length;
     st.bots = st.bots.map((b) => {
       if (b.segmentId) return this.stepPacer(b, dt);
       const p = pointAt(this.route, b.s, tmp);
       const speed = stepSpeed(b.speed, b.wkg * this.settings.weight, p.grade * b.dir, p.ele, dt, this.physics);
-      let s = b.s + speed * dt * b.dir;
-      let dir = b.dir;
-      if (this.route.loop) s = ((s % L) + L) % L;
-      else if (dir === 1 && s >= L) {
-        s = L - (s - L);
-        dir = -1;
-      } else if (dir === -1 && s <= 0) {
-        s = -s;
-        dir = 1;
-      }
+      const { s, dir } = advance(this.route, b.s, b.dir, speed * dt);
       const distance = b.distance + speed * dt;
       return { ...b, s, dir, speed, distance, gap: distance - st.distance };
     });
@@ -555,11 +547,9 @@ export class RideSession {
     const j = Math.min(i + 1, g.length - 1);
     const f = Math.min(1, t - i);
     const d = g[i].distance + (g[j].distance - g[i].distance) * f;
-    const L = this.route.length;
-    const cycle = Math.floor(d / L);
-    const within = d - cycle * L;
-    st.ghostDir = this.route.loop || cycle % 2 === 0 ? 1 : -1;
-    st.ghostS = st.ghostDir === 1 ? within : L - within;
+    const gp = positionAt(this.route, d);
+    st.ghostDir = gp.dir;
+    st.ghostS = gp.s;
     // time the ghost needed to reach our distance
     let lo = 0;
     let hi = g.length - 1;

@@ -137,7 +137,10 @@ float tBump = 0.0;
   vec2 lmuv = (vAtmoWorld.xz - uMaskOrigin) / uMaskSize;
   bool inMask = lmuv.x > 0.0 && lmuv.y > 0.0 && lmuv.x < 1.0 && lmuv.y < 1.0;
   vec3 land = inMask ? texture2D(uWaterMask, lmuv).rgb : vec3(0.0);
-  float canopy = inMask ? smoothstep(0.15, 0.85, texture2D(uCanopy, lmuv).r) : 0.0;
+  vec2 canTex = inMask ? texture2D(uCanopy, lmuv).rg : vec2(0.0);
+  float canopy = smoothstep(0.15, 0.85, canTex.r);
+  // (cut faces and banks are rock, not verge)
+  float verge = smoothstep(0.2, 0.7, canTex.g) * (1.0 - smoothstep(0.18, 0.36, 1.0 - clamp(normalize(vTWNormal).y, 0.0, 1.0)));
   float meadow = smoothstep(0.3, 0.8, land.g) * (1.0 - smoothstep(0.3, 0.8, land.b)) * (1.0 - canopy) * uMeadowPush;
   float wGrass = max(smoothstep(0.0, 0.07, s.g - max(s.r, s.b) * 0.93), meadow * 0.9) * (1.0 - canopy * 0.85);
   // bright, unsaturated photo pixels are snow only up high: on the Prealps they are mown or dry grass
@@ -154,7 +157,7 @@ float tBump = 0.0;
     smoothstep(0.07, 0.025, sat) * smoothstep(0.42, 0.6, L) * (1.0 - smoothstep(0.62, 0.74, L)),
     smoothstep(0.3, 0.8, land.b) * smoothstep(0.12, 0.05, sat));
   // karst: pale grey, unsaturated ground is bare limestone pavement, not gravel
-  float limestone = uKarst * smoothstep(0.16, 0.07, sat) * smoothstep(0.3, 0.5, L) * (1.0 - canopy);
+  float limestone = uKarst * smoothstep(0.16, 0.07, sat) * smoothstep(0.3, 0.5, L) * (1.0 - canopy) * (1.0 - verge);
   wRock = max(wRock, limestone);
   wGrass *= 1.0 - limestone;
   wGrass = max(wGrass, (1.0 - wRock) * (1.0 - wSnow) * (1.0 - greyish) * 0.92 * (1.0 - canopy * 0.85) * mix(1.0, 0.55, uKarst));
@@ -219,9 +222,12 @@ float tBump = 0.0;
   float ochre = smoothstep(0.45, 0.8, tNoise(q.xz * 0.05 + q.y * 0.03));
   vec3 limeTint = mix(vec3(1.0, 0.95, 0.86), vec3(1.08, 0.88, 0.66), ochre * steep);
   base *= mix(vec3(1.0), limeTint, uKarst * max(limestone, steep));
+  // bare limestone reads beige-grey, never snow-white
+  float bL = dot(base, vec3(0.3, 0.55, 0.15));
+  base = mix(base, base * min(1.0, 0.62 / max(bL, 1e-3)) * vec3(1.0, 0.97, 0.88), uKarst * limestone);
   // rock faces and cuts near the road: photographed fractured limestone, ochre to grey
   float cliffNear = 1.0 - smoothstep(35.0, 110.0, camD);
-  float cliffW = uKarst * smoothstep(0.16, 0.36, slope) * (1.0 - smoothstep(900.0, 1600.0, camD)) * mix(0.75, 1.0, cliffNear);
+  float cliffW = uKarst * smoothstep(0.28, 0.48, slope) * (1.0 - smoothstep(900.0, 1600.0, camD)) * mix(0.75, 1.0, cliffNear);
   if (cliffW > 0.001) {
     vec3 cw = pow(abs(wn), vec3(5.0));
     cw /= cw.x + cw.y + cw.z;
@@ -231,15 +237,19 @@ float tBump = 0.0;
     float cl = dot(cc, vec3(0.3, 0.55, 0.15));
     // mostly grey limestone; ochre where the noise says the face is freshly broken
     vec3 greyRock = vec3(cl) * vec3(1.04, 1.0, 0.94) * 1.15;
-    vec3 rockC = mix(greyRock, cc * 1.08, 0.35 + 0.6 * ochre);
+    // fresh road cuts: warm ochre limestone in horizontal beds
+    float bed = 0.86 + 0.14 * sin(q.y * 4.2 + tNoise(q.xz * 0.3) * 3.0) + 0.06 * sin(q.y * 11.0);
+    vec3 rockC = mix(greyRock, cc * 1.12, 0.55 + 0.4 * ochre) * bed;
     base = mix(base, rockC, cliffW);
     tBump = mix(tBump, (cl - 0.45) * 4.0 * cliffNear, cliffW);
     tDetail = mix(tDetail, 1.0, cliffW); // the scan carries its own detail
   }
   // under pines the Mediterranean floor is dry needle litter, not dark mould
   base = mix(base, mix(base * 0.7, vec3(0.36, 0.29, 0.22) * (0.8 + 0.4 * tNoise(p * 0.5)), 0.65), canopy * uKarst);
-  // and the verges of the road are dusty terra rossa
-  base = mix(base, vec3(0.46, 0.4, 0.34) * (0.8 + 0.35 * tNoise(p * 0.9)), uKarst * near * (1.0 - smoothstep(0.0, 0.6, slope)) * 0.2);
+  // road verges: grey-brown dirt with pale rubble (not the orthophoto's grey asphalt)
+  float rubble = smoothstep(0.72, 0.8, tNoise(p * 2.3)) * 0.5 + smoothstep(0.78, 0.86, tNoise(p * 6.1 + 3.0)) * 0.5;
+  vec3 dirt = mix(vec3(0.42, 0.36, 0.3), vec3(0.62, 0.59, 0.52), rubble) * (0.82 + 0.3 * tNoise(p * 0.9));
+  base = mix(base, dirt, uKarst * verge * (1.0 - steep * 0.6) * 0.85);
   tc = base * tDetail;
 
   // water: OSM mask, or sea level

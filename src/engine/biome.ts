@@ -68,7 +68,8 @@ export const MEDITERRANEAN: Biome = {
   conifer: 'pine',
   evergreen: true,
   // carritx: olive green bases, straw tips in autumn
-  grass: [new THREE.Color(0.78, 0.86, 0.66), new THREE.Color(1.0, 0.94, 0.74), new THREE.Color(0.9, 0.9, 0.8)],
+  // carritx in October: tan-gold blades over an olive base
+  grass: [new THREE.Color(0.98, 0.92, 0.62), new THREE.Color(1.12, 0.98, 0.64), new THREE.Color(1.0, 0.95, 0.75)],
   tussocks: true,
   shrubs: 0.045,
   shrubTint: new THREE.Color(0.42, 0.55, 0.34),

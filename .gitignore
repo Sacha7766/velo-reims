@@ -11,3 +11,4 @@ research/*/assets
 research/*/streetlevel
 *.fit
 .claude/
+__pycache__/

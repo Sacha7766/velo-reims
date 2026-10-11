@@ -28,6 +28,7 @@ import { Landmarks, loadRouteScene } from './Landmarks.ts';
 import { ALPINE, biomeFor, type Biome } from './biome.ts';
 import { Roadside, type BarrierSpan } from './Roadside.ts';
 import { Tunnels } from './Tunnel.ts';
+import { Signs } from './Signs.ts';
 import { Ocean } from './Ocean.ts';
 import { Props } from './Props.ts';
 import { Life } from './Life.ts';
@@ -59,6 +60,7 @@ interface World {
   life: Life;
   tunnels: Tunnels;
   ocean: Ocean | null;
+  signs: Signs | null;
 }
 
 const QUALITY = {
@@ -282,6 +284,7 @@ export class Engine {
       route, index, terrain, road, trees: null, buildings: null, cover: null, rider, ghost, halfWidth, shadow, landmarks, roadside: null, props: new Props(), life: new Life(), tunnels: new Tunnels(route, halfWidth),
       // coastal routes: open sea to the horizon beyond the streamed terrain
       ocean: route.minEle < 40 ? new Ocean() : null,
+      signs: null,
     };
     this.scene.add(world.tunnels);
     if (world.ocean) this.scene.add(world.ocean);
@@ -318,15 +321,20 @@ export class Engine {
         Promise.all(jobs),
       ]);
       if (this.world !== world) return;
-      if (sceneDef && this.world === world) await landmarks.build(sceneDef, frame, (x, z) => terrain.groundHeight(x, z));
+      if (sceneDef && this.world === world) {
+        await landmarks.build(sceneDef, frame, (x, z) => terrain.groundHeight(x, z), (x, z) => index.nearest(x, z, halfWidth + 2.6).index >= 0);
+      }
       if (this.world !== world) return;
+      const osm: OsmWorld = parseOsm(route, elements);
       if (route.category !== 'city') {
         world.roadside = new Roadside(
-          route, halfWidth, (x, z) => terrain.groundHeight(x, z), biome, (sceneDef?.barriers as BarrierSpan[] | undefined) ?? [],
+          route, halfWidth, (x, z) => terrain.groundHeight(x, z), biome,
+          (sceneDef?.barriers as BarrierSpan[] | undefined) ?? [], osm.barriers,
         );
         this.scene.add(world.roadside);
+        world.signs = new Signs(route, halfWidth, (x, z) => terrain.groundHeight(x, z), biome);
+        this.scene.add(world.signs);
       }
-      const osm: OsmWorld = parseOsm(route, elements);
       this.buildWaterMask(route, osm, baked);
       if (this.world !== world) return;
       this.addCover(world, osm);
@@ -339,7 +347,7 @@ export class Engine {
       world.trees = trees;
       this.scene.add(trees);
       void world.props
-        .build(route, index, osm, (x, z) => terrain.groundHeight(x, z), halfWidth)
+        .build(route, index, osm, (x, z) => terrain.groundHeight(x, z), halfWidth, biome)
         .catch((e) => console.warn('props failed', e));
       void world.life
         .build(route, index, osm, (x, z) => terrain.groundHeight(x, z), (x, z) => this.coverAt(x, z), biome)
@@ -464,7 +472,7 @@ export class Engine {
     cx.fillStyle = '#000';
     cx.fillRect(0, 0, cw, ch);
     if (baked) {
-      cx.fillStyle = '#fff';
+      cx.fillStyle = '#f00';
       for (let i = 0; i < baked.n; i++) {
         const r = Math.max(baked.crown[i] * 1.05, 1.5) / res;
         cx.beginPath();
@@ -472,9 +480,22 @@ export class Engine {
         cx.fill();
       }
     } else {
-      cx.fillStyle = '#d0d0d0';
+      cx.fillStyle = '#d00000';
       cx.fill(pathOf(osm.forests), 'evenodd');
     }
+    // G: the road corridor (verge ground; the orthophoto's grey asphalt must not read as rock there)
+    cx.globalCompositeOperation = 'lighter';
+    cx.strokeStyle = '#00ff00';
+    cx.lineJoin = cx.lineCap = 'round';
+    cx.lineWidth = (2 * (this.world?.halfWidth ?? 3.1) + 9) / res;
+    cx.beginPath();
+    for (let i = 0; i < route.n; i += 2) {
+      const px = (route.x[i] - x0) / res, pz = (route.z[i] - z0) / res;
+      if (i === 0) cx.moveTo(px, pz);
+      else cx.lineTo(px, pz);
+    }
+    cx.stroke();
+    cx.globalCompositeOperation = 'source-over';
     this.canopyMask = { data: cx.getImageData(0, 0, cw, ch).data, x0, z0, res, w: cw, h: ch };
     const ctex = new THREE.CanvasTexture(cc);
     ctex.flipY = false;
@@ -534,6 +555,7 @@ export class Engine {
         else mat?.dispose();
       });
     if (w.roadside) this.scene.remove(w.roadside);
+    if (w.signs) this.scene.remove(w.signs);
     this.scene.remove(w.props, w.life, w.tunnels);
     if (w.ocean) {
       this.scene.remove(w.ocean);
@@ -543,7 +565,7 @@ export class Engine {
     clearTunnels();
     w.props.clear();
     w.life.clear();
-    [w.road, w.rider, w.ghost, w.trees, w.buildings, w.roadside].forEach((o) => o && dispose(o));
+    [w.road, w.rider, w.ghost, w.trees, w.buildings, w.roadside, w.signs].forEach((o) => o && dispose(o));
     w.landmarks.clear();
     this.world = null;
   }
@@ -592,11 +614,22 @@ export class Engine {
   }
 
   /** How wooded / built-up the surroundings are, for ambience. */
-  environment(): { forest: number; urban: number } {
+  environment(): { forest: number; urban: number; sea: number; biome: 'alpine' | 'mediterranean' } {
     const w = this.world;
-    if (!w) return { forest: 0, urban: 0 };
+    const biome = this.biome.id === 'mediterranean' ? 'mediterranean' : 'alpine';
+    if (!w) return { forest: 0, urban: 0, sea: 0, biome };
     const p = w.rider.position;
-    return { forest: w.trees?.densityAt(p.x, p.z) ?? 0, urban: w.buildings?.densityAt(p.x, p.z) ?? 0 };
+    // open water within ~600 m: ring of 16 points at 150 m and 400 m (ground < 0.6 m or water cover)
+    let wet = 0;
+    for (const r of [150, 400]) {
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2;
+        const x = p.x + Math.cos(a) * r;
+        const z = p.z + Math.sin(a) * r;
+        if (w.terrain.groundHeight(x, z) < 0.6 || this.coverAt(x, z) === 3) wet++;
+      }
+    }
+    return { forest: w.trees?.densityAt(p.x, p.z) ?? 0, urban: w.buildings?.densityAt(p.x, p.z) ?? 0, sea: wet / 32, biome };
   }
 
   private placeRider(r: Rider, s: number, dir: 1 | -1, route: Route, lateral = this.lateral) {

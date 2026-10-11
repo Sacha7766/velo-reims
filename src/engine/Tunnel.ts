@@ -91,7 +91,7 @@ export class Tunnels extends THREE.Group {
         pos.push(p.x + rx * (across + rough * nx), p.ele + up + rough * 0.5, p.z + rz * (across + rough * nx));
         uv.push(s, j / (P - 1));
       }
-      if (i % 8 === 4) {
+      if (i % 6 === 3) {
         lamps.push(
           new THREE.Matrix4().compose(
             new THREE.Vector3(p.x, p.ele + BORE.apex - 0.08, p.z),
@@ -199,24 +199,29 @@ varying vec3 vRkW;
 float rkH(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 float rkN(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(rkH(i), rkH(i + vec2(1, 0)), f.x), mix(rkH(i + vec2(0, 1)), rkH(i + vec2(1, 1)), f.x), f.y); }
-float rkF(vec2 p) { return rkN(p) * 0.5 + rkN(p * 2.3) * 0.3 + rkN(p * 5.1) * 0.2; }`,
+float rkF(vec2 p) { return rkN(p) * 0.5 + rkN(p * 2.3) * 0.3 + rkN(p * 5.1) * 0.2; }
+float rk3(vec3 p) {
+  // 3D value noise from two 2D lookups (cheap, isotropic enough for rock)
+  return 0.5 * (rkF(p.xy + p.z * 1.7) + rkF(p.zy * 1.13 + p.x * 0.9));
+}`,
       )
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-// world-space noise on two planes: no stretching along or across the bore
-vec2 rp = vec2(vRkW.x + vRkW.z, vRkW.y) * 0.9 + vec2(vRkW.z * 0.37, 0.0);
-float rf = rkF(rp);
-diffuseColor.rgb = mix(vec3(0.3, 0.29, 0.27), vec3(0.5, 0.47, 0.42), rf) * (0.85 + 0.3 * rkN(rp * 3.0));
-diffuseColor.rgb *= 1.0 - 0.35 * smoothstep(0.6, 0.9, rkN(rp * 1.3 + 7.0)); // damp dark streaks`,
+// isotropic world-space noise: no stretching along or across the bore
+vec3 rw = vRkW * 0.9;
+vec2 rp = rw.xy + rw.z;
+float rf = rk3(rw);
+diffuseColor.rgb = mix(vec3(0.3, 0.29, 0.27), vec3(0.52, 0.48, 0.42), rf) * (0.85 + 0.3 * rk3(rw * 3.0));
+diffuseColor.rgb *= 1.0 - 0.3 * smoothstep(0.62, 0.9, rk3(rw * 1.3 + 7.0)); // damp dark patches`,
       )
       .replace(
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
 {
   float e = 0.06;
-  float h0 = rkF(rp * 2.0);
-  vec3 bump = vec3(rkF(rp * 2.0 + vec2(e, 0.0)) - h0, rkF(rp * 2.0 + vec2(0.0, e)) - h0, 0.0) * 6.0;
+  float h0 = rk3(rw * 2.0);
+  vec3 bump = vec3(rk3(rw * 2.0 + vec3(e, 0.0, 0.0)) - h0, rk3(rw * 2.0 + vec3(0.0, e, 0.0)) - h0, 0.0) * 6.0;
   normal = normalize(normal + bump.x * normalize(dFdx(vViewPosition)) + bump.y * normalize(dFdy(vViewPosition)));
 }`,
       );

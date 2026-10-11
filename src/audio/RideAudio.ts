@@ -14,6 +14,10 @@ export interface RideAudioState {
   /** 0..1 */
   urban: number;
   descending: boolean;
+  /** 0..1 open water within ~600 m (Engine.environment().sea) */
+  sea?: number;
+  /** 'alpine' (default) | 'mediterranean' */
+  biome?: string;
 }
 
 const clamp = (v: number, lo = 0, hi = 1) => (v < lo ? lo : v > hi ? hi : v);
@@ -46,6 +50,9 @@ export class RideAudio {
   private chainLfoGain!: GainNode;
   private airGain!: GainNode;
   private trafficGain!: GainNode;
+  private surfGain!: GainNode; // low rolling surf bed (swells with the wave period)
+  private washGain!: GainNode; // brighter foam wash, fired in bursts
+  private pineGain!: GainNode; // dry wind-in-the-pines hiss
   private bus!: GainNode; // one-shot / event bus (birds, bells, horn)
 
   // state
@@ -56,6 +63,11 @@ export class RideAudio {
   private birdT = 2;
   private cowT = 12;
   private hornT = 25;
+  private gullT = 6;
+  private goatT = 10;
+  private washT = 5;
+  private wavePhase = Math.random() * 6.28;
+  private wavePeriod = rand(7, 11);
 
   async resume(): Promise<void> {
     if (this.disposed) return;
@@ -212,6 +224,23 @@ export class RideAudio {
     this.trafficGain = gain();
     traffic.connect(mk('lowpass', 220, 0.7)).connect(this.trafficGain).connect(master);
 
+    // surf (Mediterranean): pink noise at half speed, low-passed to a rumble.
+    // Gain is swelled by update() with a 7-11 s period; peak ~0.09 (wind peaks at 0.38).
+    const surf = this.loop(ctx, pink);
+    surf.playbackRate.value = 0.6;
+    this.surfGain = gain();
+    surf.connect(mk('lowpass', 650, 0.5)).connect(this.surfGain).connect(master);
+    // foam wash: band-passed hiss around 1.8 kHz, peak ~0.035, fades in/out over several seconds
+    const wash = this.loop(ctx, pink);
+    wash.playbackRate.value = 1.1;
+    this.washGain = gain();
+    wash.connect(mk('bandpass', 1800, 0.5)).connect(this.washGain).connect(master);
+    // pines: very quiet 3-6 kHz band, peak ~0.016, gusts modulate it
+    const pine = this.loop(ctx, pink);
+    pine.playbackRate.value = 1.6;
+    this.pineGain = gain();
+    pine.connect(mk('bandpass', 4200, 0.6)).connect(this.pineGain).connect(master);
+
     this.bus = gain(1);
     this.bus.connect(master);
 
@@ -236,6 +265,14 @@ export class RideAudio {
     this.birdT -= dt;
     this.cowT -= dt;
     this.hornT -= dt;
+    this.gullT -= dt;
+    this.goatT -= dt;
+    this.washT -= dt;
+    this.wavePhase += (dt * Math.PI * 2) / this.wavePeriod;
+    if (this.wavePhase > 6.2832) {
+      this.wavePhase -= 6.2832;
+      this.wavePeriod = rand(7, 11);
+    }
     this.scheduleEvents(ctx, s);
 
     this.acc += dt;
@@ -268,6 +305,23 @@ export class RideAudio {
     const calm = 1 - 0.6 * v;
     this.airGain.gain.setTargetAtTime((0.012 + 0.03 * s.forest) * calm * (1 - s.urban * 0.7), t, 0.5);
     this.trafficGain.gain.setTargetAtTime(0.14 * smooth(0.5, 1, s.urban) * (1 - 0.5 * v), t, 0.6);
+
+    // Mediterranean layers. Surf is masked by wind at speed (louder when slow).
+    const med = s.biome === 'mediterranean';
+    const sea = med ? clamp(s.sea ?? 0) : 0;
+    const swell = Math.pow(0.5 + 0.5 * Math.sin(this.wavePhase), 2);
+    const slow = 1 - 0.8 * v;
+    this.surfGain.gain.setTargetAtTime(0.09 * sea * (0.3 + 0.7 * swell) * slow, t, 0.3);
+    if (this.washT <= 0) {
+      // foam wash on the crest: ~2 s rise, ~4 s fall
+      this.washT = rand(7, 16);
+      const w = 0.035 * sea * slow * rand(0.6, 1);
+      this.washGain.gain.cancelScheduledValues(t);
+      this.washGain.gain.setTargetAtTime(w, t, 0.8);
+      this.washGain.gain.setTargetAtTime(0, t + 2, 1.3);
+    }
+    const pines = med ? smooth(0.4, 0.85, s.forest) * (1 - s.urban) : 0;
+    this.pineGain.gain.setTargetAtTime(0.016 * pines * (0.6 + 0.4 * (this.gust * 0.5 + 0.5)) * (1 - 0.5 * v), t, 0.6);
   }
 
   private scheduleEvents(ctx: AudioContext, s: RideAudioState) {
@@ -281,8 +335,16 @@ export class RideAudio {
     }
     if (this.cowT <= 0) {
       this.cowT = rand(9, 28);
-      const alpine = s.altitude > 900 && s.altitude < 2400 && s.forest < 0.4 && s.urban < 0.3 && v < 0.8;
+      const alpine = s.biome !== 'mediterranean' && s.altitude > 900 && s.altitude < 2400 && s.forest < 0.4 && s.urban < 0.3 && v < 0.8;
       if (alpine) this.cowbells(ctx);
+    }
+    if (this.gullT <= 0) {
+      this.gullT = rand(8, 24);
+      if (s.biome === 'mediterranean' && (s.sea ?? 0) > 0.12 && v < 0.85) this.gulls(ctx, 0.5 + 0.5 * clamp(s.sea ?? 0));
+    }
+    if (this.goatT <= 0) {
+      this.goatT = rand(10, 26);
+      if (s.biome === 'mediterranean' && s.forest < 0.35 && s.urban < 0.25 && v < 0.8) this.goatBells(ctx);
     }
     if (this.hornT <= 0) {
       this.hornT = rand(20, 50);
@@ -338,6 +400,84 @@ export class RideAudio {
       this.partial(ctx, lp, ff, t, 0.5, 0.018, 'square');
       this.partial(ctx, lp, ff * 1.505, t, 0.35, 0.012, 'square');
       t += rand(0.18, 0.55);
+    }
+  }
+
+  /**
+   * Gull series: 1-4 "kyow" calls. Each is a sawtooth (rich harmonics) through a ~2.3 kHz
+   * formant band-pass; pitch jumps up ~15% in 40 ms then falls to ~60%, with fast vibrato.
+   * A quieter octave-up partial adds the shrill edge. Peak ~0.03 per call.
+   */
+  private gulls(ctx: AudioContext, level: number) {
+    const calls = 1 + Math.floor(Math.random() * 4);
+    const pan = ctx.createStereoPanner();
+    pan.pan.value = rand(-0.8, 0.8);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = rand(2000, 2600);
+    bp.Q.value = 1.5;
+    bp.connect(pan).connect(this.bus);
+    const f0 = rand(1350, 1800);
+    let t = ctx.currentTime + 0.05;
+    for (let i = 0; i < calls; i++) {
+      const d = rand(0.28, 0.42) * (i === calls - 1 && calls > 2 ? 1.3 : 1);
+      const g = ctx.createGain();
+      const vib = ctx.createOscillator();
+      const vibG = ctx.createGain();
+      vib.frequency.value = rand(24, 38);
+      vibG.gain.value = 35;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.03 * level, t + 0.03);
+      g.gain.setTargetAtTime(0, t + d * 0.45, d * 0.25);
+      g.connect(bp);
+      const f = f0 * (1 + rand(-0.06, 0.06));
+      for (const [mul, amp] of [[1, 1], [2, 0.35]] as const) {
+        const o = ctx.createOscillator();
+        const og = ctx.createGain();
+        o.type = 'sawtooth';
+        og.gain.value = amp;
+        o.frequency.setValueAtTime(f * 0.85 * mul, t);
+        o.frequency.linearRampToValueAtTime(f * mul, t + 0.04);
+        o.frequency.exponentialRampToValueAtTime(f * 0.6 * mul, t + d);
+        vibG.connect(o.frequency);
+        o.connect(og).connect(g);
+        o.start(t);
+        o.stop(t + d + 0.2);
+      }
+      vib.connect(vibG);
+      vib.start(t);
+      vib.stop(t + d + 0.2);
+      t += d + rand(0.12, 0.3);
+    }
+  }
+
+  /**
+   * Goat bells: 2-4 small bells, each higher (750-1500 Hz) and thinner than the Alpine cowbells
+   * (sine + inharmonic 2.7x partial, short decay) struck near-randomly over 2-6 s. Peak ~0.012.
+   */
+  private goatBells(ctx: AudioContext) {
+    const nb = 2 + Math.floor(Math.random() * 3);
+    const pan = ctx.createStereoPanner();
+    pan.pan.value = rand(-0.9, 0.9);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 3200;
+    lp.connect(pan).connect(this.bus);
+    const freqs = Array.from({ length: nb }, () => rand(750, 1500));
+    const t0 = ctx.currentTime + 0.05;
+    const span = rand(2, 6);
+    const strikes = 4 + Math.floor(Math.random() * 7);
+    for (let i = 0; i < strikes; i++) {
+      const t = t0 + Math.random() * span;
+      const f = freqs[Math.floor(Math.random() * nb)];
+      const vel = rand(0.4, 1);
+      this.partial(ctx, lp, f, t, 0.45, 0.012 * vel, 'sine', 0.002);
+      this.partial(ctx, lp, f * 2.7, t, 0.2, 0.005 * vel, 'sine', 0.002);
+      if (Math.random() < 0.3) {
+        // double rattle strike
+        const t2 = t + rand(0.05, 0.12);
+        this.partial(ctx, lp, f, t2, 0.3, 0.007 * vel, 'sine', 0.002);
+      }
     }
   }
 

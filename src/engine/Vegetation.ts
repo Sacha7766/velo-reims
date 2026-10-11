@@ -317,6 +317,7 @@ export class Vegetation extends THREE.Group {
       if (h < 3) continue;
       const near = index.nearest(x, z, o.corridor);
       if (near.index < 0) continue;
+      if (near.turn && near.dist < hw + 1.6) continue;
       // tree tops over the road edge: the trunk stands beside the asphalt, the crown overhangs
       if (near.dist < hw + 1.6) {
         const p = pointAt(route, near.f * route.step);

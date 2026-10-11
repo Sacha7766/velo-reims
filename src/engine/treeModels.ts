@@ -256,66 +256,112 @@ export function spruceGeometry(seed = 1, crownBase = 0.35): THREE.BufferGeometry
   return b.build();
 }
 
+// single needle tufts in the Mediterranean atlas BRANCH region (centre u,v), half size 0.05
+const PINE_TUFTS: [number, number][] = [
+  [0.16, 0.835], [0.295, 0.8925], [0.44, 0.885], [0.43, 0.715], [0.19, 0.705],
+];
+
 /**
- * Aleppo pine (Pinus halepensis), height 1: a leaning, slightly crooked trunk, a few long main
- * limbs that fork high up and an open, irregular, flat-topped crown of needle tufts
- * (atlas BRANCH region = twig with tufts in the Mediterranean atlas).
+ * Aleppo pine (Pinus halepensis), height 1: a tall, often leaning or forked trunk that stays bare
+ * for the lower ~60 %, then a few long ascending-then-spreading limbs that carry an irregular,
+ * flat-topped umbrella of separate needle tufts (atlas BRANCH region = rosettes of needles)
+ * with sky showing between the clumps.
  */
 export function pineGeometry(seed = 3, crownBase = 0.45, width = 1): THREE.BufferGeometry {
   const b = new Builder();
   const r = rng(seed);
-  const lean = new THREE.Vector3(r() - 0.5, 0, r() - 0.5).multiplyScalar(0.18);
+  // real Aleppo pines carry the canopy in the top third whatever the stand density
+  const cb = Math.min(0.78, Math.max(0.6, crownBase));
+  const lean = new THREE.Vector3(r() - 0.5, 0, r() - 0.5).multiplyScalar(0.2);
+  const wob = r() * 6;
   const P = (t: number) =>
-    new THREE.Vector3(lean.x * t * t + Math.sin(t * 5 + seed) * 0.012, t, lean.z * t * t + Math.cos(t * 4 + seed) * 0.012);
-  // trunk in three crooked segments
-  const tops = [0, crownBase * 0.55, crownBase, crownBase + (1 - crownBase) * 0.45];
+    new THREE.Vector3(lean.x * t * t + Math.sin(t * 6 + wob) * 0.012, t, lean.z * t * t + Math.cos(t * 5 + wob) * 0.012);
+  const Y = new THREE.Vector3(0, 1, 0);
+
+  // leaders: one, or a fork into two or three high up
+  const forkT = cb - 0.05 - r() * 0.08;
+  const nLead = r() < 0.4 ? 1 : r() < 0.7 ? 2 : 3;
+  const a0 = r() * Math.PI * 2;
+  const leaders: { off: THREE.Vector3; top: number }[] = [];
+  for (let k = 0; k < nLead; k++) {
+    const a = a0 + (k / nLead) * Math.PI * 2 + (r() - 0.5) * 0.6;
+    const m = nLead === 1 ? 0.02 : 0.09 + r() * 0.08;
+    leaders.push({ off: new THREE.Vector3(Math.cos(a) * m, 0, Math.sin(a) * m), top: 0.9 + r() * 0.1 - (k > 0 ? r() * 0.05 : 0) });
+  }
+  const Q = (k: number, t: number) => {
+    const f = Math.max(0, (t - forkT) / (1 - forkT));
+    return P(t).addScaledVector(leaders[k].off, f * (0.4 + 0.6 * f));
+  };
+  // bare trunk, in crooked segments
+  const cuts = [0, forkT * 0.35, forkT * 0.7, forkT];
   for (let k = 0; k < 3; k++) {
-    b.limb(P(tops[k] - (k === 0 ? 0.05 : 0)), P(tops[k + 1]), 0.019 - k * 0.005, 0.015 - k * 0.005, 7, REGIONS.barkDark, 0.4 + k * 0.08, 0.5 + k * 0.08);
+    b.limb(P(cuts[k] - (k === 0 ? 0.05 : 0)), P(cuts[k + 1]), 0.017 - k * 0.0025, 0.0155 - k * 0.0025, 7, REGIONS.barkDark, 0.4 + k * 0.08, 0.45 + k * 0.08);
   }
-  const ends: { p: THREE.Vector3; d: THREE.Vector3; s: number }[] = [];
-  const limbs = 7 + Math.floor(r() * 3);
-  for (let k = 0; k < limbs; k++) {
-    const t = crownBase + (1 - crownBase) * (0.05 + 0.6 * (k / limbs) + r() * 0.08);
-    const from = P(Math.min(t, 0.85));
-    const a = (k / limbs) * Math.PI * 2 + r() * 0.9;
-    const up = 0.55 + r() * 0.5; // steep ascending limbs, as in old Aleppo pines
-    const len = (0.2 + r() * 0.16) * width * (1 - (t - crownBase) * 0.45);
-    const dir = new THREE.Vector3(Math.cos(a), up, Math.sin(a)).normalize();
-    const mid = from.clone().addScaledVector(dir, len * 0.55);
-    b.limb(from, mid, 0.008, 0.005, 5, REGIONS.barkDark, 0.45, 0.55);
-    // fork
-    for (const f of [-1, 1]) {
-      const d2 = dir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), f * (0.35 + r() * 0.4));
-      d2.y = Math.max(0.15, d2.y - 0.25 * r());
-      d2.normalize();
-      const end = mid.clone().addScaledVector(d2, len * (0.45 + r() * 0.25));
-      b.limb(mid, end, 0.005, 0.003, 4, REGIONS.barkDark, 0.5, 0.6);
-      ends.push({ p: end, d: d2, s: len });
+
+  // needle tuft = a flat sprig seen from above/below plus two upright crossed ones
+  const tuft = (c: THREE.Vector3, size: number, ao: number, upwards: number) => {
+    const [tu, tv] = PINE_TUFTS[Math.floor(r() * PINE_TUFTS.length)];
+    const reg: Region = { u0: tu - 0.05, u1: tu + 0.05, v0: tv - 0.05, v1: tv + 0.05 };
+    const spin = r() * Math.PI * 2;
+    const ex = new THREE.Vector3(Math.cos(spin), 0, Math.sin(spin));
+    const ez = new THREE.Vector3(-Math.sin(spin), 0, Math.cos(spin));
+    const s2 = size * 0.5;
+    const flat = (cc: THREE.Vector3, sc: number, tilt: number, flip: boolean) => {
+      const e1 = ex.clone().multiplyScalar(sc);
+      const e2 = ez.clone().multiplyScalar(sc).addScaledVector(Y, tilt * sc);
+      const n = Y.clone().addScaledVector(ex, 0.15).normalize();
+      b.quad([cc.clone().sub(e1).sub(e2), cc.clone().add(e1).sub(e2), cc.clone().add(e1).add(e2), cc.clone().sub(e1).add(e2)], [n, n, n, n], reg, [ao * 0.85, ao * 0.85, ao, ao], flip);
+    };
+    // the main flat mat, slightly domed, and a smaller tilted one just under it
+    flat(c, s2, upwards * 0.25, r() < 0.5);
+    flat(c.clone().add(new THREE.Vector3(0, -size * 0.12, 0)), s2 * 0.8, -0.2 + upwards * 0.2, r() < 0.5);
+    // upright crossed cards give volume from the side
+    for (let k = 0; k < 2; k++) {
+      const ang = spin + k * Math.PI * 0.5 + (r() - 0.5) * 0.5;
+      const e1 = new THREE.Vector3(Math.cos(ang), 0, Math.sin(ang)).multiplyScalar(s2 * 0.95);
+      const hgt = s2 * 0.7;
+      const n = new THREE.Vector3(-Math.sin(ang), 0.3, Math.cos(ang)).normalize();
+      const cc = c.clone().add(new THREE.Vector3(0, hgt * 0.1, 0));
+      b.quad(
+        [cc.clone().sub(e1).addScaledVector(Y, -hgt), cc.clone().add(e1).addScaledVector(Y, -hgt), cc.clone().add(e1).addScaledVector(Y, hgt), cc.clone().sub(e1).addScaledVector(Y, hgt)],
+        [n, n, n, n], reg, [ao * 0.75, ao * 0.75, ao, ao], k === 1,
+      );
     }
-  }
-  // the leader
-  ends.push({ p: P(0.97), d: new THREE.Vector3(0, 1, 0), s: 0.2 });
-  // needle tufts: twig cards spread around each limb end, facing up and out, flat-topped crown
-  for (const e of ends) {
-    const cards = 11 + Math.floor(r() * 5);
-    for (let c = 0; c < cards; c++) {
-      const yaw = r() * Math.PI * 2;
-      const out = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw)).multiplyScalar(0.6).add(e.d.clone().setY(0)).normalize();
-      if (!Number.isFinite(out.x)) out.set(1, 0, 0);
-      const len = 0.075 + r() * 0.06 + e.s * 0.12;
-      const base = e.p.clone().addScaledVector(out, -len * 0.45).add(new THREE.Vector3(0, (r() - 0.6) * 0.09, 0));
-      const tip = base.clone().addScaledVector(out, len).add(new THREE.Vector3(0, len * (r() * 0.25 - 0.05), 0));
-      const side = new THREE.Vector3(-out.z, 0, out.x);
-      // mostly flat sprays (seen from below and above), some tilted
-      // mix of flat sprays and steep ones so the crown has volume from the side
-      const roll = c % 3 === 0 ? (r() < 0.5 ? 1 : -1) * (0.9 + r() * 0.5) : (r() - 0.5) * 1.1;
-      const w = len * 0.42;
-      const off = side.clone().multiplyScalar(Math.cos(roll) * w).setY(Math.sin(roll) * w);
-      const n0 = new THREE.Vector3(0, 1, 0).addScaledVector(out, 0.3).normalize();
-      const height = (e.p.y - crownBase) / (1 - crownBase);
-      const ao0 = 0.45 + 0.3 * height, ao1 = 0.8 + 0.2 * height;
-      b.quad([base.clone().sub(off), tip.clone().sub(off), tip.clone().add(off), base.clone().add(off)], [n0, n0, n0, n0], REGIONS.branch, [ao0, ao1, ao1, ao0], c % 2 === 0, [0.2, 0.8]);
+  };
+
+  const crownH = 1 - cb;
+  for (let k = 0; k < nLead; k++) {
+    const top = leaders[k].top;
+    // the leader itself
+    const mids = [forkT, (forkT + top) / 2, top];
+    for (let j = 0; j < 2; j++) b.limb(Q(k, mids[j]), Q(k, mids[j + 1]), 0.0105 - j * 0.0025, 0.008 - j * 0.0025, 5, REGIONS.barkDark, 0.5, 0.55);
+    const lw = 1 / Math.sqrt(nLead);
+    const branches = 3 + Math.floor(r() * 2);
+    for (let j = 0; j < branches; j++) {
+      const t = cb + 0.04 + (top - cb - 0.1) * (j / branches) + r() * 0.04;
+      const from = Q(k, Math.min(t, top - 0.04));
+      const a = a0 * 0.7 + k * 2.1 + (j / branches) * Math.PI * 2 + r() * 0.9;
+      // spreading limbs, flatter higher up (umbrella)
+      const rel = (t - cb) / crownH;
+      const up = 0.22 + 0.5 * r() * (1 - rel * 0.5);
+      const len = (0.1 + r() * 0.1) * width * lw * (1 - rel * 0.35) + 0.04;
+      const dir = new THREE.Vector3(Math.cos(a), up, Math.sin(a)).normalize();
+      const mid = from.clone().addScaledVector(dir, len * 0.55);
+      const end = from.clone().addScaledVector(dir, len);
+      b.limb(from, mid, 0.0065, 0.0045, 4, REGIONS.barkDark, 0.5, 0.58);
+      b.limb(mid, end, 0.0045, 0.003, 4, REGIONS.barkDark, 0.55, 0.62);
+      const hRel = Math.min(1, Math.max(0, (end.y - cb) / crownH));
+      const ao = 0.55 + 0.45 * hRel;
+      tuft(end.clone().add(new THREE.Vector3(0, 0.012, 0)), 0.11 + r() * 0.05, ao, 1);
+      tuft(mid.clone().add(new THREE.Vector3((r() - 0.5) * 0.03, 0.01 + r() * 0.015, (r() - 0.5) * 0.03)), 0.085 + r() * 0.04, ao * 0.9, 0.5);
+      // an occasional extra clump off the limb, so the silhouette is lumpy rather than a disc
+      if (r() < 0.55) {
+        const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar((r() - 0.5) * 0.09);
+        tuft(end.clone().addScaledVector(dir, 0.04).add(side).add(new THREE.Vector3(0, 0.03 * r(), 0)), 0.08 + r() * 0.04, ao, 1);
+      }
     }
+    // crown top of this leader
+    tuft(Q(k, top).add(new THREE.Vector3(0, 0.03, 0)), 0.12 + r() * 0.04, 1, 1);
   }
   return b.build();
 }

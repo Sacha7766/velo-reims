@@ -16,6 +16,7 @@ const KEEP = [
   'building:colour', 'building:material', 'roof:orientation', 'highway', 'leaf_type', 'leaf_cycle', 'man_made',
   'tower:type', 'tower:construction', 'barrier', 'power', 'amenity', 'tourism', 'historic', 'information', 'waterway',
   'surface', 'name', 'sport', 'leisure', 'colour', 'aerialway', 'bridge', 'tunnel', 'width', 'lanes', 'denotation',
+  'oneway', 'junction',
 ];
 // land cover and roadside features the renderer uses beyond forests/buildings
 const EXTRA = [
@@ -26,6 +27,7 @@ const EXTRA = [
   'node["highway"~"^(bus_stop|street_lamp)$"]', 'node["amenity"~"^(bench|shelter)$"]',
   'node["tourism"~"^(information|viewpoint)$"]', 'node["historic"~"^(wayside_cross|wayside_shrine|memorial)$"]',
   'node["natural"~"^(peak|tree)$"]', 'node["sport"="free_flying"]', 'way["sport"="free_flying"]',
+  'node["highway"="turning_circle"]',
 ];
 
 function boxes(coords, corridor) {

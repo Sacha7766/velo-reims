@@ -393,10 +393,11 @@ export class Terrain extends THREE.Group {
     const near = routeIndex.nearest(x, z, roadHalfWidth + 17);
     if (near.index < 0) return h;
     const s = near.f * route.step;
-    for (const [a, b] of route.tunnels) if (s > a + 4 && s < b - 4) return h;
-    const road = routeIndex.eleAt(near.f) - 0.45;
+    if (!near.turn) for (const [a, b] of route.tunnels) if (s > a + 4 && s < b - 4) return h;
+    const road = near.ele - 0.45;
     const cut = h > road + 0.5;
-    const width = cut ? this.opts.cutWidth : 14;
+    // a cut is a steep face only a few metres high; above that the bank lies back (~60°)
+    const width = cut ? Math.max(this.opts.cutWidth, (h - road) * 0.6) : 14;
     // cuts rise as a straight, steep face from the road edge; fills ease out into the slope
     const t = (near.dist - roadHalfWidth - (cut ? 0.6 : 2.5)) / width;
     const w = cut && width < 8 ? 1 - Math.min(Math.max(t, 0), 1) : 1 - smooth01(t);

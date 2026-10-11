@@ -59,12 +59,16 @@ export async function loadRouteScene(routeId: string): Promise<RouteScene | null
 }
 
 export class Landmarks extends THREE.Group {
-  async build(scene: RouteScene, frame: WorldFrame, groundAt: (x: number, z: number) => number) {
+  /** onRoad: parked vehicles (align) that would stand on the asphalt are left out. */
+  async build(
+    scene: RouteScene, frame: WorldFrame, groundAt: (x: number, z: number) => number, onRoad?: (x: number, z: number) => boolean,
+  ) {
     for (const p of scene.placements ?? []) {
       try {
+        const [x, z] = lonLatToWorld(frame, p.lon, p.lat);
+        if (p.align && onRoad?.(x, z)) continue;
         const src = await loadModel(p.model);
         const obj = src.clone(true);
-        const [x, z] = lonLatToWorld(frame, p.lon, p.lat);
         const y = groundAt(x, z);
         obj.position.set(x, (Number.isFinite(y) ? y : 0) + (p.lift ?? 0), z);
         obj.rotation.y = -THREE.MathUtils.degToRad(p.rot ?? 0);

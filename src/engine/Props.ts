@@ -7,6 +7,7 @@ import type { Building, OsmWorld } from '../geo/osm.ts';
 import type { Route, RouteIndex } from '../geo/route.ts';
 import { patchMaterial } from './atmosphere.ts';
 import { loadModel } from './Landmarks.ts';
+import type { Biome } from './biome.ts';
 
 const POI_MODEL: Record<string, string> = {
   bench: 'prop-bench.glb',
@@ -25,7 +26,7 @@ function hash(n: number) {
 }
 
 export class Props extends THREE.Group {
-  async build(route: Route, index: RouteIndex, osm: OsmWorld, groundAt: (x: number, z: number) => number, halfWidth: number) {
+  async build(route: Route, index: RouteIndex, osm: OsmWorld, groundAt: (x: number, z: number) => number, halfWidth: number, biome?: Biome) {
     const place = async (model: string, x: number, z: number, yaw: number, lift = 0) => {
       const y = groundAt(x, z);
       if (!Number.isFinite(y)) return;
@@ -79,7 +80,7 @@ export class Props extends THREE.Group {
     });
     await Promise.all(jobs);
     this.add(this.wires(osm, poles, groundAt));
-    this.add(this.fences(osm, index, groundAt));
+    this.add(this.fences(osm, index, groundAt, halfWidth, biome));
   }
 
   /** Three sagging conductors between consecutive poles of each OSM power line. */
@@ -117,8 +118,12 @@ export class Props extends THREE.Group {
   }
 
   /** OSM fences (posts and two rails) and walls (rough stone) near the road. */
-  private fences(osm: OsmWorld, index: RouteIndex, groundAt: (x: number, z: number) => number): THREE.Object3D {
+  private fences(
+    osm: OsmWorld, index: RouteIndex, groundAt: (x: number, z: number) => number, halfWidth = 3.5, biome?: Biome,
+  ): THREE.Object3D {
     const g = new THREE.Group();
+    const med = biome?.id === 'mediterranean';
+    const mesh = med ? new MedFences() : null;
     const wood = patchMaterial(new THREE.MeshLambertMaterial({ color: 0x5a412b }), { key: 'fence' });
     const stone = patchMaterial(new THREE.MeshLambertMaterial({ color: 0x8e8a82 }), { key: 'wall' });
     const post = new THREE.BoxGeometry(0.1, 1.2, 0.1).translate(0, 0.5, 0);
@@ -129,9 +134,26 @@ export class Props extends THREE.Group {
     for (const bar of osm.barriers) {
       if (bar.kind !== 'fence' && bar.kind !== 'wall' && bar.kind !== 'retaining_wall') continue;
       const p = bar.pts;
-      if (index.nearest(p[0], p[1], 250).index < 0) continue;
+      // every vertex is checked (a long barrier may only come near the route far from its first node)
+      const nearV: boolean[] = [];
+      for (let i = 0; i + 1 < p.length; i += 2) nearV.push(index.nearest(p[i], p[i + 1], 250).index >= 0);
+      if (!nearV.some(Boolean)) continue;
       for (let i = 0; i + 3 < p.length; i += 2) {
+        if (!nearV[i / 2] && !nearV[i / 2 + 1]) continue;
         const ax = p[i], az = p[i + 1], bx = p[i + 2], bz = p[i + 3];
+        if (mesh && bar.kind === 'fence') {
+          mesh.fence(ax, az, bx, bz, groundAt);
+          continue;
+        }
+        if (mesh && bar.kind === 'wall') {
+          // walls along the road edge are the road parapets (Roadside); these are field walls
+          const mid = index.nearest((ax + bx) / 2, (az + bz) / 2, 60);
+          const e0 = index.nearest(ax, az, 60), e1 = index.nearest(bx, bz, 60);
+          const d = Math.min(mid.dist, e0.dist, e1.dist);
+          if (d < halfWidth + 6.5) continue;
+          mesh.wall(ax, az, bx, bz, groundAt);
+          continue;
+        }
         const len = Math.hypot(bx - ax, bz - az);
         const steps = Math.max(1, Math.round(len / 2.5));
         for (let k = 0; k < steps; k++) {
@@ -157,6 +179,7 @@ export class Props extends THREE.Group {
         }
       }
     }
+    if (mesh) g.add(...mesh.build());
     if (postMats.length) {
       const posts = new THREE.InstancedMesh(post, wood, postMats.length);
       postMats.forEach((m, i) => posts.setMatrixAt(i, m));
@@ -177,6 +200,150 @@ export class Props extends THREE.Group {
     }
     return g;
   }
+}
+
+/**
+ * Mediterranean field boundaries: galvanised wire-mesh fences (thin grey posts every ~2.7 m,
+ * 1.5 m diamond mesh) and dry-stone field walls (1.0-1.2 m, scanned limestone texture).
+ */
+class MedFences {
+  private postMats: THREE.Matrix4[] = [];
+  private mesh = { pos: [] as number[], uv: [] as number[], idx: [] as number[] };
+  private wall_ = { pos: [] as number[], uv: [] as number[], idx: [] as number[] };
+  private along = 0;
+
+  fence(ax: number, az: number, bx: number, bz: number, groundAt: (x: number, z: number) => number) {
+    const len = Math.hypot(bx - ax, bz - az);
+    if (len < 0.5) return;
+    const steps = Math.max(1, Math.round(len / 2.7));
+    const H = 1.5;
+    const m = this.mesh;
+    const up = new THREE.Vector3(0, 1, 0);
+    const q = new THREE.Quaternion().setFromAxisAngle(up, -Math.atan2(bz - az, bx - ax));
+    for (let k = 0; k <= steps; k++) {
+      const t = k / steps;
+      const x = ax + (bx - ax) * t, z = az + (bz - az) * t;
+      const y = groundAt(x, z);
+      if (!Number.isFinite(y)) continue;
+      // the last post of a segment is the first of the next one
+      if (k < steps) this.postMats.push(new THREE.Matrix4().compose(new THREE.Vector3(x, y - 0.1, z), q, new THREE.Vector3(1, 1, 1)));
+      if (k < steps) {
+        const t1 = (k + 1) / steps;
+        const x1 = ax + (bx - ax) * t1, z1 = az + (bz - az) * t1;
+        const y1 = groundAt(x1, z1);
+        if (!Number.isFinite(y1)) continue;
+        const b = m.pos.length / 3;
+        const w = len / steps;
+        m.pos.push(x, y, z, x1, y1, z1, x1, y1 + H, z1, x, y + H, z);
+        m.uv.push(0, 0, w, 0, w, H, 0, H);
+        m.idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
+      }
+    }
+  }
+
+  wall(ax: number, az: number, bx: number, bz: number, groundAt: (x: number, z: number) => number) {
+    const len = Math.hypot(bx - ax, bz - az);
+    if (len < 0.5) return;
+    const steps = Math.max(1, Math.round(len / 2));
+    const nx = -(bz - az) / len, nz = (bx - ax) / len;
+    const T = 0.27;
+    const H = 1.0 + 0.2 * hash(Math.floor(ax * 0.37 + az * 0.91));
+    // cross-section: offset, height (negative = buried), v in metres
+    const prof: [number, number][] = [[-T, -0.35], [-T * 0.9, H], [0, H + 0.07], [T * 0.9, H], [T, -0.35]];
+    const w = this.wall_;
+    const base = w.pos.length / 3;
+    let ok = 0;
+    for (let k = 0; k <= steps; k++) {
+      const t = k / steps;
+      const x = ax + (bx - ax) * t, z = az + (bz - az) * t;
+      const y = groundAt(x, z);
+      if (!Number.isFinite(y)) return;
+      ok++;
+      const u = this.along + len * t;
+      prof.forEach(([o, h], j) => {
+        w.pos.push(x + nx * o, y + h, z + nz * o);
+        w.uv.push(u / 2, j === 0 || j === 4 ? h / 2 + 0.2 : j === 2 ? H / 2 + 0.5 : h / 2);
+      });
+    }
+    this.along += len;
+    const P = prof.length;
+    for (let k = 0; k < ok - 1; k++)
+      for (let j = 0; j < P - 1; j++) {
+        const a = base + k * P + j, b = a + 1, c = a + P, d = c + 1;
+        w.idx.push(a, c, b, b, c, d);
+      }
+  }
+
+  build(): THREE.Object3D[] {
+    const out: THREE.Object3D[] = [];
+    if (this.postMats.length) {
+      const mat = patchMaterial(new THREE.MeshLambertMaterial({ color: 0xa4a8aa }), { key: 'fencepost' });
+      const posts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.05, 1.6, 0.05).translate(0, 0.8, 0), mat, this.postMats.length);
+      this.postMats.forEach((m, i) => posts.setMatrixAt(i, m));
+      posts.castShadow = true;
+      posts.computeBoundingSphere();
+      out.push(posts);
+    }
+    const mk = (d: { pos: number[]; uv: number[]; idx: number[] }, mat: THREE.Material, shadow: boolean) => {
+      if (!d.idx.length) return;
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(d.pos, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(d.uv, 2));
+      geo.setIndex(d.idx);
+      geo.computeVertexNormals();
+      geo.computeBoundingSphere();
+      const m = new THREE.Mesh(geo, mat);
+      m.castShadow = shadow;
+      m.receiveShadow = true;
+      out.push(m);
+    };
+    mk(this.mesh, patchMaterial(wireMaterial(), { key: 'wiremesh' }), false);
+    if (this.wall_.idx.length) {
+      const t = new THREE.TextureLoader().load('/textures/med/wall.jpg');
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = 8;
+      const stone = new THREE.MeshStandardMaterial({ map: t, color: new THREE.Color(1.5, 1.45, 1.35), roughness: 0.95, side: THREE.DoubleSide });
+      mk(this.wall_, patchMaterial(stone, { key: 'fieldwall' }), true);
+    }
+    return out;
+  }
+}
+
+/** Galvanised diamond mesh: 1 m x 1.5 m per texture tile, alpha-tested wires. */
+function wireMaterial(): THREE.MeshLambertMaterial {
+  const W = 128, H = 192; // 1 m x 1.5 m
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext('2d', { willReadFrequently: true })!;
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = '#c9cdce';
+  ctx.lineWidth = 2.2;
+  const cell = 32; // ~25 cm diamonds
+  ctx.beginPath();
+  for (let i = -H; i <= W + H; i += cell) {
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i + H, H);
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i - H, H);
+  }
+  ctx.stroke();
+  // taut top and bottom strand
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, 2);
+  ctx.lineTo(W, 2);
+  ctx.moveTo(0, H - 2);
+  ctx.lineTo(W, H - 2);
+  ctx.stroke();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 8;
+  const mat = new THREE.MeshLambertMaterial({ map: tex, transparent: false, alphaTest: 0.35, side: THREE.DoubleSide });
+  mat.alphaToCoverage = true;
+  return mat;
 }
 
 /** A spot 0.8 m outside the longest wall of a building, facing along it. */

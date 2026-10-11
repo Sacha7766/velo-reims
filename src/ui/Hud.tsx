@@ -33,6 +33,8 @@ export function Hud({
   const st = useSession(session);
   const { controllable, devices } = useHub();
   const route = session.route;
+  // inside a turnaround s runs past the ends of the route
+  const clampS = (v: number) => Math.min(route.length, Math.max(0, v));
   const workout = session.workout;
   const [hidden, setHidden] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
@@ -168,7 +170,7 @@ export function Hud({
   }, [engine, session, audio]);
 
   const profileRef = useCanvas(
-    (c) => drawProfile(c, profile, { marker: st.s, ghost: st.ghostS, progress: st.dir === 1 ? st.s : undefined, padTop: 10, minSpan: 200, bins: Math.round(Math.min(140, Math.max(36, route.length / 200))) }),
+    (c) => drawProfile(c, profile, { marker: clampS(st.s), ghost: st.ghostS === null ? null : clampS(st.ghostS), progress: st.dir === 1 ? clampS(st.s) : undefined, padTop: 10, minSpan: 200, bins: Math.round(Math.min(140, Math.max(36, route.length / 200))) }),
     [st.s, st.ghostS, profile],
   );
   const mapRef = useCanvas(
@@ -178,7 +180,7 @@ export function Hud({
 
   const ftp = settings.ftp;
   const wkg = st.power3s / settings.weight;
-  const toTop = st.dir === 1 ? route.length - st.s : null;
+  const toTop = st.dir === 1 ? Math.max(0, route.length - st.s) : null;
   const hmToTop = st.dir === 1 ? Math.max(0, route.maxEle - st.ele) : null;
   const passed = hairpins.filter((d) => (st.dir === 1 ? d < st.s : d > st.s)).length;
   const ws = st.workout;
@@ -259,7 +261,7 @@ export function Hud({
           {route.category !== 'climb' && (
             <span>
               {route.loop ? `Lap ${st.lap}, ` : ''}
-              {km(st.dir === 1 ? route.length - st.s : st.s)} km to go
+              {km(Math.max(0, st.dir === 1 ? route.length - st.s : st.s))} km to go
             </span>
           )}
           {route.category === 'climb' && st.dir === -1 && <span>Descending</span>}

@@ -2,7 +2,7 @@
 // with DEM-derived elevation, gradient, heading and curvature.
 
 import { DEM_MAX_Z, elevationAtMercSync, localDemCovers, preloadDemForPoints } from './elevation.ts';
-import { lonLatToMerc, makeFrame, mercToWorld, type WorldFrame } from './mercator.ts';
+import { lonLatToMerc, makeFrame, mercToLonLat, mercToWorld, type WorldFrame } from './mercator.ts';
 
 export type RouteCategory = 'climb' | 'rolling' | 'flat' | 'city';
 
@@ -18,6 +18,34 @@ export interface RouteData {
   coords: number[][];
   /** Tunnel spans [from, to] in metres along the route (from OSM tunnel=yes). */
   tunnels?: [number, number][];
+  /**
+   * Point-to-point routes: how the rider turns at each end ([lon, lat] from the end point
+   * around a loop back to it; scripts/bake-turnarounds.mjs). Missing → a turning circle.
+   */
+  turnEnd?: number[][];
+  turnStart?: number[][];
+}
+
+/**
+ * The turnaround at one end of a point-to-point route, sampled like the route itself. The
+ * rider rides it with s beyond the end (turnEnd: s = length + u) or below the start
+ * (turnStart: s = -u), then rejoins the road `rejoin` metres back from the end.
+ * turnStart stores heading + π and negated grade, because the rider rides it with dir = -1.
+ */
+export interface TurnPath {
+  n: number;
+  length: number;
+  /** Samples of the loop itself (the rest is the rejoin leg on the main road). */
+  loopN: number;
+  rejoin: number;
+  x: Float32Array;
+  z: Float32Array;
+  ele: Float32Array;
+  grade: Float32Array;
+  heading: Float32Array;
+  radius: Float32Array;
+  lon: Float64Array;
+  lat: Float64Array;
 }
 
 export interface Route {
@@ -45,6 +73,8 @@ export interface Route {
   bounds: [number, number, number, number];
   /** Tunnel spans [from, to] in metres along the route. */
   tunnels: [number, number][];
+  turnEnd: TurnPath | null;
+  turnStart: TurnPath | null;
 }
 
 export const ROUTE_STEP = 4;
@@ -219,6 +249,129 @@ export async function buildRoute(data: RouteData): Promise<Route> {
     maxEle,
     bounds: [minX, minZ, maxX, maxZ],
     tunnels,
+    ...turns(data, frame, { x, z, ele, n, step }, demZ),
+  };
+}
+
+const REJOIN = 24;
+
+/** Build both turnarounds (only for point-to-point routes). */
+function turns(
+  data: RouteData,
+  frame: WorldFrame,
+  main: { x: Float32Array; z: Float32Array; ele: Float32Array; n: number; step: number },
+  demZ: number,
+): { turnEnd: TurnPath | null; turnStart: TurnPath | null } {
+  if (data.loop) return { turnEnd: null, turnStart: null };
+  const { x, z, ele, n, step } = main;
+  const rj = Math.min(REJOIN, (n - 1) * step * 0.25);
+  const k = Math.max(1, Math.round(rj / step));
+  // end: arrive heading along the route; rejoin = the last k samples, backwards
+  const endHead = Math.atan2(x[n - 1] - x[n - 3], -(z[n - 1] - z[n - 3]));
+  const endLoop = data.turnEnd?.length ? toWorld(data.turnEnd, frame) : turningCircle(x[n - 1], z[n - 1], endHead);
+  const endRejoin: [number, number][] = [];
+  for (let i = 1; i <= k; i++) endRejoin.push([x[n - 1 - i], z[n - 1 - i]]);
+  const turnEnd = samplePath(endLoop, endRejoin, frame, demZ, ele[n - 1], ele[n - 1 - k], false, k * step);
+  // start: arrive heading down the route (towards s = 0); rejoin = the first k samples, forwards
+  const startHead = Math.atan2(x[0] - x[2], -(z[0] - z[2]));
+  const startLoop = data.turnStart?.length ? toWorld(data.turnStart, frame) : turningCircle(x[0], z[0], startHead);
+  const startRejoin: [number, number][] = [];
+  for (let i = 1; i <= k; i++) startRejoin.push([x[i], z[i]]);
+  const turnStart = samplePath(startLoop, startRejoin, frame, demZ, ele[0], ele[k], true, k * step);
+  return { turnEnd, turnStart };
+}
+
+function toWorld(ll: number[][], frame: WorldFrame): [number, number][] {
+  return ll.map((c) => {
+    const [mx, my] = lonLatToMerc(c[0], c[1]);
+    return mercToWorld(frame, mx, my) as [number, number];
+  });
+}
+
+/** Turning circle ahead of (x, z): keep right, turn left round it, back to the start point. */
+function turningCircle(x0: number, z0: number, heading: number): [number, number][] {
+  const fx = Math.sin(heading), fz = -Math.cos(heading); // forward
+  const lx = -fz, lz = fx; // left… in world terms with -Z north: left of forward
+  const ctrl: [number, number][] = [[-5, 0], [0, 0], [5, -2.4], [12, -6], [19, -3.2], [21, 3], [16, 7.5], [9, 6.2], [4, 2.6], [0, 0], [-5, 0]];
+  const w = ctrl.map(([a, b]) => [x0 + fx * a - lx * b, z0 + fz * a - lz * b] as [number, number]);
+  const out: [number, number][] = [];
+  for (let i = 1; i < w.length - 2; i++) {
+    const [p0, p1, p2, p3] = [w[i - 1], w[i], w[i + 1], w[i + 2]];
+    for (let s = 0; s < 6; s++) {
+      const t = s / 6, t2 = t * t, t3 = t2 * t;
+      const c = (a: number, b: number, cc: number, d: number) =>
+        0.5 * (2 * b + (-a + cc) * t + (2 * a - 5 * b + 4 * cc - d) * t2 + (-a + 3 * b - 3 * cc + d) * t3);
+      out.push([c(p0[0], p1[0], p2[0], p3[0]), c(p0[1], p1[1], p2[1], p3[1])]);
+    }
+  }
+  out.push([x0, z0]);
+  return out;
+}
+
+/** Resample loop + rejoin leg at ROUTE_STEP with DEM elevation pinned to the road at both ends. */
+function samplePath(
+  loop: [number, number][],
+  rejoin: [number, number][],
+  frame: WorldFrame,
+  demZ: number,
+  eleStart: number,
+  eleEnd: number,
+  reversed: boolean,
+  rejoinLen: number,
+): TurnPath {
+  const pts = [...loop, ...rejoin];
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const length = cum[cum.length - 1];
+  const loopLen = cum[loop.length - 1];
+  const step = ROUTE_STEP;
+  const n = Math.max(3, Math.floor(length / step) + 1);
+  const x = new Float32Array(n), z = new Float32Array(n), ele = new Float32Array(n);
+  const lon = new Float64Array(n), lat = new Float64Array(n);
+  let seg = 0;
+  for (let i = 0; i < n; i++) {
+    const s = Math.min((i * length) / (n - 1), length);
+    while (seg < cum.length - 2 && cum[seg + 1] < s) seg++;
+    const t = (s - cum[seg]) / (cum[seg + 1] - cum[seg] || 1);
+    x[i] = pts[seg][0] + (pts[seg + 1][0] - pts[seg][0]) * t;
+    z[i] = pts[seg][1] + (pts[seg + 1][1] - pts[seg][1]) * t;
+    const mx = x[i] / frame.k + frame.mx0, my = -z[i] / frame.k + frame.my0;
+    [lon[i], lat[i]] = mercToLonLat(mx, my);
+    const h = elevationAtMercSync(mx, my, demZ);
+    ele[i] = Number.isFinite(h) ? h : NaN;
+  }
+  // pin both ends to the road and smooth; the DEM fills the middle
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    const lineal = eleStart + (eleEnd - eleStart) * t;
+    if (!Number.isFinite(ele[i])) ele[i] = lineal;
+    const pin = Math.max(1 - (i * step) / 12, 0, 1 - ((n - 1 - i) * step) / 12);
+    ele[i] = ele[i] + (lineal - ele[i]) * pin;
+  }
+  const eleS = smooth(ele, 3, 2);
+  const heading = new Float32Array(n), grade = new Float32Array(n), radius = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1);
+    heading[i] = Math.atan2(x[b] - x[a], -(z[b] - z[a]));
+    const ga = Math.max(0, i - 3), gb = Math.min(n - 1, i + 3);
+    grade[i] = Math.max(-25, Math.min(25, ((eleS[gb] - eleS[ga]) / ((gb - ga) * (length / (n - 1)) || 1)) * 100));
+  }
+  for (let i = 0; i < n; i++) {
+    const a = Math.max(0, i - 2), b = Math.min(n - 1, i + 2);
+    let d = heading[b] - heading[a];
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    radius[i] = Math.abs(d) < 1e-4 ? 1e4 : Math.min(1e4, ((b - a) * (length / (n - 1))) / Math.abs(d));
+  }
+  if (reversed) {
+    // ridden with dir = -1: consumers add π to the heading and multiply grade by dir
+    for (let i = 0; i < n; i++) {
+      heading[i] += Math.PI;
+      grade[i] = -grade[i];
+    }
+  }
+  return {
+    n, length, loopN: Math.min(n, Math.round((loopLen / length) * (n - 1)) + 1), rejoin: rejoinLen,
+    x, z, ele: eleS, grade, heading, radius, lon, lat,
   };
 }
 
@@ -243,6 +396,8 @@ function inferCategory(gain: number, length: number, range: number): RouteCatego
 /** Interpolated route state at distance s (clamped, or wrapped on loops). */
 export function pointAt(r: Route, s: number, out: Partial<RoutePoint> = {}): RoutePoint {
   if (r.loop) s = ((s % r.length) + r.length) % r.length;
+  else if (s > r.length && r.turnEnd) return turnPoint(r.turnEnd, s - r.length, out);
+  else if (s < 0 && r.turnStart) return turnPoint(r.turnStart, -s, out);
   const f = Math.min(Math.max(s / r.step, 0), r.n - 1.0001);
   const i = Math.floor(f);
   const t = f - i;
@@ -265,6 +420,12 @@ export class RouteIndex {
   private cell: number;
   private grid = new Map<number, number[]>();
   private route: Route;
+  /** Turnaround samples (both ends): x, z, ele, path id (segments only join within one path). */
+  private ex: number[] = [];
+  private ez: number[] = [];
+  private ee: number[] = [];
+  private ep: number[] = [];
+  private egrid = new Map<number, number[]>();
 
   constructor(route: Route, cell = 40) {
     this.route = route;
@@ -275,14 +436,33 @@ export class RouteIndex {
       if (!list) this.grid.set(k, (list = []));
       list.push(i);
     }
+    [route.turnEnd, route.turnStart].forEach((t, id) => {
+      if (!t) return;
+      // the rejoin leg lies on the road itself; the loop is what needs indexing
+      for (let i = 0; i < t.loopN; i++) {
+        const j = this.ex.length;
+        this.ex.push(t.x[i]);
+        this.ez.push(t.z[i]);
+        this.ee.push(t.ele[i]);
+        this.ep.push(id);
+        const k = this.key(Math.floor(t.x[i] / cell), Math.floor(t.z[i] / cell));
+        let list = this.egrid.get(k);
+        if (!list) this.egrid.set(k, (list = []));
+        list.push(j);
+      }
+    });
   }
 
   private key(cx: number, cz: number) {
     return (cx + 32768) * 65536 + (cz + 32768);
   }
 
-  /** Nearest point on the route: sample index, distance, and fractional index along the polyline. */
-  nearest(x: number, z: number, maxDist: number): { index: number; dist: number; f: number } {
+  /**
+   * Nearest point on the route or its turnarounds: sample index, distance, fractional index
+   * along the main polyline, road elevation there, and whether it lies on a turnaround
+   * (then index/f point at the route end it belongs to).
+   */
+  nearest(x: number, z: number, maxDist: number): { index: number; dist: number; f: number; ele: number; turn: boolean } {
     const r = this.route;
     const c = this.cell;
     const reach = Math.ceil(maxDist / c);
@@ -305,7 +485,42 @@ export class RouteIndex {
         }
       }
     }
-    if (best < 0) return { index: -1, dist: Infinity, f: -1 };
+    // turnarounds
+    let eBest = -1;
+    let eD = Math.min(bestD, maxDist * maxDist);
+    if (this.ex.length) {
+      for (let dz = -reach; dz <= reach; dz++) {
+        for (let dx = -reach; dx <= reach; dx++) {
+          const list = this.egrid.get(this.key(cx + dx, cz + dz));
+          if (!list) continue;
+          for (const j of list) {
+            const d = (this.ex[j] - x) ** 2 + (this.ez[j] - z) ** 2;
+            if (d < eD) {
+              eD = d;
+              eBest = j;
+            }
+          }
+        }
+      }
+    }
+    if (eBest >= 0) {
+      let dist = Math.sqrt(eD);
+      let ele = this.ee[eBest];
+      for (const j of [eBest - 1, eBest]) {
+        if (j < 0 || j + 1 >= this.ex.length || this.ep[j] !== this.ep[j + 1]) continue;
+        const ax = this.ex[j], az = this.ez[j];
+        const bx = this.ex[j + 1] - ax, bz = this.ez[j + 1] - az;
+        const t = Math.max(0, Math.min(1, ((x - ax) * bx + (z - az) * bz) / (bx * bx + bz * bz || 1)));
+        const d = Math.hypot(x - ax - bx * t, z - az - bz * t);
+        if (d < dist) {
+          dist = d;
+          ele = this.ee[j] + (this.ee[j + 1] - this.ee[j]) * t;
+        }
+      }
+      const end = this.ep[eBest] === 0 ? r.n - 1 : 0;
+      return { index: end, dist, f: end, ele, turn: true };
+    }
+    if (best < 0) return { index: -1, dist: Infinity, f: -1, ele: NaN, turn: false };
     // refine against the neighbouring segments
     let dist = Math.sqrt(bestD);
     let f = best;
@@ -320,7 +535,7 @@ export class RouteIndex {
         f = j + t;
       }
     }
-    return { index: best, dist, f };
+    return { index: best, dist, f, ele: this.eleAt(f), turn: false };
   }
 
   /** Route elevation at a fractional sample index. */
@@ -330,6 +545,68 @@ export class RouteIndex {
     const t = Math.min(Math.max(f - i, 0), 1);
     return r.ele[i] + (r.ele[i + 1] - r.ele[i]) * t;
   }
+}
+
+function turnPoint(p: TurnPath, u: number, out: Partial<RoutePoint>): RoutePoint {
+  const f = Math.min(Math.max((u / p.length) * (p.n - 1), 0), p.n - 1.0001);
+  const i = Math.floor(f);
+  const t = f - i;
+  const lerp = (a: ArrayLike<number>) => a[i] + (a[i + 1] - a[i]) * t;
+  let dh = p.heading[i + 1] - p.heading[i];
+  dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+  out.x = lerp(p.x);
+  out.z = lerp(p.z);
+  out.ele = lerp(p.ele);
+  out.grade = lerp(p.grade);
+  out.heading = p.heading[i] + dh * t;
+  out.radius = lerp(p.radius);
+  out.lon = lerp(p.lon);
+  out.lat = lerp(p.lat);
+  return out as RoutePoint;
+}
+
+/**
+ * Move a rider along the route by ds metres (≥ 0) in direction dir. Loops wrap; point-to-point
+ * routes ride the turnaround at each end and come back. `turned` tells which end was rounded.
+ */
+export function advance(
+  r: Route, s: number, dir: 1 | -1, ds: number,
+): { s: number; dir: 1 | -1; turned: 'end' | 'start' | null; enteredEnd: boolean } {
+  const L = r.length;
+  let next = s + ds * dir;
+  if (r.loop) return { s: ((next % L) + L) % L, dir, turned: null, enteredEnd: s < L && next >= L };
+  const enteredEnd = dir === 1 && s < L && next >= L;
+  if (dir === 1 && next >= L) {
+    const T = r.turnEnd;
+    if (!T) return { s: L - (next - L), dir: -1, turned: 'end', enteredEnd };
+    if (next >= L + T.length) return { s: L - T.rejoin - (next - L - T.length), dir: -1, turned: 'end', enteredEnd };
+    return { s: next, dir, turned: null, enteredEnd };
+  }
+  if (dir === -1 && next <= 0) {
+    const T = r.turnStart;
+    if (!T) return { s: -next, dir: 1, turned: 'start', enteredEnd };
+    if (next <= -T.length) return { s: T.rejoin + (-next - T.length), dir: 1, turned: 'start', enteredEnd };
+    return { s: next, dir, turned: null, enteredEnd };
+  }
+  return { s: next, dir, turned: null, enteredEnd };
+}
+
+/** Where a rider who started at s = 0 is after riding d metres (turnarounds included). */
+export function positionAt(r: Route, d: number): { s: number; dir: 1 | -1 } {
+  const L = r.length;
+  if (r.loop) return { s: ((d % L) + L) % L, dir: 1 };
+  if (d < L) return { s: d, dir: 1 };
+  const Te = r.turnEnd?.length ?? 0, rE = r.turnEnd?.rejoin ?? 0;
+  const Ts = r.turnStart?.length ?? 0, rS = r.turnStart?.rejoin ?? 0;
+  const down = L - rE, up = L - rS;
+  let x = (d - L) % (Te + down + Ts + up);
+  if (x < Te) return { s: L + x, dir: 1 };
+  x -= Te;
+  if (x < down) return { s: down - x, dir: -1 };
+  x -= down;
+  if (x < Ts) return { s: -x, dir: -1 };
+  x -= Ts;
+  return { s: rS + x, dir: 1 };
 }
 
 /** Distances (m) of hairpin bends: ≥135° of turning within ~60 m. */

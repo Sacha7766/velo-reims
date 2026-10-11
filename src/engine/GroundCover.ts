@@ -341,8 +341,14 @@ export class GroundCover extends THREE.Group {
             // garrigue: limestone boulders, carritx tussocks, rosemary/mastic cushions, fan palms
             if (r() < 0.012 * B.rockDensity) rocks.push(x, y - 0.18, z, 0.25 + r() * r() * 1.1, r() * 6.28, 0);
             const pick = r();
-            if (pick < B.palms * (canopy > 0.3 ? 1.6 : 1) && d > halfWidth + 1.5) {
-              palms.push(x, y - 0.05, z, 0.7 + r() * 0.7, r() * 6.28, 0);
+            if (pick < B.palms * 0.4 * (canopy > 0.3 ? 1.6 : 1) && d > halfWidth + 1.5) {
+              // dwarf fan palms grow in clumps of 3–6
+              const n = 3 + Math.floor(r() * 4);
+              for (let k = 0; k < n; k++) {
+                const px = x + (r() - 0.5) * 3.2, pz = z + (r() - 0.5) * 3.2;
+                const py = groundHeight(px, pz);
+                if (Number.isFinite(py)) palms.push(px, py - 0.05, pz, 0.6 + r() * 0.6, r() * 6.28, 0);
+              }
               continue;
             }
             // under pines the understory is open: fewer shrubs, more palms
@@ -355,7 +361,7 @@ export class GroundCover extends THREE.Group {
             if (clump < -0.1 && r() < 0.85) continue;
             // open slopes are covered in carritx; under the pines it thins out
             if (r() < (canopy > 0.4 ? 0.85 : 0.25)) continue;
-            const v = d < halfWidth + 1.2 ? 0.6 + r() * 0.3 : 0.9 + r() * 0.8;
+            const v = d < halfWidth + 1.2 ? 0.55 + r() * 0.25 : 0.75 + r() * 0.5;
             grass.push(x, y - 0.03, z, v, r() * 6.28, 0);
             continue;
           }
@@ -407,7 +413,7 @@ export class GroundCover extends THREE.Group {
       meshes.push(mesh);
       this.add(mesh);
     };
-    add(this.tuft, this.grassMat, grass, this.biome.tussocks ? 1.5 : 1.1, false, true);
+    add(this.tuft, this.grassMat, grass, this.biome.tussocks ? 1.25 : 1.1, false, true);
     if (cushions.length && this.shrub && this.shrubMat) add(this.shrub, this.shrubMat, cushions, 0.8, true, true);
     if (this.palm && this.palmMats) add(this.palm, this.palmMats as unknown as THREE.Material, palms, 1, true, false);
     add(this.flowerTuft, this.flowerMat, flowers, 1.0, false, true);

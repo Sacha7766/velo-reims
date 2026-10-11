@@ -8,6 +8,7 @@ import { findHairpins, type Route } from '../geo/route.ts';
 import { patchMaterial } from './atmosphere.ts';
 import { mergeColored } from './Road.ts';
 import { ALPINE, type Biome } from './biome.ts';
+import type { Barrier } from '../geo/osm.ts';
 
 /** Barrier type per stretch of route (from the route scene file, checked against street-level photos). */
 export interface BarrierSpan {
@@ -31,9 +32,10 @@ export class Roadside extends THREE.Group {
     groundAt: (x: number, z: number) => number,
     biome: Biome = ALPINE,
     spans: BarrierSpan[] = [],
+    osmBarriers: Barrier[] = [],
   ) {
     super();
-    const runs = this.findRailRuns(route, halfWidth, groundAt);
+    const runs = this.findRailRuns(route, halfWidth, groundAt, biome, osmBarriers);
     this.railRuns = runs;
     // split runs by barrier type: scene-file spans first, biome default otherwise
     const typeAt = (i: number) => spans.find((sp) => i * route.step >= sp.from && i * route.step < sp.to)?.barrier ?? biome.barrier;
@@ -55,9 +57,41 @@ export class Roadside extends THREE.Group {
   }
 
   /** Stretches where the ground beside the road falls away (or hairpin outsides). */
-  private findRailRuns(route: Route, hw: number, groundAt: (x: number, z: number) => number): Run[] {
+  private findRailRuns(
+    route: Route, hw: number, groundAt: (x: number, z: number) => number, biome: Biome, osm: Barrier[],
+  ): Run[] {
     const n = route.n;
     const need = { [1]: new Uint8Array(n), [-1]: new Uint8Array(n) } as Record<1 | -1, Uint8Array>;
+    // Mediterranean coast roads have parapets on far smaller drops than Alpine roads have rails
+    const minDrop = biome.id === 'mediterranean' ? 1.1 : 2.2;
+    // OSM walls / retaining walls / guard rails running along the road edge
+    for (const b of osm) {
+      if (!['wall', 'retaining_wall', 'guard_rail'].includes(b.kind)) continue;
+      const p = b.pts;
+      for (let k = 0; k + 1 < p.length / 2; k++) {
+        const ax = p[k * 2], az = p[k * 2 + 1], bx = p[k * 2 + 2], bz = p[k * 2 + 3];
+        const len = Math.hypot(bx - ax, bz - az);
+        const steps = Math.max(1, Math.ceil(len / route.step));
+        for (let t = 0; t <= steps; t++) {
+          const x = ax + ((bx - ax) * t) / steps, z = az + ((bz - az) * t) / steps;
+          // nearest route sample (coarse search around a hash would be faster; walls are few)
+          let best = -1, bd = 1e9;
+          const i0 = Math.max(0, Math.floor(this.guess(route, x, z) - 40)), i1 = Math.min(n - 1, i0 + 80);
+          for (let i = i0; i <= i1; i++) {
+            const d = (route.x[i] - x) ** 2 + (route.z[i] - z) ** 2;
+            if (d < bd) { bd = d; best = i; }
+          }
+          const d = Math.sqrt(bd);
+          if (best < 0 || d < hw - 0.5 || d > hw + 6) continue;
+          const h = route.heading[best];
+          const side: 1 | -1 = (x - route.x[best]) * Math.cos(h) + (z - route.z[best]) * Math.sin(h) > 0 ? 1 : -1;
+          // a retaining wall above the road is a cut wall, not a parapet: only walls at/below road level
+          const g = groundAt(x, z);
+          if (Number.isFinite(g) && g > route.ele[best] + 1.5) continue;
+          need[side][best] = 1;
+        }
+      }
+    }
     for (let i = 0; i < n; i++) {
       const h = route.heading[i];
       const rx = Math.cos(h), rz = Math.sin(h);
@@ -67,7 +101,7 @@ export class Roadside extends THREE.Group {
         const g2 = groundAt(route.x[i] + rx * (d + 4) * side, route.z[i] + rz * (d + 4) * side);
         if (!Number.isFinite(g)) continue;
         const drop = route.ele[i] - Math.min(g, Number.isFinite(g2) ? g2 + 1.2 : g);
-        if (drop > 2.2) need[side][i] = 1;
+        if (drop > minDrop) need[side][i] = 1;
       }
     }
     // outside of hairpins
@@ -185,6 +219,31 @@ export class Roadside extends THREE.Group {
     return g;
   }
 
+  private guessGrid: Map<number, number[]> | null = null;
+
+  /** Approximate route index near (x, z) via a 50 m grid of samples. */
+  private guess(route: Route, x: number, z: number): number {
+    if (!this.guessGrid) {
+      this.guessGrid = new Map();
+      for (let i = 0; i < route.n; i += 4) {
+        const k = Math.floor(route.x[i] / 50) * 100003 + Math.floor(route.z[i] / 50);
+        let l = this.guessGrid.get(k);
+        if (!l) this.guessGrid.set(k, (l = []));
+        l.push(i);
+      }
+    }
+    let best = 0, bd = 1e18;
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        for (const i of this.guessGrid.get((Math.floor(x / 50) + dx) * 100003 + Math.floor(z / 50) + dz) ?? []) {
+          const d = (route.x[i] - x) ** 2 + (route.z[i] - z) ** 2;
+          if (d < bd) { bd = d; best = i; }
+        }
+      }
+    }
+    return bd < 1e18 ? best : -1000;
+  }
+
   /**
    * Mallorcan road parapet: rough limestone masonry, ~0.9 m high and 0.5 m thick, rounded
    * mortar cap, standing right at the asphalt edge on the valley side.
@@ -195,7 +254,7 @@ export class Roadside extends THREE.Group {
     const uv: number[] = [];
     const idx: number[] = [];
     const T = 0.25; // half thickness
-    const H = 0.74;
+    const H = 0.82;
     // cross-section (outward offset from the inner face, height): inner face, rounded cap, outer face
     const prof: [number, number, number][] = [
       [0, -0.6, 0], [0, H - 0.08, 0.45], [0.05, H, 0.52], [T, H + 0.06, 0.6], [2 * T - 0.05, H, 0.68], [2 * T, H - 0.08, 0.75], [2 * T, -2.0, 1.0],

@@ -9,12 +9,13 @@
 <button id="start">Start audio</button> <button id="mute">Mute</button>
 <div id="sliders"></div>
 <label><input type="checkbox" id="desc" /> descending</label>
+<label><input type="checkbox" id="med" /> mediterranean biome (surf, gulls, goat bells, pines; set sea&gt;0.3, forest 0.1 for goats, forest 0.8 for pines, speed ~3 to hear surf)</label>
 <div id="shots"></div>
 <script type="module">
   import { RideAudio } from '/src/audio/RideAudio.ts';
   const a = new RideAudio();
-  const s = { speed: 8, power: 180, cadence: 85, grade: 3, altitude: 600, forest: 0.6, urban: 0, descending: false };
-  const defs = { speed: [0, 25, 0.1], power: [0, 400, 1], cadence: [0, 120, 1], altitude: [0, 3000, 10], forest: [0, 1, 0.01], urban: [0, 1, 0.01], volume: [0, 1, 0.01] };
+  const s = { speed: 8, power: 180, cadence: 85, grade: 3, altitude: 600, forest: 0.6, urban: 0, sea: 0, biome: 'alpine', descending: false };
+  const defs = { speed: [0, 25, 0.1], power: [0, 400, 1], cadence: [0, 120, 1], altitude: [0, 3000, 10], forest: [0, 1, 0.01], urban: [0, 1, 0.01], sea: [0, 1, 0.01], volume: [0, 1, 0.01] };
   const box = document.getElementById('sliders');
   for (const [k, [lo, hi, step]] of Object.entries(defs)) {
     const l = document.createElement('label');
@@ -25,10 +26,11 @@
     box.append(l);
   }
   document.getElementById('desc').onchange = (e) => (s.descending = e.target.checked);
+  document.getElementById('med').onchange = (e) => (s.biome = e.target.checked ? 'mediterranean' : 'alpine');
   document.getElementById('start').onclick = () => a.resume();
   let m = false;
   document.getElementById('mute').onclick = () => a.setMuted((m = !m));
-  const shots = { 'shift up': () => a.shift(1), 'shift down': () => a.shift(-1), limit: () => a.shiftLimit(), summit: () => a.summit(), 'seg start': () => a.segmentStart(), 'seg end': () => a.segmentEnd(false), 'seg end PR': () => a.segmentEnd(true), countdown: () => a.countdown() };
+  const shots = { 'shift up': () => a.shift(1), 'shift down': () => a.shift(-1), limit: () => a.shiftLimit(), summit: () => a.summit(), 'seg start': () => a.segmentStart(), 'seg end': () => a.segmentEnd(false), 'seg end PR': () => a.segmentEnd(true), countdown: () => a.countdown(), 'gulls now': () => a.gulls(a.ctx, 1), 'goat bells now': () => a.goatBells(a.ctx) };
   for (const [n, f] of Object.entries(shots)) {
     const b = document.createElement('button'); b.textContent = n; b.onclick = f; document.getElementById('shots').append(b);
   }

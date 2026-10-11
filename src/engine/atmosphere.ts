@@ -259,12 +259,12 @@ vec2 atmoTunnel(vec3 wp) {
   float s1 = uTunnelPts[uTunnelCount - 1].w - 4.0;
   float along = smoothstep(s0 - 3.0, s0 + 6.0, bs) * (1.0 - smoothstep(s1 - 6.0, s1 + 3.0, bs));
   float inside = along * (1.0 - smoothstep(uTunnelHalf - 0.2, uTunnelHalf + 0.6, best)) * (1.0 - smoothstep(by + 6.2, by + 7.0, wp.y)) * step(by - 1.5, wp.y);
-  float sl = (floor((bs - s0) / 12.0) + 0.5) * 12.0 + s0;
+  float sl = (floor((bs - s0) / 9.0) + 0.5) * 9.0 + s0;
   float ds = bs - sl;
   float dy = by + 5.8 - wp.y;
   float lamp = 0.0;
   for (int k = -1; k <= 1; k++) {
-    float dd = ds - float(k) * 12.0;
+    float dd = ds - float(k) * 9.0;
     lamp += 1.0 / (1.0 + (dd * dd + dy * dy + best * best) * 0.09);
   }
   return vec2(inside, lamp * inside);
