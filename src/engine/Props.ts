@@ -7,6 +7,7 @@ import type { Building, OsmWorld } from '../geo/osm.ts';
 import type { Route, RouteIndex } from '../geo/route.ts';
 import { patchMaterial } from './atmosphere.ts';
 import { loadModel } from './Landmarks.ts';
+import { mergeColored } from './Road.ts';
 import type { Biome } from './biome.ts';
 
 const POI_MODEL: Record<string, string> = {
@@ -26,7 +27,11 @@ function hash(n: number) {
 }
 
 export class Props extends THREE.Group {
-  async build(route: Route, index: RouteIndex, osm: OsmWorld, groundAt: (x: number, z: number) => number, halfWidth: number, biome?: Biome) {
+  /** `models`: where the scene places its own landmark models (an OSM tower there is left to the model). */
+  async build(
+    route: Route, index: RouteIndex, osm: OsmWorld, groundAt: (x: number, z: number) => number, halfWidth: number, biome?: Biome,
+    models: [number, number][] = [],
+  ) {
     const place = async (model: string, x: number, z: number, yaw: number, lift = 0) => {
       const y = groundAt(x, z);
       if (!Number.isFinite(y)) return;
@@ -80,7 +85,61 @@ export class Props extends THREE.Group {
     });
     await Promise.all(jobs);
     this.add(this.wires(osm, poles, groundAt));
+    this.add(this.towers(osm, groundAt, models));
     this.add(this.fences(osm, index, groundAt, halfWidth, biome));
+  }
+
+  /**
+   * OSM communication towers and masts: a concrete transmitter (Mont Ventoux, Kitzbüheler Horn) is a
+   * shaft with an equipment drum under a banded antenna; small antennas are slim steel masts. Tall
+   * ones carry red and white aviation bands.
+   */
+  private towers(osm: OsmWorld, groundAt: (x: number, z: number) => number, models: [number, number][]): THREE.Object3D {
+    const parts: [THREE.BufferGeometry, THREE.Color][] = [];
+    const srgb = (r: number, g: number, b: number) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
+    const concreteCol = srgb(0.8, 0.8, 0.78), drumCol = srgb(0.64, 0.65, 0.66), steel = srgb(0.56, 0.57, 0.59);
+    const red = srgb(0.74, 0.12, 0.09), white = srgb(0.93, 0.93, 0.91);
+    const cyl = (r0: number, r1: number, y0: number, y1: number, x: number, z: number, seg = 14) =>
+      new THREE.CylinderGeometry(r1, r0, y1 - y0, seg).translate(x, (y0 + y1) / 2, z);
+    const bands = (r: number, y0: number, y1: number, x: number, z: number, n: number) => {
+      for (let k = 0; k < n; k++) {
+        const a = y0 + ((y1 - y0) * k) / n, b = y0 + ((y1 - y0) * (k + 1)) / n;
+        parts.push([cyl(r * (1 - (0.3 * k) / n), r * (1 - (0.3 * (k + 1)) / n), a, b, x, z, 8), k % 2 ? white : red]);
+      }
+    };
+    for (const t of osm.towers) {
+      if (models.some(([mx, mz]) => Math.hypot(mx - t.x, mz - t.z) < 120)) continue;
+      const y = groundAt(t.x, t.z);
+      if (!Number.isFinite(y)) continue;
+      if (t.concrete) {
+        const H = t.height || (t.name ? 80 : 40);
+        const R = Math.min(6, Math.max(2.5, t.r * 0.55 || 3));
+        const top = y + H * 0.62;
+        parts.push([cyl(R, R * 0.85, y - 1.5, top, t.x, t.z, 18), concreteCol]);
+        parts.push([cyl(R * 1.35, R * 1.35, top, top + H * 0.08, t.x, t.z, 18), drumCol]);
+        parts.push([cyl(R * 0.9, R * 0.7, top + H * 0.08, top + H * 0.12, t.x, t.z, 14), concreteCol]);
+        bands(Math.max(0.5, R * 0.18), top + H * 0.12, y + H, t.x, t.z, 6);
+      } else {
+        // unknown small antennas are left out: only mapped heights or named masts
+        if (t.height < 8 && !t.name) continue;
+        const H = t.height || 30;
+        if (H >= 45) bands(0.55, y - 0.5, y + H, t.x, t.z, 7);
+        else {
+          parts.push([cyl(0.32, 0.22, y - 0.5, y + H, t.x, t.z, 8), steel]);
+          // antenna panels near the top
+          for (let k = 0; k < 3; k++) {
+            const a = (k / 3) * Math.PI * 2;
+            parts.push([new THREE.BoxGeometry(0.3, 1.6, 0.12).rotateY(-a).translate(t.x + Math.cos(a) * 0.45, y + H - 1.6, t.z + Math.sin(a) * 0.45), steel]);
+          }
+        }
+      }
+    }
+    if (!parts.length) return new THREE.Group();
+    const mat = patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.1 }), { key: 'tower' });
+    const mesh = new THREE.Mesh(mergeColored(parts), mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return mesh;
   }
 
   /** Three sagging conductors between consecutive poles of each OSM power line. */

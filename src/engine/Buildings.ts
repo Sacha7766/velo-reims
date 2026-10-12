@@ -186,7 +186,10 @@ function addBuilding(
   const split = woodTop ? wallTop - 2.7 : wallTop;
   // rural Mallorcan houses are often bare marès / limestone masonry
   const mares = med && (barn || (pitched && rnd(seed + 9) > 0.55));
-  const wallSurf = med ? (mares ? MARES : MALLORCA) : alm ? TIMBER : barn ? WOOD : big && levels > 3 ? GLASSWALL : PLASTER;
+  // industrial blocks (the base of the Mont Ventoux transmitter) are bare concrete, never a house
+  const plant = bld.kind === 'industrial';
+  const wallSurf = plant ? TRIM : med ? (mares ? MARES : MALLORCA) : alm ? TIMBER : barn ? WOOD : big && levels > 3 ? GLASSWALL : PLASTER;
+  if (plant && !bld.wallColour) wall.copy(srgb(0.84, 0.84, 0.82));
   if (mares) wall.copy(srgb(0.8, 0.7, 0.55));
   if (alm && !med) wall.copy(srgb(0.46, 0.36, 0.27));
 

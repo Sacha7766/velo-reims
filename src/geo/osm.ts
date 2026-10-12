@@ -43,6 +43,19 @@ export interface Barrier {
   kind: string;
 }
 
+/** Communication towers and masts (OSM man_made tower/mast): landmarks seen from far. */
+export interface Tower {
+  x: number;
+  z: number;
+  /** Footprint radius (m); 0 for a mapped point. */
+  r: number;
+  /** Tagged height (m), 0 when unknown. */
+  height: number;
+  /** A concrete transmitter (Mont Ventoux, Kitzbüheler Horn) rather than a slim mast. */
+  concrete: boolean;
+  name?: string;
+}
+
 /** Point features: benches, bus stops, crosses, signposts, peaks, paragliding take-offs… */
 export interface Poi {
   x: number;
@@ -66,6 +79,7 @@ export interface OsmWorld {
   cover: Cover[];
   barriers: Barrier[];
   pois: Poi[];
+  towers: Tower[];
 }
 
 type LatLon = { lat: number; lon: number };
@@ -311,10 +325,23 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
   const cover: Cover[] = [];
   const barriers: Barrier[] = [];
   const pois: Poi[] = [];
+  const towers: Tower[] = [];
+  // church and defence towers are buildings or scene models; these are the antennas
+  const antenna = (t: Record<string, string>) => t.man_made === 'mast' || (t.man_made === 'tower' && t['tower:type'] === 'communication');
+  const towerHeight = (t: Record<string, string>) => {
+    const h = parseFloat(t.height ?? '');
+    if (Number.isFinite(h) && h > 1) return h;
+    const lv = parseFloat(t['building:levels'] ?? '');
+    return Number.isFinite(lv) ? lv * 3 + 1 : 0;
+  };
   for (const el of elements) {
     const t = el.tags ?? {};
     if (el.type === 'node') {
       if (el.lon === undefined || el.lat === undefined) continue;
+      if (antenna(t)) {
+        const [x, z] = lonLatToWorld(route.frame, el.lon, el.lat);
+        towers.push({ x, z, r: 0, height: towerHeight(t), concrete: t['tower:construction'] === 'concrete', name: t.name });
+      }
       if (t.natural === 'tree') {
         trees.push(...lonLatToWorld(route.frame, el.lon, el.lat));
         continue;
@@ -326,8 +353,17 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
       }
       continue;
     }
-    // lattice towers and masts are landmarks (Landmarks.ts), not houses
-    if (t.man_made === 'tower' || t.man_made === 'mast') continue;
+    // towers and masts are landmarks (Props.towers, or a scene model), not houses
+    if (t.man_made === 'tower' || t.man_made === 'mast') {
+      if (antenna(t) && el.type === 'way' && el.geometry) {
+        const ring = toRing(route, el.geometry);
+        const [a, b, c, d] = ringBbox(ring);
+        const r = Math.min(c - a, d - b) / 2;
+        const concrete = t['tower:construction'] === 'concrete' || (r >= 3 && t['tower:construction'] !== 'lattice');
+        towers.push({ x: (a + c) / 2, z: (b + d) / 2, r, height: towerHeight(t), concrete, name: t.name });
+      }
+      continue;
+    }
     const coverCls = COVER[t.landuse] ?? COVER[t.natural];
     if (t.landuse === 'forest' || t.natural === 'wood') forests.push(...polygonsFrom(route, el));
     else if (t.natural === 'water') water.push(...polygonsFrom(route, el));
@@ -365,7 +401,7 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
       roads.push({ pts, kind: t.highway, width: ROAD_WIDTH[t.highway] ?? 4 });
     }
   }
-  return { forests, water, buildings, roads, trees: new Float32Array(trees), cover, barriers, pois };
+  return { forests, water, buildings, roads, trees: new Float32Array(trees), cover, barriers, pois, towers };
 }
 
 function toLine(route: Route, g: LatLon[]): Float32Array {

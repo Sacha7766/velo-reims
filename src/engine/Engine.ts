@@ -10,6 +10,7 @@ import {
 } from 'postprocessing';
 import { N8AOPostPass } from 'n8ao';
 import { DEM_MAX_Z, preloadDemForBox } from '../geo/elevation.ts';
+import { lonLatToWorld } from '../geo/mercator.ts';
 import { sourcesFor } from '../geo/imagery.ts';
 import { loadOsmElements, parseOsm, type OsmWorld, type Polygon } from '../geo/osm.ts';
 import { pointAt, RouteIndex, type Route, type RoutePoint } from '../geo/route.ts';
@@ -24,7 +25,7 @@ import { TerrainShadow } from './TerrainShadow.ts';
 import { clearWaterMask, setTerrainBiome, setWaterMask } from './terrainMaterial.ts';
 import { Vegetation } from './Vegetation.ts';
 import { GroundCover } from './GroundCover.ts';
-import { Landmarks, loadRouteScene } from './Landmarks.ts';
+import { Landmarks, loadRouteScene, type Placement } from './Landmarks.ts';
 import { ALPINE, biomeFor, type Biome } from './biome.ts';
 import { Roadside, type BarrierSpan } from './Roadside.ts';
 import { Tunnels } from './Tunnel.ts';
@@ -421,7 +422,10 @@ export class Engine {
       world.trees = trees;
       this.scene.add(trees);
       void world.props
-        .build(route, index, osm, (x, z) => terrain.groundHeight(x, z), halfWidth, biome)
+        .build(
+          route, index, osm, (x, z) => terrain.groundHeight(x, z), halfWidth, biome,
+          ((sceneDef?.placements ?? []) as Placement[]).map((p) => lonLatToWorld(frame, p.lon, p.lat)),
+        )
         .catch((e) => console.warn('props failed', e));
       void world.life
         .build(route, index, osm, (x, z) => terrain.groundHeight(x, z), (x, z) => this.coverAt(x, z), biome)
