@@ -150,8 +150,9 @@ float tBump = 0.0;
   float verge = smoothstep(0.2, 0.7, canTex.g) * (1.0 - smoothstep(0.18, 0.36, 1.0 - clamp(normalize(vTWNormal).y, 0.0, 1.0)));
   float meadow = smoothstep(0.3, 0.8, land.g) * (1.0 - smoothstep(0.3, 0.8, land.b)) * (1.0 - canopy) * uMeadowPush;
   float wGrass = max(smoothstep(0.0, 0.07, s.g - max(s.r, s.b) * 0.93), meadow * 0.9) * (1.0 - canopy * 0.85);
-  // bright, unsaturated photo pixels are snow only up high: on the Prealps they are mown or dry grass
-  float wSnow = smoothstep(0.6, 0.78, L) * (1.0 - smoothstep(0.1, 0.22, sat)) * smoothstep(1500.0, 1950.0, vAtmoWorld.y);
+  // bright, unsaturated photo pixels are snow only up high: on the Prealps they are mown or dry grass.
+  // Pale scree and dry grass on the high passes (Stelvio, Esri) reach L 0.75; snow sits above 0.85
+  float wSnow = smoothstep(0.8, 0.9, L) * (1.0 - smoothstep(0.1, 0.22, sat)) * smoothstep(1500.0, 1950.0, vAtmoWorld.y);
   float steep = smoothstep(0.26, 0.52, slope);
   float wRock = clamp((1.0 - wGrass) * (1.0 - wSnow) * smoothstep(0.24, 0.1, sat) * smoothstep(0.08, 0.3, slope), 0.0, 1.0);
   wRock = max(wRock, steep * (1.0 - wSnow));

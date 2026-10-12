@@ -49,6 +49,26 @@ export function sourcesFor(lon: number, lat: number): ImagerySource[] {
   return [ESRI];
 }
 
+// a national source that has only answered blank or missing tiles for this world (a route just
+// outside its country, inside its bounds box) is skipped instead of asked again for every tile;
+// keyed by the world's source list, so the next route starts fresh
+const tally = new WeakMap<ImagerySource[], { misses: Map<string, number>; hits: Set<string> }>();
+
+let probe: OffscreenCanvasRenderingContext2D | null = null;
+
+/** Share of the tile that is the white fill basemap.at sends outside Austria. */
+function blankShare(bmp: ImageBitmap): number {
+  // CPU-backed canvas: reading back a GPU 2D canvas whitewashes WebGL on ANGLE/Metal
+  probe ??= new OffscreenCanvas(24, 24).getContext('2d', { willReadFrequently: true });
+  if (!probe) return 0;
+  probe.drawImage(bmp, 0, 0, 24, 24);
+  const d = probe.getImageData(0, 0, 24, 24).data;
+  let n = 0;
+  // Chrome decodes the fill as 253: near-white and neutral
+  for (let i = 0; i < d.length; i += 4) if (Math.min(d[i], d[i + 1], d[i + 2]) >= 248 && Math.max(d[i], d[i + 1], d[i + 2]) - Math.min(d[i], d[i + 1], d[i + 2]) <= 4) n++;
+  return n / (24 * 24);
+}
+
 export async function loadImageryTile(
   sources: ImagerySource[],
   z: number,
@@ -57,17 +77,29 @@ export async function loadImageryTile(
   signal?: AbortSignal,
 ): Promise<ImageBitmap> {
   let lastErr: unknown;
+  let t = tally.get(sources);
+  if (!t) tally.set(sources, (t = { misses: new Map(), hits: new Set() }));
+  const { misses, hits } = t;
   for (const src of sources) {
     if (z > src.maxZoom) continue;
+    if (src.bounds && !hits.has(src.id) && (misses.get(src.id) ?? 0) > 40) continue;
     try {
       const res = await fetch(src.url(z, x, y), { signal });
       if (!res.ok) throw new Error(`${src.id} ${res.status}`);
       const blob = await res.blob();
       // basemap.at answers out-of-coverage tiles with tiny placeholders
       if (blob.size < 800) throw new Error(`${src.id} empty`);
-      return await createImageBitmap(blob);
+      const bmp = await createImageBitmap(blob);
+      // ...or (zoom 12–15, 18) with white JPEGs: snow never saturates a tenth of a tile to neutral white
+      if (src.bounds && blankShare(bmp) > 0.1) {
+        bmp.close();
+        throw new Error(`${src.id} blank`);
+      }
+      if (src.bounds) hits.add(src.id);
+      return bmp;
     } catch (e) {
       if (signal?.aborted) throw e;
+      if (src.bounds) misses.set(src.id, (misses.get(src.id) ?? 0) + 1);
       lastErr = e;
     }
   }
