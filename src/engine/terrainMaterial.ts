@@ -20,6 +20,7 @@ export const terrainUniforms = {
   uMaskOrigin: { value: new THREE.Vector2(0, 0) },
   /** Biome: push OSM meadows to mown green (Alps), read grey ground as limestone (karst), photo sea. */
   uMeadowPush: { value: 1 },
+  uBareAbove: { value: 1e5 },
   uKarst: { value: 0 },
   uPhotoSea: { value: 0 },
   /** Mediterranean rock faces (Poly Haven marble_cliff_02, CC0), tri-planar near the camera. */
@@ -50,6 +51,7 @@ export function setTerrainBiome(b: Biome) {
   terrainUniforms.uPhotoSea.value = b.id === 'mediterranean' ? 1 : 0;
   terrainUniforms.uCliffSlope.value.set(...(b.cliffSlope ?? [0.42, 0.62]));
   terrainUniforms.uRockOchre.value = b.rockOchre ?? 1;
+  terrainUniforms.uBareAbove.value = b.bareAbove ?? 1e5;
   if (b.karst > 0 && !cliffTex) {
     const load = (f: string, srgb: boolean) => {
       const t = new THREE.TextureLoader().load(f);
@@ -102,6 +104,7 @@ uniform sampler2D uRockTex;
 uniform sampler2D uGravelTex;
 uniform vec2 uMaskOrigin;
 uniform float uMeadowPush;
+uniform float uBareAbove;
 uniform float uKarst;
 uniform vec2 uCliffSlope;
 uniform float uRockOchre;
@@ -144,11 +147,15 @@ float tBump = 0.0;
   vec2 lmuv = (vAtmoWorld.xz - uMaskOrigin) / uMaskSize;
   bool inMask = lmuv.x > 0.0 && lmuv.y > 0.0 && lmuv.x < 1.0 && lmuv.y < 1.0;
   vec3 land = inMask ? texture2D(uWaterMask, lmuv).rgb : vec3(0.0);
-  vec2 canTex = inMask ? texture2D(uCanopy, lmuv).rg : vec2(0.0);
+  vec3 canTex = inMask ? texture2D(uCanopy, lmuv).rgb : vec3(0.0);
   float canopy = smoothstep(0.15, 0.85, canTex.r);
   // (cut faces and banks are rock, not verge)
   float verge = smoothstep(0.2, 0.7, canTex.g) * (1.0 - smoothstep(0.18, 0.36, 1.0 - clamp(normalize(vTWNormal).y, 0.0, 1.0)));
-  float meadow = smoothstep(0.3, 0.8, land.g) * (1.0 - smoothstep(0.3, 0.8, land.b)) * (1.0 - canopy) * uMeadowPush;
+  // OSM scree and bare rock: pale stones, never pushed to meadow green
+  float scree = smoothstep(0.3, 0.8, canTex.b) * (1.0 - verge);
+  // a route's bare top (scene biomeTweaks.bareAbove): pale ground up there is stone, not meadow
+  scree = max(scree, smoothstep(uBareAbove - 60.0, uBareAbove + 80.0, vAtmoWorld.y) * smoothstep(0.34, 0.5, L) * (1.0 - canopy) * (1.0 - verge));
+  float meadow = smoothstep(0.3, 0.8, land.g) * (1.0 - smoothstep(0.3, 0.8, land.b)) * (1.0 - canopy) * uMeadowPush * (1.0 - scree);
   float wGrass = max(smoothstep(0.0, 0.07, s.g - max(s.r, s.b) * 0.93), meadow * 0.9) * (1.0 - canopy * 0.85);
   // bright, unsaturated photo pixels are snow only up high: on the Prealps they are mown or dry grass.
   // Pale scree and dry grass on the high passes (Stelvio, Esri) reach L 0.75; snow sits above 0.85
@@ -166,8 +173,8 @@ float tBump = 0.0;
     smoothstep(0.3, 0.8, land.b) * smoothstep(0.12, 0.05, sat));
   // karst: pale grey, unsaturated ground is bare limestone pavement, not gravel
   float limestone = uKarst * smoothstep(0.16, 0.07, sat) * smoothstep(0.3, 0.5, L) * (1.0 - canopy) * (1.0 - verge);
-  wRock = max(wRock, limestone);
-  wGrass *= 1.0 - limestone;
+  wRock = max(wRock, max(limestone, scree * 0.85));
+  wGrass *= 1.0 - max(limestone, scree);
   wGrass = max(wGrass, (1.0 - wRock) * (1.0 - wSnow) * (1.0 - greyish) * 0.92 * (1.0 - canopy * 0.85) * mix(1.0, 0.55, uKarst));
   float wGravel = (1.0 - wGrass) * (1.0 - wRock) * (1.0 - wSnow);
 
@@ -215,7 +222,7 @@ float tBump = 0.0;
   // mown grass has a fairly constant albedo: clamp bright (snowy or bleached) photo texels
   float blc = min(bl, 0.3 + 0.06 * straw);
   vec3 meadowCol = mix(blc * vec3(0.8, 1.06, 0.5), blc * vec3(1.05, 1.0, 0.62), straw * 0.6) * 1.05;
-  float bright = smoothstep(0.5, 0.75, L) * (1.0 - smoothstep(1500.0, 1950.0, vAtmoWorld.y)) * uMeadowPush;
+  float bright = smoothstep(0.5, 0.75, L) * (1.0 - smoothstep(1500.0, 1950.0, vAtmoWorld.y)) * uMeadowPush * (1.0 - scree);
   base = mix(base, meadowCol, clamp(grassy * 0.6 + bright * 0.9 * (1.0 - canopy), 0.0, 1.0));
   // under the canopy: shaded forest floor, leaf litter close up
   vec3 litter = vec3(0.3, 0.22, 0.14) * (0.7 + 0.6 * tNoise(p * 0.7));

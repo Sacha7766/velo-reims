@@ -38,6 +38,8 @@ export interface Biome {
   cliffSlope?: [number, number];
   /** Karst: how much of the rock is warm ochre (Formentor's fresh cuts) rather than grey (Tramuntana). */
   rockOchre?: number;
+  /** Above this height (m) the ground is bare stone with sparse plants (Mont Ventoux's white top). */
+  bareAbove?: number;
   /** Delineator posts and the barrier on drop-offs. */
   posts: 'at' | 'es';
   barrier: 'wbeam' | 'stonewall';

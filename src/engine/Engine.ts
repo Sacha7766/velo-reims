@@ -487,6 +487,7 @@ export class Engine {
       density: this.preset.trees,
       coverAt: (x, z) => this.coverAt(x, z),
       canopyAt: (x, z) => this.canopyAt(x, z),
+      screeAt: (x, z) => this.screeAt(x, z),
     });
     world.cover = cover;
     this.scene.add(cover);
@@ -573,6 +574,9 @@ export class Engine {
       else cx.lineTo(px, pz);
     }
     cx.stroke();
+    // B: OSM scree and bare rock (Ventoux's white top, the Stelvio and Glockner screes): bare ground
+    cx.fillStyle = '#0000ff';
+    cx.fill(pathOf(osm.cover.filter((c) => c.cls === 'rock').map((c) => c.poly)), 'evenodd');
     cx.globalCompositeOperation = 'source-over';
     this.canopyMask = { data: cx.getImageData(0, 0, cw, ch).data, x0, z0, res, w: cw, h: ch };
     const ctex = new THREE.CanvasTexture(cc);
@@ -586,6 +590,16 @@ export class Engine {
   private canopyMask: { data: Uint8ClampedArray; x0: number; z0: number; res: number; w: number; h: number } | null = null;
 
   /** Tree canopy cover 0..1 at a world point. */
+  /** OSM scree or bare rock at a world point (0..1). */
+  screeAt(x: number, z: number): number {
+    const m = this.canopyMask;
+    if (!m) return 0;
+    const px = Math.floor((x - m.x0) / m.res);
+    const pz = Math.floor((z - m.z0) / m.res);
+    if (px < 0 || pz < 0 || px >= m.w || pz >= m.h) return 0;
+    return m.data[(pz * m.w + px) * 4 + 2] / 255;
+  }
+
   canopyAt(x: number, z: number): number {
     const m = this.canopyMask;
     if (!m) return 0;

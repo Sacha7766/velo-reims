@@ -107,6 +107,8 @@ export interface GroundCoverOptions {
   coverAt?: (x: number, z: number) => number;
   /** Tree canopy 0..1 at a point (forest floor gets ferns instead of meadow grass). */
   canopyAt?: (x: number, z: number) => number;
+  /** OSM scree / bare rock 0..1 at a point: no grass there, only the odd boulder. */
+  screeAt?: (x: number, z: number) => number;
   biome?: Biome;
 }
 
@@ -317,6 +319,15 @@ export class GroundCover extends THREE.Group {
           if (isWater?.(x, z)) continue;
           const cover = this.o.coverAt?.(x, z) ?? 0;
           const canopy = this.o.canopyAt?.(x, z) ?? 0;
+          // above a bare top only a few plants hold between the stones
+          const bare = B.bareAbove === undefined ? 0 : Math.min(1, Math.max(0, (groundHeight(x, z) - B.bareAbove + 60) / 140)) * 0.9;
+          if (((this.o.screeAt?.(x, z) ?? 0) > 0.5 || r() < bare) && d > halfWidth + 1.2) {
+            if (r() < 0.012 * B.rockDensity) {
+              const by = groundHeight(x, z);
+              if (Number.isFinite(by)) rocks.push(x, by - 0.12, z, 0.3 + r() * 0.8, r() * 6.28, 0);
+            }
+            continue;
+          }
           // forest floor: ferns and litter, little grass (the verge right at the road stays grassy)
           if (canopy > 0.5 && d > halfWidth + 1.6) {
             if (r() < 0.16 && this.fern) {
