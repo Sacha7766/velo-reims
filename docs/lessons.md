@@ -106,6 +106,13 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   Where: `Buildings.ts` `reachesRoad`.
 - **A wall crossed the road at the Hochtor.** Alpine OSM walls and fences were drawn without a road check. Fix: no
   barrier piece on the carriageway, and retaining walls at the road edge are left to Roadside. Where: `Props.fences`.
+- **Mont Ventoux's white top was a meadow of grass tufts.** OSM scree and bare rock were parsed (class `rock`) but
+  never drawn into the land mask, and OSM maps little scree along the Ventoux road anyway. Fix: rock goes into the
+  canopy mask's blue channel (terrain: stone, no meadow push; ground cover: bare but for the odd boulder), and a
+  scene's `biomeTweaks.bareAbove` does the same above a height (Ventoux 1450 m, above Chalet Reynard). Where:
+  `Engine.buildWaterMask`, `terrainMaterial.ts`, `GroundCover.ts`.
+- **Editing `src/` during a shot batch broke a capture** (fps 0, no tiles) and mixed two versions in one set.
+  Re-shoot the whole set after the last edit.
 
 ## Data and bakes
 
