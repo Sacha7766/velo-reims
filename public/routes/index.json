@@ -28,10 +28,10 @@
     "region": "Tirol, AT",
     "category": "climb",
     "loop": false,
-    "lengthKm": 11.05,
-    "gain": 923,
-    "startEle": 746.5,
-    "endEle": 1615.3
+    "lengthKm": 9.46,
+    "gain": 866,
+    "startEle": 745,
+    "endEle": 1596.5
   },
   {
     "id": "alpe-dhuez",
