@@ -43,7 +43,8 @@ export interface Biome {
   barrier: 'wbeam' | 'stonewall';
   /** Centre line dash and gap (m). */
   dash: [number, number];
-  buildings: 'flachgau' | 'mallorca';
+  /** House style (Buildings.ts): Salzburg Flachgau, Mallorca, French ski resort, Provence. */
+  buildings: 'flachgau' | 'mallorca' | 'savoie' | 'provence';
 }
 
 export const ALPINE: Biome = {

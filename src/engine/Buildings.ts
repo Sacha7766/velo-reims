@@ -23,6 +23,52 @@ const GERANIUM = srgb(0.86, 0.1, 0.12);
 // Mallorca: lime render in cream/ochre, marès sandstone, terracotta 'teula' roofs
 const MED_WALLS = [srgb(0.95, 0.92, 0.84), srgb(0.97, 0.95, 0.9), srgb(0.9, 0.8, 0.62), srgb(0.93, 0.86, 0.72), srgb(0.86, 0.72, 0.52)];
 const MED_ROOFS = [srgb(0.68, 0.38, 0.24), srgb(0.6, 0.34, 0.22), srgb(0.72, 0.45, 0.3)];
+// Savoie / Dauphiné ski resorts (Alpe d'Huez): white and beige render or concrete, grey slate and
+// steel roofs, timber upper storeys and plain timber balconies, brown shutters, no geraniums
+const SAVOIE_WALLS = [srgb(0.92, 0.9, 0.85), srgb(0.86, 0.83, 0.77), srgb(0.8, 0.78, 0.74), srgb(0.9, 0.86, 0.78)];
+const SAVOIE_ROOFS = [srgb(0.3, 0.3, 0.31), srgb(0.36, 0.35, 0.34), srgb(0.25, 0.25, 0.26), srgb(0.4, 0.35, 0.3)];
+// Provence (Bédoin, Malaucène): warm stone and ochre render, faded canal-tile roofs
+const PROV_WALLS = [srgb(0.88, 0.8, 0.66), srgb(0.92, 0.86, 0.74), srgb(0.84, 0.74, 0.6), srgb(0.9, 0.79, 0.62), srgb(0.8, 0.7, 0.58)];
+const PROV_ROOFS = [srgb(0.74, 0.5, 0.38), srgb(0.68, 0.44, 0.32), srgb(0.78, 0.56, 0.43)];
+
+/** A region's houses (biome `buildings`; scenes can override it through `biomeTweaks`). */
+interface Style {
+  /** Mediterranean massing: low tile roofs, short eaves, render or ashlar with louvred shutters. */
+  med: boolean;
+  /** Bigger untagged blocks get flat roof terraces (Mallorca); elsewhere houses keep tile roofs. */
+  flatTowns: boolean;
+  walls: THREE.Color[];
+  roofs: THREE.Color[];
+  /** Share of rural houses with a timber upper storey. */
+  woodTop: number;
+  /** Balcony on a gable front: with geranium boxes, plain timber, or none. */
+  balcony: 'geranium' | 'plain' | 'none';
+  /** Roof pitch range of houses, degrees (Alpine barns are 30°). */
+  pitch: [number, number];
+  /** Shutter colours, one per house (linear RGB). */
+  shutters: [THREE.Vector3, THREE.Vector3];
+}
+
+const V = (r: number, g: number, b: number) => new THREE.Vector3(r, g, b);
+const STYLES: Record<Biome['buildings'], Style> = {
+  flachgau: {
+    med: false, flatTowns: false, walls: WALLS, roofs: ROOFS, woodTop: 0.55, balcony: 'geranium', pitch: [24, 30],
+    shutters: [V(0.13, 0.27, 0.16), V(0.3, 0.19, 0.11)],
+  },
+  mallorca: {
+    med: true, flatTowns: true, walls: MED_WALLS, roofs: MED_ROOFS, woodTop: 0, balcony: 'none', pitch: [17, 23],
+    shutters: [V(0.16, 0.33, 0.24), V(0.16, 0.33, 0.24)],
+  },
+  savoie: {
+    med: false, flatTowns: false, walls: SAVOIE_WALLS, roofs: SAVOIE_ROOFS, woodTop: 0.7, balcony: 'plain', pitch: [18, 25],
+    shutters: [V(0.3, 0.19, 0.11), V(0.22, 0.15, 0.1)],
+  },
+  // shutters in the faded Provençal blue-grey and sage
+  provence: {
+    med: true, flatTowns: false, walls: PROV_WALLS, roofs: PROV_ROOFS, woodTop: 0, balcony: 'none', pitch: [17, 23],
+    shutters: [V(0.26, 0.38, 0.44), V(0.32, 0.39, 0.26)],
+  },
+};
 
 function rnd(seed: number) {
   const x = Math.sin(seed * 12.9898) * 43758.5453;
@@ -94,8 +140,9 @@ function simplify(ring: Float32Array): THREE.Vector2[] {
 }
 
 function addBuilding(
-  bld: Building, b: Builder, heightAt: (x: number, z: number) => number, seed: number, ox: number, oz: number, med = false,
+  bld: Building, b: Builder, heightAt: (x: number, z: number) => number, seed: number, ox: number, oz: number, style: Style,
 ) {
+  const med = style.med;
   const ring = simplify(bld.ring);
   if (ring.length < 3) return;
   let gmin = Infinity;
@@ -110,7 +157,7 @@ function addBuilding(
   b.setBase(gmax);
   // Mallorca: small rural houses have low hipped/gabled tile roofs, town blocks are flat with terraces
   let roofShape = bld.roof;
-  if (med && !bld.explicitRoof) {
+  if (style.flatTowns && !bld.explicitRoof) {
     let ar = 0;
     for (let i = 0; i < ring.length; i++) {
       const p = ring[i], q = ring[(i + 1) % ring.length];
@@ -130,12 +177,12 @@ function addBuilding(
   // mountain huts and inns (Goasn Alm, Gersbergalm…): all-timber chalets with shingle roofs
   const alm = !big && (/alm|hütte|huette|goasn/i.test(bld.name ?? '') || bld.kind === 'hut' || bld.kind === 'cabin');
   const wood = WOODS[Math.floor(rnd(seed + 5) * WOODS.length)];
-  const wallSet = med ? MED_WALLS : WALLS;
+  const wallSet = style.walls;
   const wall = parseColour(bld.wallColour, barn && !med ? wood : wallSet[Math.floor(rnd(seed) * wallSet.length)]).clone();
-  const roofSet = med ? MED_ROOFS : ROOFS;
+  const roofSet = style.roofs;
   const roofCol = parseColour(bld.roofColour, alm && !med ? srgb(0.33, 0.29, 0.25) : roofSet[Math.floor(rnd(seed + 7) * roofSet.length)]);
   // farmhouse look: wooden upper storey on many rural houses
-  const woodTop = !med && !barn && !big && !alm && pitched && levels >= 2 && rnd(seed + 3) > 0.45;
+  const woodTop = !med && !barn && !big && !alm && pitched && levels >= 2 && rnd(seed + 3) > 1 - style.woodTop;
   const split = woodTop ? wallTop - 2.7 : wallTop;
   // rural Mallorcan houses are often bare marès / limestone masonry
   const mares = med && (barn || (pitched && rnd(seed + 9) > 0.55));
@@ -183,7 +230,7 @@ function addBuilding(
     const half = (v1 - v0) / 2;
     const vm = (v0 + v1) / 2;
     // Flachgau roofs are fairly flat (~25°) with deep overhangs
-    const pitch = THREE.MathUtils.degToRad(med ? 17 + rnd(seed + 11) * 6 : barn ? 30 : 24 + rnd(seed + 11) * 6);
+    const pitch = THREE.MathUtils.degToRad(barn && !med ? 30 : style.pitch[0] + rnd(seed + 11) * (style.pitch[1] - style.pitch[0]));
     const rise = Math.min(half * Math.tan(pitch), 7);
     const ovE = med ? 0.35 : Math.min(1.4, 0.6 + half * 0.12); // eaves
     const ovG = med ? 0.25 : Math.min(1.6, 0.8 + half * 0.12); // gable ends
@@ -238,8 +285,8 @@ function addBuilding(
         b.tri(P(u, v0, wallTop), P(u, v1, wallTop), P(u, vm, ridgeY), gw, gs, centre);
       }
     }
-    // balcony with geraniums along one gable front of houses with an upper floor
-    if (!med && !barn && !big && (levels >= 2 || alm) && (alm || rnd(seed + 17) > 0.25)) {
+    // balcony (with geraniums in the Flachgau) along one gable front of houses with an upper floor
+    if (style.balcony !== 'none' && !barn && !big && (levels >= 2 || alm) && (alm || rnd(seed + 17) > 0.25)) {
       const u = rnd(seed + 19) > 0.5 ? u1 : u0;
       const out = u === u1 ? 1 : -1;
       const by = gmax + 2.9;
@@ -253,9 +300,11 @@ function addBuilding(
       const rcx = dir.x * ru + perp.x * vm, rcz = dir.y * ru + perp.y * vm;
       b.box(rcx, rcz, dir, 0.04, len / 2, by, by + 0.95, wood, WOOD);
       // flower boxes on the railing
-      const fu = u + out * (depth + 0.08);
-      const fcx = dir.x * fu + perp.x * vm, fcz = dir.y * fu + perp.y * vm;
-      b.box(fcx, fcz, dir, 0.11, len / 2 - 0.2, by + 0.75, by + 1.12, GERANIUM, FLOWERS);
+      if (style.balcony === 'geranium') {
+        const fu = u + out * (depth + 0.08);
+        const fcx = dir.x * fu + perp.x * vm, fcz = dir.y * fu + perp.y * vm;
+        b.box(fcx, fcz, dir, 0.11, len / 2 - 0.2, by + 0.75, by + 1.12, GERANIUM, FLOWERS);
+      }
     }
   } else {
     const tris = THREE.ShapeUtils.triangulateShape(local, []);
@@ -282,11 +331,13 @@ function addBuilding(
 }
 
 /** Windows, shutters, planks and roof tiles drawn from the surface id and world position. */
-function facadeMaterial() {
+function facadeMaterial(style: Style) {
   // double-sided: from the street you look up at the underside of the eaves; with one-sided roofs it
   // vanished and left the gable edge of tall blocks hanging in the sky
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uShutA = { value: style.shutters[0] };
+    shader.uniforms.uShutB = { value: style.shutters[1] };
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
@@ -297,7 +348,7 @@ function facadeMaterial() {
         '#include <beginnormal_vertex>\nvFNormal = normalize(mat3(modelMatrix) * objectNormal);\nvSurf = surf;\nvBaseY = baseY;',
       );
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vSurf;\nvarying float vBaseY;\nvarying vec3 vFNormal;\nfloat fHash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }')
+      .replace('#include <common>', '#include <common>\nuniform vec3 uShutA;\nuniform vec3 uShutB;\nvarying float vSurf;\nvarying float vBaseY;\nvarying vec3 vFNormal;\nfloat fHash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }')
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
@@ -339,7 +390,7 @@ function facadeMaterial() {
     float shut = (sid == 0 ? 1.0 : 0.0) * step(0.3, fy) * step(fy, 0.78) * step(0.4, hy) *
       (step(0.5 - ww - 0.13, fx) * step(fx, 0.5 - ww - 0.01) + step(0.5 + ww + 0.01, fx) * step(fx, 0.5 + ww + 0.13));
     float house = fHash(floor(vec2(vBaseY, vBaseY * 0.37)));
-    vec3 shutterCol = house > 0.5 ? vec3(0.13, 0.27, 0.16) : vec3(0.3, 0.19, 0.11);
+    vec3 shutterCol = house > 0.5 ? uShutA : uShutB;
     vec3 v = normalize(wp - cameraPosition);
     vec3 r = reflect(v, n);
     vec3 sky = atmoSky(normalize(vec3(r.x, abs(r.y) * 0.6 + 0.05, r.z)));
@@ -372,7 +423,7 @@ function facadeMaterial() {
     float cell = fHash(floor(vec2(u / 3.4, (hy - 0.5) / 3.0)) + vBaseY);
     // louvres: horizontal slats; closed shutters cover the window, open ones fold to the sides
     float slat = 0.75 + 0.25 * step(0.5, fract(fy * 26.0));
-    vec3 green = vec3(0.16, 0.33, 0.24) * slat;
+    vec3 green = (fHash(floor(vec2(vBaseY, vBaseY * 0.37))) > 0.5 ? uShutA : uShutB) * slat;
     float closed = step(0.45, cell);
     float side = step(0.5 - ww - 0.15, fx) * step(fx, 0.5 - ww - 0.005) + step(0.5 + ww + 0.005, fx) * step(fx, 0.5 + ww + 0.15);
     side *= step(0.18, fy) * step(fy, 0.8) * step(0.6, hy) * (1.0 - closed);
@@ -445,7 +496,8 @@ export class Buildings extends THREE.Group {
   constructor(osm: OsmWorld, index: RouteIndex, heightAt: (x: number, z: number) => number, corridor = 320, biome: Biome = ALPINE, clear = 0) {
     super();
     const groups = new Map<string, { builder: Builder; ox: number; oz: number }>();
-    const mat = facadeMaterial();
+    const style = STYLES[biome.buildings] ?? STYLES.flachgau;
+    const mat = facadeMaterial(style);
     osm.buildings.forEach((bld, i) => {
       const x = bld.ring[0];
       const z = bld.ring[1];
@@ -460,7 +512,7 @@ export class Buildings extends THREE.Group {
         g = { builder: new Builder(), ox: Math.floor(x / BUCKET) * BUCKET, oz: Math.floor(z / BUCKET) * BUCKET };
         groups.set(key, g);
       }
-      addBuilding(bld, g.builder, heightAt, i + 1, g.ox, g.oz, biome.buildings === 'mallorca');
+      addBuilding(bld, g.builder, heightAt, i + 1, g.ox, g.oz, style);
       this.centres.push(x, z);
       this.count++;
     });
