@@ -85,20 +85,20 @@ export class Props extends THREE.Group {
     });
     await Promise.all(jobs);
     this.add(this.wires(osm, poles, groundAt));
-    this.add(this.towers(osm, groundAt, models));
+    this.add(this.towers(osm, groundAt, models, biome));
     this.add(this.fences(osm, index, groundAt, halfWidth, biome));
   }
 
   /**
-   * OSM communication towers and masts: a concrete transmitter (Mont Ventoux, Kitzbüheler Horn) is a
+   * OSM communication towers, masts and bell towers: a concrete transmitter (Mont Ventoux, Kitzbüheler Horn) is a
    * shaft with an equipment drum under a banded antenna; small antennas are slim steel masts. Tall
    * ones carry red and white aviation bands.
    */
-  private towers(osm: OsmWorld, groundAt: (x: number, z: number) => number, models: [number, number][]): THREE.Object3D {
+  private towers(osm: OsmWorld, groundAt: (x: number, z: number) => number, models: [number, number][], biome?: Biome): THREE.Object3D {
     const parts: [THREE.BufferGeometry, THREE.Color][] = [];
     const srgb = (r: number, g: number, b: number) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
     const concreteCol = srgb(0.8, 0.8, 0.78), drumCol = srgb(0.64, 0.65, 0.66), steel = srgb(0.56, 0.57, 0.59);
-    const red = srgb(0.74, 0.12, 0.09), white = srgb(0.93, 0.93, 0.91);
+    const red = srgb(0.74, 0.12, 0.09), white = srgb(0.93, 0.93, 0.91), slate = srgb(0.33, 0.34, 0.36);
     const cyl = (r0: number, r1: number, y0: number, y1: number, x: number, z: number, seg = 14) =>
       new THREE.CylinderGeometry(r1, r0, y1 - y0, seg).translate(x, (y0 + y1) / 2, z);
     const bands = (r: number, y0: number, y1: number, x: number, z: number, n: number) => {
@@ -111,6 +111,16 @@ export class Props extends THREE.Group {
       if (models.some(([mx, mz]) => Math.hypot(mx - t.x, mz - t.z) < 120)) continue;
       const y = groundAt(t.x, t.z);
       if (!Number.isFinite(y)) continue;
+      if (t.bell) {
+        // Mallorcan bell towers are stone with tile caps: left out rather than drawn Alpine
+        if (biome?.id === 'mediterranean') continue;
+        // a church tower mapped on its own: white shaft and a slate spire
+        const H = t.height || 28;
+        const w = Math.min(4, Math.max(2.5, t.r || 3));
+        parts.push([new THREE.BoxGeometry(w * 2, H + 1.5, w * 2).translate(t.x, y - 1.5 + (H + 1.5) / 2, t.z), white]);
+        parts.push([new THREE.ConeGeometry(w * 1.42, w * 3.8, 4).rotateY(Math.PI / 4).translate(t.x, y + H + w * 1.9, t.z), slate]);
+        continue;
+      }
       if (t.concrete) {
         const H = t.height || (t.name ? 80 : 40);
         const R = Math.min(6, Math.max(2.5, t.r * 0.55 || 3));

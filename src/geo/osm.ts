@@ -43,7 +43,7 @@ export interface Barrier {
   kind: string;
 }
 
-/** Communication towers and masts (OSM man_made tower/mast): landmarks seen from far. */
+/** Communication towers, masts and bell towers (OSM man_made tower/mast): landmarks seen from far. */
 export interface Tower {
   x: number;
   z: number;
@@ -53,6 +53,8 @@ export interface Tower {
   height: number;
   /** A concrete transmitter (Mont Ventoux, Kitzbüheler Horn) rather than a slim mast. */
   concrete: boolean;
+  /** A church's bell tower (mapped apart from the church): white shaft and spire. */
+  bell: boolean;
   name?: string;
 }
 
@@ -109,6 +111,8 @@ const COVER: Record<string, CoverClass> = {
   heath: 'meadow', residential: 'built', farmyard: 'built', industrial: 'built', commercial: 'built', retail: 'built',
   scrub: 'scrub', bare_rock: 'rock', scree: 'rock', cliff: 'rock',
 };
+
+const FLAT_KINDS = new Set(['industrial', 'commercial', 'retail', 'warehouse', 'supermarket', 'garages', 'hangar', 'service', 'parking']);
 
 const ROAD_WIDTH: Record<string, number> = {
   motorway: 14, trunk: 11, primary: 9, secondary: 8, tertiary: 7, unclassified: 5.5, residential: 5.5,
@@ -259,6 +263,16 @@ function toRing(route: Route, pts: LatLon[]): Float32Array {
   return out;
 }
 
+/** Footprint area of a ring of x,z pairs (m²). */
+function ringArea(r: Float32Array): number {
+  let a = 0;
+  for (let i = 0, n = r.length / 2; i < n; i++) {
+    const j = (i + 1) % n;
+    a += r[i * 2] * r[j * 2 + 1] - r[j * 2] * r[i * 2 + 1];
+  }
+  return Math.abs(a) / 2;
+}
+
 function ringBbox(r: Float32Array): [number, number, number, number] {
   let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
   for (let i = 0; i < r.length; i += 2) {
@@ -327,7 +341,8 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
   const pois: Poi[] = [];
   const towers: Tower[] = [];
   // church and defence towers are buildings or scene models; these are the antennas
-  const antenna = (t: Record<string, string>) => t.man_made === 'mast' || (t.man_made === 'tower' && t['tower:type'] === 'communication');
+  const antenna = (t: Record<string, string>) =>
+    t.man_made === 'mast' || (t.man_made === 'tower' && (t['tower:type'] === 'communication' || t['tower:type'] === 'bell_tower'));
   const towerHeight = (t: Record<string, string>) => {
     const h = parseFloat(t.height ?? '');
     if (Number.isFinite(h) && h > 1) return h;
@@ -340,7 +355,7 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
       if (el.lon === undefined || el.lat === undefined) continue;
       if (antenna(t)) {
         const [x, z] = lonLatToWorld(route.frame, el.lon, el.lat);
-        towers.push({ x, z, r: 0, height: towerHeight(t), concrete: t['tower:construction'] === 'concrete', name: t.name });
+        towers.push({ x, z, r: 0, height: towerHeight(t), concrete: t['tower:construction'] === 'concrete', bell: t['tower:type'] === 'bell_tower', name: t.name });
       }
       if (t.natural === 'tree') {
         trees.push(...lonLatToWorld(route.frame, el.lon, el.lat));
@@ -359,8 +374,9 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
         const ring = toRing(route, el.geometry);
         const [a, b, c, d] = ringBbox(ring);
         const r = Math.min(c - a, d - b) / 2;
-        const concrete = t['tower:construction'] === 'concrete' || (r >= 3 && t['tower:construction'] !== 'lattice');
-        towers.push({ x: (a + c) / 2, z: (b + d) / 2, r, height: towerHeight(t), concrete, name: t.name });
+        const bell = t['tower:type'] === 'bell_tower';
+        const concrete = !bell && (t['tower:construction'] === 'concrete' || (r >= 3 && t['tower:construction'] !== 'lattice'));
+        towers.push({ x: (a + c) / 2, z: (b + d) / 2, r, height: towerHeight(t), concrete, bell, name: t.name });
       }
       continue;
     }
@@ -379,7 +395,9 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
             : roofTag === 'half-hipped' ? 'half-hipped'
               : roofTag === 'skillion' ? 'skillion'
                 : roofTag ? 'gabled'
-                  : area < 900 ? 'gabled' : 'flat';
+                  // hotels and blocks up to ~50 m have tile roofs too (the footprint, not its bounding box:
+                  // the curved Stelvio hotel); sheds and shops stay flat
+                  : (area < 900 || ringArea(ring) < 2500) && !FLAT_KINDS.has(t.building) ? 'gabled' : 'flat';
       const levels = parseFloat(t['building:levels'] ?? '');
       buildings.push({
         ring, height: buildingHeight(t), roof, kind: t.building, levels: Number.isFinite(levels) ? levels : undefined,

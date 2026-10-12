@@ -99,3 +99,5 @@ Elevations are the route file's, interpolated at each km shown.
 ## Status
 
 Baseline 2026-10-12: houses whose footprint reached the asphalt removed in St. Wolfgang, turnaround joins the road flush, OSM re-baked; the route ends in the St. Wolfgang Marktplatz via a real ~100 m old-town loop. No review yet.
+
+First review 2026-10-12 (`research/wolfgangsee/review-2026-10-12.md`): REJECT, mean 2.88, no blockers. Worst findings: blotchy blue-grey ground under the turnaround, pale verge smears, slab-like old-town blocks, church not legible (it got its tower the same day), near-white lake, no autumn colour, no boats.

@@ -99,3 +99,5 @@ The route through the whole Hochtor tunnel to the viewpoint, with the turning ci
 Baseline 2026-10-12: route rides through the Hochtor tunnel to the viewpoint, both tunnels found, OSM re-baked. No review yet.
 
 First review 2026-10-12 (`research/grossglockner/review-2026-10-12.md`): REJECT, mean 2.75 (ground 2, vegetation 3, road 3, built 2, light 3, life 3, rider 4, place 2), no blockers. Worst findings: pale mint/cyan ground and rock above the treeline (basemap.at's cool summer photo; Esri's photo of the same spot is brown autumn grass, a choice for Chris), near-black slope at 4 km, a Flachgau house at the Hochtor viewpoint, grass blade spikes.
+
+Second review 2026-10-12 (`research/grossglockner/review-2026-10-12-r2.md`): REJECT, mean 2.75, no score change; shade and grass noted as better. The mint cast above the treeline remains the main drag.

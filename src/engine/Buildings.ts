@@ -165,6 +165,10 @@ function addBuilding(
     }
     roofShape = Math.abs(ar) / 2 < 220 ? (rnd(seed + 21) > 0.5 ? 'hipped' : 'gabled') : 'flat';
   }
+  // churches and chapels: a steep white nave and, on parish churches, a tower with a spire
+  const church = ['church', 'chapel', 'cathedral'].includes(bld.kind) ||
+    /kirche|church|église|eglise|chiesa|kapelle|chapelle|cappella/i.test(bld.name ?? '');
+  if (church && !bld.explicitRoof) roofShape = 'gabled';
   const pitched = roofShape !== 'flat';
   const levels = bld.levels ?? Math.max(1, Math.round((bld.height - (pitched ? 2.5 : 0)) / 3));
   const wallTop = gmax + Math.max(2.8, levels * 2.9 + 0.4);
@@ -180,16 +184,20 @@ function addBuilding(
   const wallSet = style.walls;
   const wall = parseColour(bld.wallColour, barn && !med ? wood : wallSet[Math.floor(rnd(seed) * wallSet.length)]).clone();
   const roofSet = style.roofs;
-  const roofCol = parseColour(bld.roofColour, alm && !med ? srgb(0.33, 0.29, 0.25) : roofSet[Math.floor(rnd(seed + 7) * roofSet.length)]);
+  const roofCol = parseColour(
+    bld.roofColour,
+    church ? srgb(0.33, 0.34, 0.36) : alm && !med ? srgb(0.33, 0.29, 0.25) : roofSet[Math.floor(rnd(seed + 7) * roofSet.length)],
+  );
   // farmhouse look: wooden upper storey on many rural houses
-  const woodTop = !med && !barn && !big && !alm && pitched && levels >= 2 && rnd(seed + 3) > 1 - style.woodTop;
+  const woodTop = !med && !barn && !big && !alm && !church && pitched && levels >= 2 && rnd(seed + 3) > 1 - style.woodTop;
   const split = woodTop ? wallTop - 2.7 : wallTop;
   // rural Mallorcan houses are often bare marès / limestone masonry
   const mares = med && (barn || (pitched && rnd(seed + 9) > 0.55));
   // industrial blocks (the base of the Mont Ventoux transmitter) are bare concrete, never a house
   const plant = bld.kind === 'industrial';
-  const wallSurf = plant ? TRIM : med ? (mares ? MARES : MALLORCA) : alm ? TIMBER : barn ? WOOD : big && levels > 3 ? GLASSWALL : PLASTER;
+  const wallSurf = plant || church ? TRIM : med ? (mares ? MARES : MALLORCA) : alm ? TIMBER : barn ? WOOD : big && levels > 3 ? GLASSWALL : PLASTER;
   if (plant && !bld.wallColour) wall.copy(srgb(0.84, 0.84, 0.82));
+  if (church && !bld.wallColour) wall.copy(srgb(0.94, 0.93, 0.89));
   if (mares) wall.copy(srgb(0.8, 0.7, 0.55));
   if (alm && !med) wall.copy(srgb(0.46, 0.36, 0.27));
 
@@ -228,12 +236,29 @@ function addBuilding(
   const rectArea = (u1 - u0) * (v1 - v0);
   const rectish = area / rectArea > 0.78 && v1 - v0 < 34;
 
+  // church tower over one end of the long axis: plain white shaft, a slate spire
+  if (church && area > 110) {
+    const vm = (v0 + v1) / 2;
+    const Q = (u: number, v: number, y: number) => new THREE.Vector3(dir.x * u + perp.x * v, y, dir.y * u + perp.y * v);
+    const side = Math.min(7, Math.max(3.5, (v1 - v0) * 0.45));
+    const tu = u0 + side / 2;
+    const tcx = dir.x * tu + perp.x * vm, tcz = dir.y * tu + perp.y * vm;
+    const towerTop = gmax + Math.max(16, (wallTop - gmax) * 2.4 + 6);
+    b.box(tcx, tcz, dir, side / 2, side / 2, base, towerTop, wall, TRIM);
+    const apex = Q(tu, vm, towerTop + side * 1.9);
+    const k = [Q(u0, vm - side / 2, towerTop), Q(u0 + side, vm - side / 2, towerTop), Q(u0 + side, vm + side / 2, towerTop), Q(u0, vm + side / 2, towerTop)];
+    const sc = new THREE.Vector3(tcx, towerTop, tcz);
+    for (let i = 0; i < 4; i++) b.tri(k[i], k[(i + 1) % 4], apex, roofCol, ROOF, sc);
+  }
+
   if (pitched && rectish) {
     const P = (u: number, v: number, y: number) => new THREE.Vector3(dir.x * u + perp.x * v, y, dir.y * u + perp.y * v);
     const half = (v1 - v0) / 2;
     const vm = (v0 + v1) / 2;
     // Flachgau roofs are fairly flat (~25°) with deep overhangs
-    const pitch = THREE.MathUtils.degToRad(barn && !med ? 30 : style.pitch[0] + rnd(seed + 11) * (style.pitch[1] - style.pitch[0]));
+    const pitch = THREE.MathUtils.degToRad(
+      church ? 44 : barn && !med ? 30 : style.pitch[0] + rnd(seed + 11) * (style.pitch[1] - style.pitch[0]),
+    );
     const rise = Math.min(half * Math.tan(pitch), 7);
     const ovE = med ? 0.35 : Math.min(1.4, 0.6 + half * 0.12); // eaves
     const ovG = med ? 0.25 : Math.min(1.6, 0.8 + half * 0.12); // gable ends
@@ -279,7 +304,7 @@ function addBuilding(
     // gable walls (wood on farmhouses), clipped at the hip line
     for (const u of [u0, u1]) {
       // apartment and commercial blocks have plastered gables
-      const gw = woodTop || barn || (!big && rnd(seed + 13) > 0.5) ? wood : wall;
+      const gw = !church && (woodTop || barn || (!big && rnd(seed + 13) > 0.5)) ? wood : wall;
       const gs = gw === wood ? WOOD : PLASTER;
       if (hip >= half) continue;
       if (hip > 0) {
@@ -289,7 +314,7 @@ function addBuilding(
       }
     }
     // balcony (with geraniums in the Flachgau) along one gable front of houses with an upper floor
-    if (style.balcony !== 'none' && !barn && !big && (levels >= 2 || alm) && (alm || rnd(seed + 17) > 0.25)) {
+    if (style.balcony !== 'none' && !church && !barn && !big && (levels >= 2 || alm) && (alm || rnd(seed + 17) > 0.25)) {
       const u = rnd(seed + 19) > 0.5 ? u1 : u0;
       const out = u === u1 ? 1 : -1;
       const by = gmax + 2.9;
@@ -310,8 +335,11 @@ function addBuilding(
       }
     }
   } else {
-    const tris = THREE.ShapeUtils.triangulateShape(local, []);
     const roofCentre = new THREE.Vector3(centre.x, wallTop - 50, centre.z);
+    // a pitched Alpine roof over an odd footprint (the curved and L-shaped pass hotels): hip faces up
+    // from the walls to the footprint inset by a few metres, a short flat top over that
+    if (pitched && !med && hipRoof(b, local, wallTop, THREE.MathUtils.degToRad((style.pitch[0] + style.pitch[1]) / 2), roofCol, roofCentre)) return;
+    const tris = THREE.ShapeUtils.triangulateShape(local, []);
     const flatRoof = med ? srgb(0.74, 0.7, 0.64) : srgb(0.38, 0.38, 0.38);
     if (med) {
       // roof terrace parapet, rendered like the walls
@@ -331,6 +359,46 @@ function addBuilding(
       );
     }
   }
+}
+
+/** Hip roof over any simple footprint by insetting it; false (draw it flat) when the inset folds over. */
+function hipRoof(b: Builder, ring: THREE.Vector2[], eave: number, pitch: number, col: THREE.Color, centre: THREE.Vector3): boolean {
+  const n = ring.length;
+  let area = 0, perim = 0;
+  for (let i = 0; i < n; i++) {
+    const p = ring[i], q = ring[(i + 1) % n];
+    area += p.x * q.y - q.x * p.y;
+    perim += p.distanceTo(q);
+  }
+  const sgn = Math.sign(area);
+  // inset ~3/4 of the half width (area / perimeter ≈ half the width of a long block), at most 4.5 m
+  const d = Math.min(4.5, (0.75 * Math.abs(area / 2)) / perim);
+  if (d < 1) return false;
+  const normal = (i: number) => {
+    const e = new THREE.Vector2().subVectors(ring[(i + 1) % n], ring[i]).normalize();
+    return new THREE.Vector2(-e.y * sgn, e.x * sgn);
+  };
+  const inner = ring.map((p, i) => {
+    const n0 = normal((i - 1 + n) % n), n1 = normal(i);
+    const k = 1 + n0.dot(n1);
+    const m = new THREE.Vector2().addVectors(n0, n1).multiplyScalar(d / Math.max(k, 0.22));
+    return p.clone().add(m);
+  });
+  let ia = 0;
+  for (let i = 0; i < n; i++) ia += inner[i].x * inner[(i + 1) % n].y - inner[(i + 1) % n].x * inner[i].y;
+  if (Math.sign(ia) !== sgn || Math.abs(ia) < Math.abs(area) * 0.08) return false;
+  const top = eave + d * Math.tan(pitch);
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    b.quad(
+      new THREE.Vector3(ring[i].x, eave, ring[i].y), new THREE.Vector3(ring[j].x, eave, ring[j].y),
+      new THREE.Vector3(inner[j].x, top, inner[j].y), new THREE.Vector3(inner[i].x, top, inner[i].y), col, ROOF, centre,
+    );
+  }
+  for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(inner, [])) {
+    b.tri(new THREE.Vector3(inner[i].x, top, inner[i].y), new THREE.Vector3(inner[j].x, top, inner[j].y), new THREE.Vector3(inner[k].x, top, inner[k].y), col, ROOF, centre);
+  }
+  return true;
 }
 
 /** Windows, shutters, planks and roof tiles drawn from the surface id and world position. */
