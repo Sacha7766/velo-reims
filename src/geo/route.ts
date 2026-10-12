@@ -448,13 +448,22 @@ function samplePath(
     const h = elevationAtMercSync(mx, my, demZ);
     ele[i] = Number.isFinite(h) ? h : NaN;
   }
-  // pin both ends to the road and smooth; the DEM fills the middle
+  // the loop leaves the route's end point and comes back to it: pin both of its ends to the road
+  // (pinning only the path's far end left a step where the loop met the asphalt again); the
+  // rejoin leg is the route itself, ridden back. The middle follows the DEM's shape, measured
+  // from the end point: the smoothed profile ends metres below the raw DEM on a climb, and the
+  // loop stood on a plateau above the road
+  const d0 = Number.isFinite(ele[0]) ? ele[0] - eleStart : 0;
+  for (let i = 0; i < n; i++) if (Number.isFinite(ele[i])) ele[i] -= d0;
   for (let i = 0; i < n; i++) {
-    const t = i / (n - 1);
-    const lineal = eleStart + (eleEnd - eleStart) * t;
-    if (!Number.isFinite(ele[i])) ele[i] = lineal;
-    const pin = Math.max(1 - (i * step) / 12, 0, 1 - ((n - 1 - i) * step) / 12);
-    ele[i] = ele[i] + (lineal - ele[i]) * pin;
+    const s = (i * length) / (n - 1);
+    if (s >= loopLen) {
+      ele[i] = eleStart + (eleEnd - eleStart) * ((s - loopLen) / (length - loopLen || 1));
+      continue;
+    }
+    if (!Number.isFinite(ele[i])) ele[i] = eleStart;
+    const pin = Math.max(1 - s / 12, 0, 1 - (loopLen - s) / 12);
+    ele[i] = ele[i] + (eleStart - ele[i]) * pin;
   }
   const eleS = smooth(ele, 3, 2);
   const heading = new Float32Array(n), grade = new Float32Array(n), radius = new Float32Array(n);

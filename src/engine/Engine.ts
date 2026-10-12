@@ -428,7 +428,7 @@ export class Engine {
         .catch((e) => console.warn('life failed', e));
       decorStage = 'Building villages';
       await new Promise((r) => setTimeout(r, 0));
-      const buildings = new Buildings(osm, index, heightAt, 320, biome);
+      const buildings = new Buildings(osm, index, heightAt, 320, biome, halfWidth + 0.4);
       if (this.world !== world) return;
       world.buildings = buildings;
       this.scene.add(buildings);

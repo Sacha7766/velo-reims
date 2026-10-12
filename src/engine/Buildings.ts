@@ -411,6 +411,22 @@ function facadeMaterial() {
   return patchMaterial(mat, { key: 'facade3' });
 }
 
+/** Whether any point along the footprint's edges (every ~1.5 m) lies within `clear` of the route. */
+function reachesRoad(ring: Float32Array, index: RouteIndex, clear: number): boolean {
+  const n = ring.length / 2;
+  for (let i = 0; i < n; i++) {
+    const ax = ring[i * 2], az = ring[i * 2 + 1];
+    const bx = ring[((i + 1) % n) * 2], bz = ring[((i + 1) % n) * 2 + 1];
+    const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 1.5));
+    for (let k = 0; k < steps; k++) {
+      const t = k / steps;
+      const hit = index.nearest(ax + (bx - ax) * t, az + (bz - az) * t, clear);
+      if (hit.index >= 0 && hit.dist < clear) return true;
+    }
+  }
+  return false;
+}
+
 export class Buildings extends THREE.Group {
   count = 0;
   centres: number[] = [];
@@ -425,7 +441,8 @@ export class Buildings extends THREE.Group {
     return Math.min(1, n / 60);
   }
 
-  constructor(osm: OsmWorld, index: RouteIndex, heightAt: (x: number, z: number) => number, corridor = 320, biome: Biome = ALPINE) {
+  /** `clear`: half the asphalt width plus a margin; no footprint may reach into it. */
+  constructor(osm: OsmWorld, index: RouteIndex, heightAt: (x: number, z: number) => number, corridor = 320, biome: Biome = ALPINE, clear = 0) {
     super();
     const groups = new Map<string, { builder: Builder; ox: number; oz: number }>();
     const mat = facadeMaterial();
@@ -434,6 +451,9 @@ export class Buildings extends THREE.Group {
       const z = bld.ring[1];
       // skyline: tall buildings count from any distance
       if (bld.height < 30 && index.nearest(x, z, corridor).index < 0) return;
+      // old-town streets are narrower than our road: a house whose footprint reaches the asphalt
+      // would stand on it (St. Wolfgang, Kitzbühel). Leave it out; the street keeps its other walls
+      if (clear > 0 && index.nearest(x, z, 120).index >= 0 && reachesRoad(bld.ring, index, clear)) return;
       const key = `${Math.floor(x / BUCKET)},${Math.floor(z / BUCKET)}`;
       let g = groups.get(key);
       if (!g) {

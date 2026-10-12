@@ -20,7 +20,7 @@ function asphaltTextures() {
   return { color: load('color.jpg', true), normal: load('normal.jpg', false), rough: load('rough.jpg', false) };
 }
 
-function roadMaterial(halfWidth: number, biome: Biome) {
+function roadMaterial(halfWidth: number, biome: Biome, turn = false) {
   // CC0 Poly Haven asphalt_02 scan for colour, cracks and micro relief; markings are procedural
   const tex = asphaltTextures();
   const mat = new THREE.MeshStandardMaterial({
@@ -108,7 +108,8 @@ roughnessFactor = mix(clamp(roughnessFactor * 0.95, 0.55, 1.0), 0.5, gPaint);`,
   };
   mat.transparent = true;
   mat.depthWrite = true;
-  return patchMaterial(mat, { key: `road:${biome.id}`, depthBias: 0.012 });
+  // turnarounds overlap the route's end: a little more bias so they always draw on top of it
+  return patchMaterial(mat, { key: `road${turn ? '-turn' : ''}:${biome.id}`, depthBias: turn ? 0.018 : 0.012 });
 }
 
 interface Strip {
@@ -125,21 +126,26 @@ export class Road extends THREE.Group {
   constructor(route: Route, halfWidth: number, biome: Biome = ALPINE) {
     super();
     const mat = roadMaterial(halfWidth, biome);
-    this.strip(route, halfWidth, mat, 0);
+    // point-to-point routes run on one sample (4 m) under their turnarounds: a loop leaves the end
+    // point at an angle, and the wedge between the square end of the asphalt and the loop showed the ground
+    this.strip(route, halfWidth, mat, 0, !route.loop);
     // turnarounds at both ends of point-to-point routes (the loop part; the rejoin leg is road)
+    const turnMat = roadMaterial(halfWidth, biome, true);
     for (const t of [route.turnEnd, route.turnStart]) {
       if (!t) continue;
       const step = t.length / (t.n - 1);
-      this.strip({ n: t.loopN, step, x: t.x, z: t.z, ele: t.ele, heading: t.heading, grade: t.grade }, halfWidth, mat, 100000);
+      this.strip({ n: t.loopN, step, x: t.x, z: t.z, ele: t.ele, heading: t.heading, grade: t.grade }, halfWidth, turnMat, 100000);
     }
     // rural delineator posts and guard rails need the terrain: Roadside.ts
     if (route.category === 'city') this.add(lamps(route, halfWidth));
   }
 
   /** Asphalt ribbon along a polyline, in chunks so frustum culling works on long routes. */
-  private strip(r: Strip, halfWidth: number, mat: THREE.Material, along0: number) {
+  private strip(r0: Strip, halfWidth: number, mat: THREE.Material, along0: number, extend = false) {
+    if (r0.n < 2) return;
+    const r = extend ? extended(r0) : r0;
+    if (extend) along0 -= r0.step;
     const n = r.n;
-    if (n < 2) return;
     const cols = [-(halfWidth + SHOULDER), -halfWidth, 0, halfWidth, halfWidth + SHOULDER];
     const drop = [-0.12, 0, 0, 0, -0.12];
     const pos = new Float32Array(n * cols.length * 3);
@@ -234,6 +240,29 @@ function lamps(route: Route, halfWidth: number): THREE.Group {
   mesh.computeBoundingSphere();
   g.add(mesh);
   return g;
+}
+
+/** The strip with one more sample beyond each end, straight on along the end heading. */
+function extended(r: Strip): Strip {
+  const n = r.n + 2;
+  const x = new Float32Array(n), z = new Float32Array(n), ele = new Float32Array(n);
+  const heading = new Float32Array(n), grade = new Float32Array(n);
+  for (let i = 0; i < r.n; i++) {
+    x[i + 1] = r.x[i];
+    z[i + 1] = r.z[i];
+    ele[i + 1] = r.ele[i];
+    heading[i + 1] = r.heading[i];
+    grade[i + 1] = r.grade[i];
+  }
+  for (const [o, a, sgn] of [[0, 0, -1], [n - 1, r.n - 1, 1]] as const) {
+    const h = r.heading[a];
+    x[o] = r.x[a] + Math.sin(h) * r.step * sgn;
+    z[o] = r.z[a] - Math.cos(h) * r.step * sgn;
+    ele[o] = r.ele[a];
+    heading[o] = h;
+    grade[o] = r.grade[a];
+  }
+  return { n, step: r.step, x, z, ele, heading, grade };
 }
 
 function chunkSphere(pos: Float32Array, from: number, to: number): THREE.Sphere {
