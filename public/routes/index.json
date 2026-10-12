@@ -5,7 +5,7 @@
     "region": "Salzburg, AT",
     "category": "climb",
     "loop": false,
-    "lengthKm": 26.85,
+    "lengthKm": 26.81,
     "gain": 1860,
     "startEle": 810.8,
     "endEle": 2508.5
@@ -28,7 +28,7 @@
     "region": "Tirol, AT",
     "category": "climb",
     "loop": false,
-    "lengthKm": 9.46,
+    "lengthKm": 9.45,
     "gain": 866,
     "startEle": 745,
     "endEle": 1596.5
@@ -39,7 +39,7 @@
     "region": "Isère, FR",
     "category": "climb",
     "loop": false,
-    "lengthKm": 14.9,
+    "lengthKm": 14.7,
     "gain": 1135,
     "startEle": 718.8,
     "endEle": 1824.3
@@ -61,7 +61,7 @@
     "region": "Provence, FR",
     "category": "climb",
     "loop": false,
-    "lengthKm": 21.41,
+    "lengthKm": 21.22,
     "gain": 1589,
     "startEle": 311,
     "endEle": 1900.3
@@ -94,7 +94,7 @@
     "region": "Salzkammergut, AT",
     "category": "rolling",
     "loop": false,
-    "lengthKm": 18.31,
+    "lengthKm": 18.22,
     "gain": 104,
     "startEle": 548,
     "endEle": 544.8
