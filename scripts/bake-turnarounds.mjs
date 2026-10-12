@@ -187,6 +187,58 @@ function turnaround(coordsLL, elements, atEnd) {
   return { kind: 'turning circle', trimmedBy: 0, coords: coordsLL, turn };
 }
 
+/**
+ * A route that stops inside a tunnel (BRouter ends a climb at its highest sample, which on the
+ * Großglockner is the middle of the Hochtor tunnel) runs on to the far portal and a few metres
+ * beyond, so the turnaround lies in the open and the tunnel is ridden whole.
+ */
+function throughTunnel(coordsLL, elements) {
+  const end = coordsLL[coordsLL.length - 1];
+  const P = proj(end[1]);
+  const e = P.to(end[0], end[1]);
+  const prev = P.to(coordsLL[coordsLL.length - 2][0], coordsLL[coordsLL.length - 2][1]);
+  for (const el of elements) {
+    const t = el.tags ?? {};
+    if (el.type !== 'way' || t.tunnel !== 'yes' || !DRIVABLE.has(t.highway) || !el.geometry || el.geometry.length < 2) continue;
+    const g = el.geometry.map((p) => P.to(p.lon, p.lat));
+    const cum = cumulative(g);
+    const pr = project(g, cum, e);
+    const len = cum[cum.length - 1];
+    if (pr.dist > 15 || pr.s < 10 || pr.s > len - 10) continue;
+    // ride on towards the portal the route was heading for
+    const ahead = (g[pr.i + 1][0] - g[pr.i][0]) * (e[0] - prev[0]) + (g[pr.i + 1][1] - g[pr.i][1]) * (e[1] - prev[1]) > 0;
+    const rest = ahead ? g.slice(pr.i + 1) : g.slice(0, pr.i + 1).reverse();
+    const portal = rest[rest.length - 1];
+    // and on along the road leaving that portal, ~70 m: the turnaround lies in the open
+    const out = [...rest];
+    const key = (p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`;
+    const used = new Set([el]);
+    let tip = portal, acc = 0;
+    // OSM splits the road beyond a portal into short ways: follow them one after another
+    while (acc < 70) {
+      const next = elements.find((r) => {
+        const rt = r.tags ?? {};
+        if (used.has(r) || r.type !== 'way' || !DRIVABLE.has(rt.highway) || rt.tunnel === 'yes' || !r.geometry) return false;
+        const a = r.geometry[0], b = r.geometry[r.geometry.length - 1];
+        return key(P.to(a.lon, a.lat)) === key(tip) || key(P.to(b.lon, b.lat)) === key(tip);
+      });
+      if (!next) break;
+      used.add(next);
+      let rg = next.geometry.map((p) => P.to(p.lon, p.lat));
+      if (key(rg[0]) !== key(tip)) rg = rg.reverse();
+      for (let i = 1; i < rg.length && acc < 70; i++) {
+        acc += Math.hypot(rg[i][0] - rg[i - 1][0], rg[i][1] - rg[i - 1][1]);
+        out.push(rg[i]);
+      }
+      tip = rg[rg.length - 1];
+    }
+    // tunnels are near level: hold the end height (the lower hull smooths the profile)
+    const ele = end[2];
+    return [...coordsLL, ...out.map((p) => [...P.from(p[0], p[1]).map((v) => Math.round(v * 1e6) / 1e6), ele])];
+  }
+  return coordsLL;
+}
+
 /** OSM tunnel=yes road ways lying on the route → [from, to] metres along it. */
 function tunnels(coordsLL, elements) {
   const P = proj(coordsLL[0][1]);
@@ -219,7 +271,7 @@ for (const { id } of index) {
   }
   // undo a previous bake: work from the original coordinates when they were kept
   const coords = route.originalCoords ?? route.coords;
-  const end = turnaround(coords, osm, true);
+  const end = turnaround(throughTunnel(coords, osm), osm, true);
   const start = turnaround(end.coords, osm, false);
   route.originalCoords = coords;
   route.coords = start.coords;

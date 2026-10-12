@@ -160,6 +160,11 @@ export class Props extends THREE.Group {
           const t0 = k / steps, t1 = (k + 1) / steps;
           const x0 = ax + (bx - ax) * t0, z0 = az + (bz - az) * t0;
           const x1 = ax + (bx - ax) * t1, z1 = az + (bz - az) * t1;
+          // never across the carriageway (OSM walls and fences end at or run under the road); a
+          // retaining wall at the road edge is the road's own and Roadside faces the cut instead
+          const keep = bar.kind === 'retaining_wall' ? halfWidth + 3 : halfWidth + 0.8;
+          const on = index.nearest((x0 + x1) / 2, (z0 + z1) / 2, keep);
+          if (on.index >= 0 && on.dist < keep) continue;
           const y0 = groundAt(x0, z0), y1 = groundAt(x1, z1);
           if (!Number.isFinite(y0) || !Number.isFinite(y1)) continue;
           if (bar.kind === 'fence') {
