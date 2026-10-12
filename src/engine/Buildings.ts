@@ -190,7 +190,7 @@ function addBuilding(
     church ? srgb(0.33, 0.34, 0.36) : alm && !med ? srgb(0.33, 0.29, 0.25) : roofSet[Math.floor(rnd(seed + 7) * roofSet.length)],
   );
   // farmhouse look: wooden upper storey on many rural houses
-  const woodTop = !med && !barn && !big && !alm && !church && pitched && levels >= 2 && rnd(seed + 3) > 1 - style.woodTop;
+  const woodTop = bld.woodTop ?? (!med && !barn && !big && !alm && !church && pitched && levels >= 2 && rnd(seed + 3) > 1 - style.woodTop);
   const split = woodTop ? wallTop - 2.7 : wallTop;
   // rural Mallorcan houses are often bare marès / limestone masonry
   const mares = med && (barn || (pitched && rnd(seed + 9) > 0.55));

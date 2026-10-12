@@ -63,6 +63,17 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   change is easy to miss on a contact sheet. Where: `terrainMaterial.ts`.
 - **Grass read as tall spiky blades on every Alpine verge.** Fix: the verge (1.8 m from the asphalt) gets low mown
   tufts, and Alpine tufts are wider than tall (height factor 1.1 → 0.82); carritx unchanged. Where: `GroundCover.ts`.
+- **Every tuft was half black ("dark olive spikes", flagged on all six new routes).** The grass cards carry an up
+  normal so they light like the ground, but three.js flips the normal on the back faces of double-sided materials,
+  so every card seen from behind was unlit. Fix: tufts keep their normal on back faces, and each tuft takes the
+  ground normal under it (instanced `gNormal`), so on a shaded bank it is as dark as the turf, not a bright clump.
+  Check any double-sided card material with a faked normal for the same flip. Where: `GroundCover.ts`.
+- **Shaded meadow was teal** (blue above green: Kitzbüheler Horn banks 68/95/82, Wolfgangsee verge 61/80/83). The
+  photo's own shadows are blue already and the sky fill added more. Fix: the terrain's indirect light loses 20 % of
+  its blue, so shade is a darker ground colour. Where: `terrainMaterial.ts` (aomap_fragment).
+- **Lakes were a pale white sheet from the road.** At a grazing view the fresnel reflection is mostly the horizon
+  sky, which is pale. In the Alps the low reflected rays hit the mountains across the lake. Fix: low reflected rays
+  take a dark, hazed shore colour, steeper ones the sky (sea unchanged). Where: `terrainMaterial.ts` water block.
 
 ## Placement and geometry
 
@@ -94,8 +105,10 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   that stops inside a tunnel on to the far portal and ~70 m beyond (following the short OSM ways there), so the
   tunnel is found and ridden whole. Where: `scripts/bake-turnarounds.mjs` `throughTunnel`.
 - **Kitzbüheler Horn ran 1.45 km past the end of the road** on a track, the Karstweg footpath and gravel. Check
-  which OSM highways the last kilometres follow before trusting a climb's end. Fix: route trimmed where the
-  Panoramastraße ends (Alpenhaus). Old ride times include the footpath.
+  which OSM highways the last kilometres follow before trusting a climb's end. The first trim cut at the junction
+  where the BRouter line left the paved road, 680 m and 70 m of climbing short of the Alpenhaus: the Panoramastraße
+  went on. Follow the named road to its real end, not to where the GPX turned off. Fix: the paved ways on to the
+  Alpenhaus are appended from OSM with DEM heights (10.13 km). Old ride times include the footpath.
 - **Turnarounds stood on a plateau with a step where they met the road.** The smoothed profile ends metres below the
   raw DEM on a climb, the loop took raw DEM heights, only one end was pinned, and the square end of the asphalt left a
   wedge of ground showing where the loop leaves at an angle. Fix: the loop follows the DEM's shape measured from the
@@ -113,6 +126,17 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   `Engine.buildWaterMask`, `terrainMaterial.ts`, `GroundCover.ts`.
 - **Editing `src/` during a shot batch broke a capture** (fps 0, no tiles) and mixed two versions in one set.
   Re-shoot the whole set after the last edit.
+
+- **A meadow shed stood as a white two-storey house with a flower box** (Kitzbüheler Horn km 4.7, "invented
+  landmark"). OSM had a 24 m² `building=yes`; untagged buildings default to 7 m. Fix: untagged, unnamed footprints
+  under 40 m² are sheds (one storey, timber); `building=container` is a low bare box (the Hochtor "chalet"). Where:
+  `osm.ts`, `Buildings.ts`.
+- **The "Alpenhaus" the reviewer saw (white chalets) were two farm buildings by the old route end;** the real one
+  stood 680 m further up the road, out of shot. Fix: the route goes on to it (see Data and bakes). OSM maps a 713 m²
+  footprint inside the 1448 m² one; the scene's `osmTags` set `building=no` on the nested one (now honoured) and dark
+  timber walls and grey metal roofs on the rest. A Blender model was built first and dropped: the ground falls 10 m
+  across the footprint and a model sits at one height, while the OSM building drops its walls to the lowest corner
+  like the real downhill façade. Where: `public/scenes/kitzbueheler-horn.json`.
 
 ## Data and bakes
 

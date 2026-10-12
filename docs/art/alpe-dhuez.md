@@ -98,3 +98,5 @@ The savoie house style set in `public/scenes/alpe-dhuez.json` (white and beige r
 Baseline 2026-10-12: savoie house style via `public/scenes/alpe-dhuez.json`, OSM re-baked; open issues above. No review yet.
 
 First review 2026-10-12 (`research/alpe-dhuez/review-2026-10-12.md`): REJECT, mean 2.63. Blocker: the Saint-Ferréol church at bend 7 rendered as a hotel block (fixed the same day: churches now have a white nave, tower and spire). Worst findings: clone conifers, dense conifers above 12 km, tile-edge rectangles at the resort top, no hairpin signs or painted names.
+
+Round 3, 2026-10-12: tufts lit like the turf (no dark spikes); shade less blue. The cream block above the road at 13.2 km is a real OSM building (105440841, 1105 m²).

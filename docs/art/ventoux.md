@@ -104,3 +104,5 @@ Elevations are the route file's, interpolated at each km shown.
 Baseline 2026-10-12: provence-style houses (scene config), Alpine plant biome, summit transmitter from OSM as a concrete shaft with a red-and-white antenna on a concrete base block, synthetic turning circle at the summit end. No review yet.
 
 First review 2026-10-12 (`research/ventoux/review-2026-10-12.md`): REJECT, mean 2.63. Blocker: the summit buildings read as a Provençal village (cream blocks, shutters) around the transmitter. Worst findings: the bare top too white and smooth (reads as snow), W-beam rail where OSM has concrete walls, clone broadleaf trees and a uniform spruce wall in the forest.
+
+Round 3, 2026-10-12: stone parapets from 18.4 km to the top instead of W-beam rails (OSM maps 13 walls and retaining walls there, no rails); tufts lit like the turf.

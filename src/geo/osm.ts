@@ -27,6 +27,8 @@ export interface Building {
   name?: string;
   /** roof:shape was tagged (not inferred). */
   explicitRoof?: boolean;
+  /** Timber upper storey forced on or off by a route scene (osmTags "serpentine:wood_top"); random otherwise. */
+  woodTop?: boolean;
 }
 
 /** Open land cover that changes ground shading and ground cover. */
@@ -405,6 +407,7 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
         ring, height: shed ? 3.2 : buildingHeight(t), roof, kind: shed ? 'shed' : t.building,
         levels: Number.isFinite(levels) ? levels : undefined,
         wallColour: t['building:colour'], roofColour: t['roof:colour'], name: t.name, explicitRoof: !!roofTag,
+        woodTop: t['serpentine:wood_top'] === undefined ? undefined : t['serpentine:wood_top'] === 'yes',
       });
     } else if (t.barrier && el.type === 'way' && el.geometry && !t.area) {
       barriers.push({ pts: toLine(route, el.geometry), kind: t.barrier });

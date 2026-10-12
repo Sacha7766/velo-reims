@@ -1,14 +1,107 @@
 {
   "osmTags": {
-    "142759507": { "height": "102" },
-    "142678288": { "building:levels": "2", "building:colour": "#4b3a2c", "roof:colour": "#74787c" },
-    "142678289": { "building": "no" },
-    "142678290": { "name": "Alpenhaus", "building:levels": "2", "building:colour": "#4b3a2c", "roof:colour": "#74787c" }
+    "142759507": {
+      "height": "102"
+    },
+    "142678288": {
+      "building:levels": "2",
+      "building:colour": "#4b3a2c",
+      "roof:colour": "#74787c"
+    },
+    "142678289": {
+      "building": "no"
+    },
+    "142678290": {
+      "name": "Alpenhaus",
+      "building:levels": "2",
+      "building:colour": "#4b3a2c",
+      "roof:colour": "#74787c"
+    }
   },
-  "biomeTweaks": { "centreLine": false },
+  "biomeTweaks": {
+    "centreLine": false
+  },
   "placements": [
-    { "model": "cow.glb", "lon": 12.428641, "lat": 47.466666, "rot": 38 },
-    { "model": "cow.glb", "lon": 12.428269, "lat": 47.467028, "rot": 87 },
-    { "model": "cow.glb", "lon": 12.429226, "lat": 47.466594, "rot": 349 }
+    {
+      "model": "cow.glb",
+      "lon": 12.428641,
+      "lat": 47.466666,
+      "rot": 38
+    },
+    {
+      "model": "cow.glb",
+      "lon": 12.428269,
+      "lat": 47.467028,
+      "rot": 87
+    },
+    {
+      "model": "cow.glb",
+      "lon": 12.429226,
+      "lat": 47.466594,
+      "rot": 349
+    },
+    {
+      "model": "prop-snow_fence.glb",
+      "lon": 12.420259,
+      "lat": 47.470739,
+      "rot": 245.7,
+      "lift": -0.35
+    },
+    {
+      "model": "prop-snow_fence.glb",
+      "lon": 12.420292,
+      "lat": 47.47069,
+      "rot": 245.7,
+      "lift": -0.35
+    },
+    {
+      "model": "prop-snow_fence.glb",
+      "lon": 12.420325,
+      "lat": 47.47064,
+      "rot": 245.7,
+      "lift": -0.35
+    },
+    {
+      "model": "prop-snow_fence.glb",
+      "lon": 12.420358,
+      "lat": 47.470591,
+      "rot": 245.7,
+      "lift": -0.35
+    },
+    {
+      "model": "prop-snow_fence.glb",
+      "lon": 12.42039,
+      "lat": 47.470531,
+      "rot": 253.9,
+      "lift": -0.35
+    },
+    {
+      "model": "prop-snow_fence.glb",
+      "lon": 12.420412,
+      "lat": 47.470479,
+      "rot": 253.9,
+      "lift": -0.35
+    },
+    {
+      "model": "prop-snow_fence.glb",
+      "lon": 12.420434,
+      "lat": 47.470427,
+      "rot": 253.9,
+      "lift": -0.35
+    },
+    {
+      "model": "prop-snow_fence.glb",
+      "lon": 12.420456,
+      "lat": 47.4704,
+      "rot": 234.5,
+      "lift": -0.35
+    },
+    {
+      "model": "prop-snow_fence.glb",
+      "lon": 12.420502,
+      "lat": 47.470356,
+      "rot": 234.5,
+      "lift": -0.35
+    }
   ]
 }

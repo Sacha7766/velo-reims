@@ -104,3 +104,5 @@ The Esri imagery for Italy, which replaced the blank white basemap.at tiles toda
 Baseline 2026-10-12: white ground fixed (Esri imagery for Italy, basemap.at blank tiles dropped); Salzburg Flachgau house style on Gomagoi and Trafoi; open issues above. No review yet.
 
 First review 2026-10-12 (`research/stelvio/review-2026-10-12.md`): REJECT, mean 2.38. Blocker: the pass plaza as flat-roofed generic blocks (fixed in part the same day: big Alpine buildings get pitched or hip roofs; the curved hotel stays flat). Worst findings: lime-green speckled slopes above the treeline, grass blades, no dry-stone walls on the bends, no motorbikes or stands at the top.
+
+Round 3, 2026-10-12: bare ground and sparse grass above 2400 m (scene `bareAbove`); tufts lit like the turf. The slopes stay lime-green where the imagery is.

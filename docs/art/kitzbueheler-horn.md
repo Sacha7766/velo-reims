@@ -1,6 +1,6 @@
 # Kitzbüheler Horn: art brief
 
-The Panoramastraße from the valley start in Kitzbühel (745 m) up to the end at the Alpenhaus (1596.5 m): 9.46 km, 866 m of gain. The first ~2 km run through town on St. Johanner Straße; the toll road then climbs through spruce forest to open alpine pasture. The start joins a real 230 m loop in Kitzbühel; the end has a synthetic turning circle by the Alpenhaus, since the road ends there. Facts and sources: `research/kitzbueheler-horn/visual-reference.md`. Note that its route-km figures (10.87 km, 1615 m end, the 1.45 km track extension) predate today's trim and are superseded here. Photos and credits: `research/kitzbueheler-horn/photos/` (local only).
+The Panoramastraße from the valley start in Kitzbühel (745 m) up to the Alpenhaus (1665 m): 10.13 km, 936 m of gain. The first ~2 km run through town on St. Johanner Straße; the toll road then climbs through spruce forest to open alpine pasture. The start joins a real 230 m loop in Kitzbühel; the end has a synthetic turning circle just past the Alpenhaus, where the public road ends. Facts and sources: `research/kitzbueheler-horn/visual-reference.md`. Note that its route-km figures (10.87 km, 1615 m end, the 1.45 km track extension) predate the trim and the extension and are superseded here. Photos and credits: `research/kitzbueheler-horn/photos/` (local only).
 
 **Mood:** a clear October morning, autumn colour in the forest below (species unknown), cows on the pasture near the Alpenhaus, the grey-roofed timber Alpenhaus in front of the ridge. The signature view is the ORF transmitter on the ridge above the Alpenhaus, against a clear blue sky. The Wilder Kaiser across the valley: unknown (not confirmed from the road in any source).
 
@@ -13,7 +13,7 @@ The Panoramastraße from the valley start in Kitzbühel (745 m) up to the end at
 | K1 | 8.2–8.6 | Steepest ramp | Switchback road on the grazing slope, about 20 % over 100 m at km 8.54 (route file), spruce edge below, snow fence beside the road, mid-grey asphalt |
 | K2 | ~8.0–8.5 (est.) | First view of the transmitter | Red-and-white mast on a flared pale concrete base, on the ridge about 920 m off the line; visibility from the road is unknown in sources, so only show it where the ridge opens up |
 | K3 | 8.5–9.4 | Open pasture above the forest | Short grass and bare grey limestone outcrops, cows, low white-and-grey summit building beside the mast, forest line falling away behind |
-| K4 | 9.42–9.46 | Arrival at the Alpenhaus and road end | Timber-clad two-storey building with grey metal roofs, cows and snow fence in front, walkers on the path, road ends in a plain turning circle with no fake carriageway |
+| K4 | 9.9–10.13 | Arrival at the Alpenhaus and road end | Timber-clad two-storey building with grey metal roofs, cows and snow fence in front, walkers on the path, road ends in a plain turning circle with no fake carriageway |
 
 ## Km by km
 
@@ -30,8 +30,8 @@ Elevations are the route file's.
 | 6.0–8.0 | 1142–1385 m | Dense spruce forest on both sides, spruce on the slopes; the forest begins around 5–6 km; larch and beech unknown |
 | 8.5 | 1451 m | Closest point to the transmitter (about 920 m off the line, on the summit ridge); Gipfelhaus and viewing platform beside it. Forest line here |
 | 8.5–9.4 | 1451–1593 m | Alpine pasture above the forest line; Hornkapelle 800–1000 m off the line; cows below the hairpins |
-| 9.42 | 1545–1590 m (route file) | Alpenhaus, the road's end per the operator. Altitude conflict: sources say 1664–1670 m (see Open issues) |
-| 9.46 | 1596.5 m | Route end: synthetic turning circle by the Alpenhaus |
+| 9.46 | 1597 m | Junction: the farm track (the old BRouter line) turns off; the Panoramastraße climbs on |
+| 9.46–10.13 | 1597–1665 m | Last ramp, about 10 %, past the Alpenhaus; route end in a synthetic turning circle beyond it |
 
 ## Look targets
 
@@ -43,7 +43,7 @@ Elevations are the route file's.
 
 **Buildings.** Town at the start: 2–3 storey apartments (KitzLife, Plodarhaus, Villa Anna), supermarket, petrol station, car dealers, rail station; all off the carriageway. Alpenhaus: dark timber-clad two-storey building with grey metal roofs [P-1, P-8]. Transmitter: flared concrete base, white upper section, slim red-and-white mast [P-2, P-5]. Summit building: low, white-and-grey, beside the mast [P-3]. Chapel (Maria Heimsuchung): white with a dark pitched metal roof and spire, position unknown; do not place it without a source. Never: stacked white blocks at the Alpenhaus, or a housing estate at the start.
 
-**Landmarks.** ORF transmitter, 102 m, route km 8.49, about 920 m off the line [WIKI-TX, OSM]. Alpenhaus Kitzbüheler Horn, route km 9.42, 1664–1670 m [WIKI-EN, ALM]; finish of the Tour of Austria King Stage [WIKI-EN]. Snow cannon and chairlift pylons near the Alpenhaus [P-1, P-8]. Alpine flower garden at about 1800 m, above the route end, so off this route [WIKI-EN, ALM]. Wilder Kaiser: unknown (not verified from the road).
+**Landmarks.** ORF transmitter, 102 m, route km 8.49, about 920 m off the line [WIKI-TX, OSM]. Alpenhaus Kitzbüheler Horn, route km 10.0–10.1, 1664–1670 m [WIKI-EN, ALM]; finish of the Tour of Austria King Stage [WIKI-EN]. Snow cannon and chairlift pylons near the Alpenhaus [P-1, P-8]. Alpine flower garden at about 1800 m, above the route end, so off this route [WIKI-EN, ALM]. Wilder Kaiser: unknown (not verified from the road).
 
 **Life.** Cows: brown-and-white cattle by the Alpenhaus [P-1] and below the hairpins [P-8]. Cyclists: free to ride [PJAMM, CYCLO]. Cars: allowed to the Alpenhaus in summer [ALP]; traffic "mild" [PJAMM]. Hikers on the summit path [P-3, P-5]; walkers at the Alpenhaus [P-1]; a large dog at the transmitter [P-5]. Paragliders: unknown.
 
@@ -66,7 +66,7 @@ Rebuild the board from `research/kitzbueheler-horn/photos/` (local only). Credit
 
 ## Don't touch
 
-The route end at the Alpenhaus (9.46 km, 1596.5 m) and its turning circle, which replaced the old track extension. The steepest section at 8.2–8.6 km. The transmitter's placement on the ridge at 8.49 km, about 920 m off the line.
+The route end at the Alpenhaus (10.13 km, 1665 m) and its turning circle, which replaced the old track extension. The steepest section at 8.2–8.6 km. The transmitter's placement on the ridge at 8.49 km, about 920 m off the line.
 
 ## Open issues
 
@@ -76,7 +76,7 @@ The route end at the Alpenhaus (9.46 km, 1596.5 m) and its turning circle, which
   - the steep cut banks render near-black blue-green (see Ground and rock for the target colour);
   - the big apartment blocks at the start look like a housing estate (the sources show 2–3 storeys only);
   - the Alpenhaus complex renders as stacked white blocks, but the sources show a timber-clad building with grey roofs.
-- **Alpenhaus altitude:** 1664–1670 m [ALM, WIKI-EN] vs route file 1545–1590 m near km 9.4. The route may sit lower than the building, or the elevation is sampled coarsely.
+- **Alpenhaus altitude:** resolved 2026-10-12. The route stopped 680 m short, at the junction where the old BRouter line left the paved road; it now follows the Panoramastraße to 1665 m.
 - **Width:** 6 m lane [ALP] vs narrow two-lane stretches with no shoulder [PJAMM]. Passing places: unknown.
 - **Toll gate** is not mapped in OSM; position is an estimate (km 1.9–2.7).
 - **Transmitter visibility** from the road is unknown; no photo was taken from the road at 8.0–9.5 km.
@@ -97,3 +97,5 @@ Baseline 2026-10-12: route trimmed to the Alpenhaus, OSM re-baked, transmitter a
 First review 2026-10-12 (`research/kitzbueheler-horn/review-2026-10-12.md`): REJECT, mean 2.63 (ground 2, vegetation 2, road 3, built 2, light 4, life 2, rider 4, place 2). Blocker: the Alpenhaus group renders as large stacked white blocks behind a farmhouse; needs a photo match and probably a Blender model. Worst findings: dark shaded slopes, grass blade spikes, housing-estate blocks in town, flat blue water patch at 1.4 km, centre line where the toll road has none.
 
 Second review 2026-10-12 (`research/kitzbueheler-horn/review-2026-10-12-r2.md`): REJECT, mean 2.88 (ground 2→3, vegetation 2→3 after the shade and grass fixes). Alpenhaus blocker unchanged.
+
+Round 3, 2026-10-12: route extended to the Alpenhaus (10.13 km), which is now dark timber with grey metal roofs from its OSM footprint, cows beside it; the km 4.7 "house" is a hay shed (24 m² in OSM); no centre line; tufts lit like the turf (no dark spikes); shade less teal. The blue patch at 1.4 km is a real OSM water polygon (316102983) and the grey bands at the old end are real asphalt side roads.

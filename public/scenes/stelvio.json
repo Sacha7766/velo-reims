@@ -1,3 +1,37 @@
 {
-  "biomeTweaks": { "bareAbove": 2400 }
+  "biomeTweaks": {
+    "bareAbove": 2400
+  },
+  "osmTags": {
+    "73257955": {
+      "serpentine:wood_top": "yes"
+    },
+    "361119314": {
+      "serpentine:wood_top": "yes"
+    },
+    "73256723": {
+      "serpentine:wood_top": "yes"
+    },
+    "129219144": {
+      "serpentine:wood_top": "yes"
+    },
+    "129219105": {
+      "serpentine:wood_top": "yes"
+    },
+    "1429793395": {
+      "serpentine:wood_top": "yes"
+    },
+    "129219151": {
+      "serpentine:wood_top": "yes"
+    },
+    "1429793380": {
+      "serpentine:wood_top": "yes"
+    },
+    "233835058": {
+      "serpentine:wood_top": "yes"
+    },
+    "73257935": {
+      "serpentine:wood_top": "yes"
+    }
+  }
 }

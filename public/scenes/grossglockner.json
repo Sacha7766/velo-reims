@@ -1,4 +1,18 @@
 {
   "imagery": "esri",
-  "biomeTweaks": { "centreLine": false }
+  "biomeTweaks": {
+    "centreLine": false
+  },
+  "osmTags": {
+    "236264955": {
+      "building": "no"
+    }
+  },
+  "barriers": [
+    {
+      "from": 12000,
+      "to": 40000,
+      "barrier": "stonewall"
+    }
+  ]
 }
