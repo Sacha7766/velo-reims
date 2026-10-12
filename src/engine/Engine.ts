@@ -11,7 +11,7 @@ import {
 import { N8AOPostPass } from 'n8ao';
 import { DEM_MAX_Z, preloadDemForBox } from '../geo/elevation.ts';
 import { lonLatToWorld } from '../geo/mercator.ts';
-import { sourcesFor } from '../geo/imagery.ts';
+import { ESRI, sourcesFor } from '../geo/imagery.ts';
 import { loadOsmElements, parseOsm, type OsmWorld, type Polygon } from '../geo/osm.ts';
 import { pointAt, RouteIndex, type Route, type RoutePoint } from '../geo/route.ts';
 import { applyTime, atmo, clearTunnels, TIMES } from './atmosphere.ts';
@@ -335,7 +335,8 @@ export class Engine {
       route,
       routeIndex: index,
       roadHalfWidth: halfWidth,
-      sources: sourcesFor(p0.lon, p0.lat),
+      // scenes/<id>.json "imagery": "esri" picks Esri where the national photo is the wrong season or cast
+      sources: sceneDef?.imagery === 'esri' ? [ESRI] : sourcesFor(p0.lon, p0.lat),
       anisotropy: this.renderer.capabilities.getMaxAnisotropy(),
       detail: this.preset.detail,
       cutWidth: biome.id === 'mediterranean' ? 3.2 : 14,
