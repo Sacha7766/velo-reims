@@ -128,9 +128,10 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   Re-shoot the whole set after the last edit.
 
 - **A meadow shed stood as a white two-storey house with a flower box** (Kitzbüheler Horn km 4.7, "invented
-  landmark"). OSM had a 24 m² `building=yes`; untagged buildings default to 7 m. Fix: untagged, unnamed footprints
-  under 40 m² are sheds (one storey, timber); `building=container` is a low bare box (the Hochtor "chalet"). Where:
-  `osm.ts`, `Buildings.ts`.
+  landmark"). OSM had a 24 m² `building=yes`; untagged buildings default to 7 m. Fix: footprints under 40 m² without
+  height tags are one storey, and untagged unnamed ones are sheds (timber); `building=container` and
+  `building=service` are low bare boxes (the Hochtor "chalet", a 9 m² Ventoux substation that stood as a 7 m tower).
+  Where: `osm.ts`, `Buildings.ts`.
 - **The "Alpenhaus" the reviewer saw (white chalets) were two farm buildings by the old route end;** the real one
   stood 680 m further up the road, out of shot. Fix: the route goes on to it (see Data and bakes). OSM maps a 713 m²
   footprint inside the 1448 m² one; the scene's `osmTags` set `building=no` on the nested one (now honoured) and dark

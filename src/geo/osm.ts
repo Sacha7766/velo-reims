@@ -401,10 +401,12 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
                   // the curved Stelvio hotel); sheds and shops stay flat
                   : (area < 900 || ringArea(ring) < 2500) && !FLAT_KINDS.has(t.building) ? 'gabled' : 'flat';
       const levels = parseFloat(t['building:levels'] ?? '');
-      // tiny untagged footprints out in the meadows are hay barns and sheds, not two-storey houses
-      const shed = t.building === 'yes' && !t.height && !Number.isFinite(levels) && !t.name && ringArea(ring) < 40;
+      // tiny footprints are one storey (a 9 m² substation stood as a 7 m tower); untagged ones out in
+      // the meadows are hay barns and sheds, not two-storey houses
+      const tiny = !t.height && !Number.isFinite(levels) && ringArea(ring) < 40;
+      const shed = tiny && t.building === 'yes' && !t.name;
       buildings.push({
-        ring, height: shed ? 3.2 : buildingHeight(t), roof, kind: shed ? 'shed' : t.building,
+        ring, height: tiny ? 3.2 : buildingHeight(t), roof, kind: shed ? 'shed' : t.building,
         levels: Number.isFinite(levels) ? levels : undefined,
         wallColour: t['building:colour'], roofColour: t['roof:colour'], name: t.name, explicitRoof: !!roofTag,
         woodTop: t['serpentine:wood_top'] === undefined ? undefined : t['serpentine:wood_top'] === 'yes',

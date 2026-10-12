@@ -194,9 +194,9 @@ function addBuilding(
   const split = woodTop ? wallTop - 2.7 : wallTop;
   // rural Mallorcan houses are often bare marès / limestone masonry
   const mares = med && (barn || (pitched && rnd(seed + 9) > 0.55));
-  // industrial blocks (the base of the Mont Ventoux transmitter) and site containers (the Hochtor) are
-  // bare concrete or metal, never a house
-  const plant = bld.kind === 'industrial' || bld.kind === 'container';
+  // industrial blocks (the base of the Mont Ventoux transmitter), utility buildings (substations) and
+  // site containers are bare concrete or metal, never a house
+  const plant = bld.kind === 'industrial' || bld.kind === 'container' || bld.kind === 'service';
   const wallSurf = plant || church ? TRIM : med ? (mares ? MARES : MALLORCA) : alm ? TIMBER : barn ? WOOD : big && levels > 3 ? GLASSWALL : PLASTER;
   if (plant && !bld.wallColour) wall.copy(srgb(0.84, 0.84, 0.82));
   if (church && !bld.wallColour) wall.copy(srgb(0.94, 0.93, 0.89));
