@@ -42,6 +42,19 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   face, which the karst shader kept as garrigue, and the cliff scan leans warm ochre (right for Formentor, wrong for
   grey Tramuntana limestone). Fix: per-route `biomeTweaks` in `scenes/<id>.json` (`cliffSlope` where the scan takes
   over, `rockOchre`); grey rock is lifted and its streaks flattened. Where: `biome.ts`, `terrainMaterial.ts`.
+- **Stelvio's forest floor and pastures were white.** basemap.at answers tiles outside Austria at zoom 12–15
+  and 18 with white JPEGs (2.4 KB, decoded as 253 in Chrome), not 404s, and the size check only caught placeholders
+  under 800 bytes. Stelvio lies inside the bounds box used for Austria. Lesson: when ground looks wrong, dump the
+  tile textures off the terrain meshes before tuning the shader (two shader "fixes" changed nothing). Fix: a tile
+  that is over a tenth near-white and neutral falls back to Esri; a national source that only misses for a world is
+  skipped. Where: `src/geo/imagery.ts`.
+- **Alpe d'Huez and Bédoin had Salzburg farmhouses** (green shutters, geraniums). Fix: building styles are data
+  (palettes, pitch, timber storeys, balcony kind, shutter colours) picked by the biome's `buildings`, overridable in a
+  scene's `biomeTweaks` (`savoie`, `provence`). Where: `Buildings.ts` `STYLES`, `scenes/<id>.json`.
+- **Mont Ventoux had no summit tower.** OSM towers and masts were skipped as buildings and only appeared where a
+  scene placed a model. Fix: communication towers render as shaft, drum and banded antenna, small mapped masts as
+  steel poles; towers near a scene model are left to it; industrial blocks are bare concrete. Where: `osm.ts`
+  `towers`, `Props.towers`.
 
 ## Placement and geometry
 
@@ -68,6 +81,23 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   cut had removed theirs (or on fresh fill), and the coarse terrain mesh showed the slope below them. Fix: no tree
   where the road works moved the ground more than 1.5 m (2.6 % of Sa Calobra's trees, under 1 % elsewhere).
   Where: `Vegetation.placeBaked` (`rawHeightAt`).
+- **Großglockner ended in the middle of the Hochtor tunnel** and its turning circle sat on the ridge above:
+  BRouter trims a climb at its highest sample, which was inside the tunnel. Fix: `bake-turnarounds` runs a route
+  that stops inside a tunnel on to the far portal and ~70 m beyond (following the short OSM ways there), so the
+  tunnel is found and ridden whole. Where: `scripts/bake-turnarounds.mjs` `throughTunnel`.
+- **Kitzbüheler Horn ran 1.45 km past the end of the road** on a track, the Karstweg footpath and gravel. Check
+  which OSM highways the last kilometres follow before trusting a climb's end. Fix: route trimmed where the
+  Panoramastraße ends (Alpenhaus). Old ride times include the footpath.
+- **Turnarounds stood on a plateau with a step where they met the road.** The smoothed profile ends metres below the
+  raw DEM on a climb, the loop took raw DEM heights, only one end was pinned, and the square end of the asphalt left a
+  wedge of ground showing where the loop leaves at an angle. Fix: the loop follows the DEM's shape measured from the
+  end point, pinned at both ends; the route's ribbon runs one sample under the loop, which draws with more depth
+  bias. Where: `route.ts` `samplePath`, `Road.ts`.
+- **Houses stood on the road in old towns** (St. Wolfgang, Kitzbühel): OSM footprints reach the street edge and
+  our ribbon is wider than the real street. Fix: a building whose footprint comes within the asphalt is left out.
+  Where: `Buildings.ts` `reachesRoad`.
+- **A wall crossed the road at the Hochtor.** Alpine OSM walls and fences were drawn without a road check. Fix: no
+  barrier piece on the carriageway, and retaining walls at the road edge are left to Roadside. Where: `Props.fences`.
 
 ## Data and bakes
 
@@ -92,6 +122,8 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   22 %. Find them with a scan for runs over 12 %. Where: `route.ts` `lowerHull`.
 - **One OSM building was three storeys too tall.** OSM had no levels for the bar at the knot. Fix: per-route tag
   fixes in `scenes/<id>.json` `osmTags` (`{ "<element id>": { "building:levels": "1" } }`). Where: `Engine.loadWorld`.
+- **Five routes still had their first OSM bake** (no meadows, barriers, power lines, benches, bus stops,
+  crosses). Re-bake every preset after `bake-osm.mjs` learns a new feature; compare tag counts with Gaisberg's file.
 
 ## Capture and review
 

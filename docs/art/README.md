@@ -30,10 +30,13 @@ One brief per route, written before visual work starts (`_template.md`):
 |---|---|---|
 | Gaisberg | [gaisberg.md](gaisberg.md) | `research/gaisberg/board.jpg` |
 | Cap de Formentor | [formentor.md](formentor.md) | `research/formentor/board.jpg` |
+| Sa Calobra | [sa-calobra.md](sa-calobra.md) | `research/sa-calobra/board.jpg` |
+| Kitzbüheler Horn | [kitzbueheler-horn.md](kitzbueheler-horn.md) | `research/kitzbueheler-horn/board.jpg` |
+| Großglockner | [grossglockner.md](grossglockner.md) | `research/grossglockner/board.jpg` |
 
-The other presets have no brief yet: Sa Calobra, Kitzbüheler Horn, Großglockner, Alpe d'Huez, Stelvio, Ventoux,
-Wachau, Neusiedler See, Wolfgangsee, Central Park, Sydney and the Vienna Ring. Their QA findings are in
-`research/qa-presets.md`.
+The other presets have no brief yet: Alpe d'Huez, Stelvio, Ventoux, Wachau, Neusiedler See, Wolfgangsee, Central
+Park, Sydney and the Vienna Ring. Their QA findings are in `research/qa-presets.md` (2026-10-11; the white ground at
+Stelvio, the turnarounds, houses on the road and Ventoux's summit tower were fixed on 2026-10-12).
 
 ## Reference boards
 

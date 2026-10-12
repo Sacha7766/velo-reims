@@ -4,9 +4,9 @@ Baked by `node scripts/bake-routes.mjs [id|--all]` from BRouter (OSM routing, `f
 
 | id | name | category | km | hm | loop | source notes |
 | --- | --- | --- | ---: | ---: | --- | --- |
-| grossglockner | Großglockner Hochalpenstraße | climb | 26.58 | 1860 | no | one via point |
+| grossglockner | Großglockner Hochalpenstraße | climb | 26.85 | 1860 | no | one via point. Fusch to the Hochtor: rides through the Mittertörl and Hochtor tunnels and turns at the viewpoint past the south portal (the BRouter line stopped inside the Hochtor tunnel) |
 | gaisberg | Gaisberg | climb | 10.03 | 704 | no | |
-| kitzbueheler-horn | Kitzbüheler Horn | climb | 11.05 | 923 | no | |
+| kitzbueheler-horn | Kitzbüheler Horn | climb | 9.46 | 866 | no | Kitzbühel up the Panoramastraße to its end at the Alpenhaus (the BRouter line ran 1.45 km on along a track and the Karstweg footpath) |
 | alpe-dhuez | Alpe d'Huez | climb | 14.90 | 1135 | no | |
 | stelvio | Passo dello Stelvio | climb | 25.32 | 1855 | no | |
 | ventoux | Mont Ventoux (Bédoin) | climb | 21.41 | 1589 | no | |
