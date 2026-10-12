@@ -93,3 +93,5 @@ The route end at the Alpenhaus (9.46 km, 1596.5 m) and its turning circle, which
 ## Status
 
 Baseline 2026-10-12: route trimmed to the Alpenhaus, OSM re-baked, transmitter added. No review yet.
+
+First review 2026-10-12 (`research/kitzbueheler-horn/review-2026-10-12.md`): REJECT, mean 2.63 (ground 2, vegetation 2, road 3, built 2, light 4, life 2, rider 4, place 2). Blocker: the Alpenhaus group renders as large stacked white blocks behind a farmhouse; needs a photo match and probably a Blender model. Worst findings: dark shaded slopes, grass blade spikes, housing-estate blocks in town, flat blue water patch at 1.4 km, centre line where the toll road has none.
