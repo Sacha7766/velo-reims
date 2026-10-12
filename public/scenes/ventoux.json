@@ -1,3 +1,50 @@
 {
-  "biomeTweaks": { "buildings": "provence", "bareAbove": 1450 }
+  "biomeTweaks": {
+    "buildings": "provence",
+    "bareAbove": 1450
+  },
+  "osmTags": {
+    "83906300": {
+      "building": "industrial"
+    },
+    "83909060": {
+      "building": "industrial"
+    },
+    "83911326": {
+      "building": "industrial"
+    },
+    "431141320": {
+      "building": "industrial"
+    },
+    "1563876165": {
+      "building": "industrial"
+    },
+    "1563876166": {
+      "building": "industrial"
+    },
+    "1563876173": {
+      "building": "industrial"
+    },
+    "1563876174": {
+      "building": "industrial"
+    },
+    "1563876176": {
+      "building": "industrial"
+    },
+    "1563876177": {
+      "building": "industrial"
+    },
+    "1563876178": {
+      "building": "industrial"
+    },
+    "1563876179": {
+      "building": "industrial"
+    },
+    "1563876181": {
+      "building": "industrial"
+    },
+    "1563876183": {
+      "building": "industrial"
+    }
+  }
 }

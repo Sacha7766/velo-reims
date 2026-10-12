@@ -297,6 +297,14 @@ float tBump = 0.0;
   float rubble = smoothstep(0.72, 0.8, tNoise(p * 2.3)) * 0.5 + smoothstep(0.78, 0.86, tNoise(p * 6.1 + 3.0)) * 0.5;
   vec3 dirt = mix(vec3(0.34, 0.29, 0.24), vec3(0.46, 0.44, 0.39), rubble * 0.6) * (0.82 + 0.3 * tNoise(p * 0.9));
   base = mix(base, dirt, uKarst * verge * (1.0 - steep * 0.6) * 0.85);
+  // scree is pale grey stone, never snow-white or smooth: cap its value, mottle it with stones and
+  // the odd plant (Mont Ventoux's top)
+  {
+    float sL = dot(base, vec3(0.3, 0.55, 0.15));
+    vec3 stone = base * min(1.0, 0.36 / max(sL, 1e-3)) * vec3(1.0, 0.98, 0.94);
+    stone *= 0.78 + 0.3 * tNoise(p * 0.09) + 0.14 * (tNoise(p * 0.7) - 0.5);
+    base = mix(base, stone, scree * (1.0 - uKarst));
+  }
   tc = base * tDetail;
 
   // water: OSM mask, or sea level
