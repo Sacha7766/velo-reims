@@ -35,7 +35,9 @@ function roadMaterial(halfWidth: number, biome: Biome, turn = false) {
   });
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uHalf = { value: halfWidth };
-    shader.uniforms.uDash = { value: new THREE.Vector2(biome.dash[0], biome.dash[0] + biome.dash[1]) };
+    // a zero dash length turns the centre line off (roads without one: scene biomeTweaks "centreLine": false)
+    const dash = biome.centreLine === false ? 0 : biome.dash[0];
+    shader.uniforms.uDash = { value: new THREE.Vector2(dash, biome.dash[0] + biome.dash[1]) };
     // Mallorca: sun-bleached lighter asphalt, mostly no edge lines, asphalt up to the wall
     shader.uniforms.uMed = { value: biome.id === 'mediterranean' ? 1 : 0 };
     shader.uniforms.uAsphalt = { value: tex.color };
@@ -85,7 +87,7 @@ float rn(vec2 p) {
   float edge = step(abs(a - (uHalf - 0.28)), 0.07) * (1.0 - uMed);
   // centre dashes: Austria 6 m / 12 m, Spain (M-1.3) 3.5 m / 9 m
   float dash = step(fract(along / uDash.y), uDash.x / uDash.y);
-  float centre = step(a, 0.06) * dash * step(2.6, uHalf);
+  float centre = step(a, 0.06) * dash * step(2.6, uHalf) * step(0.01, uDash.x);
   gPaint = max(edge, centre) * wear;
   vec3 col = mix(asphalt, paint * wear, max(edge, centre));
   // gravel shoulder

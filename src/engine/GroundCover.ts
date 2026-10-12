@@ -138,12 +138,23 @@ export class GroundCover extends THREE.Group {
     this.o = { density: 1, ...o };
     this.biome = o.biome ?? ALPINE;
     // photographic grass cards from the shared foliage atlas (scripts/bake-foliage.py)
-    this.grassMat = preserveCoverage(
-      patchMaterial(new THREE.MeshLambertMaterial({ map: treeAtlas(this.biome.atlas), alphaTest: 0.5, side: THREE.DoubleSide }), {
-        key: 'tuft2',
-        wind: true,
-      }),
-    );
+    const grass = new THREE.MeshLambertMaterial({ map: treeAtlas(this.biome.atlas), alphaTest: 0.5, side: THREE.DoubleSide });
+    // the cards light like the turf under them: each tuft carries the ground normal (gNormal), and
+    // the back faces keep it (three.js flips normals on double-sided back faces, which left half of
+    // every tuft unlit: dark olive spikes)
+    grass.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute vec3 gNormal;')
+        .replace(
+          '#include <defaultnormal_vertex>',
+          '#include <defaultnormal_vertex>\nif (dot(gNormal, gNormal) > 0.5) transformedNormal = normalMatrix * gNormal;',
+        );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <normal_fragment_begin>',
+        '#include <normal_fragment_begin>\nnormal = normalize(vNormal);',
+      );
+    };
+    this.grassMat = preserveCoverage(patchMaterial(grass, { key: 'tuft3', wind: true }));
     this.grassMat.alphaToCoverage = true;
     this.flowerMat = this.grassMat;
     if (this.biome.shrubs > 0) {
@@ -281,6 +292,7 @@ export class GroundCover extends THREE.Group {
         for (const m of chunk.meshes) {
           this.remove(m);
           m.dispose();
+          if (m.userData.ownGeometry) m.geometry.dispose();
         }
         this.chunks.delete(c);
       }
@@ -401,10 +413,27 @@ export class GroundCover extends THREE.Group {
     const col = new THREE.Color();
     // the atlas grass is near-neutral; the biome sets the meadow colour
     const [lush, dry, pale] = this.biome.grass;
-    const add = (geo: THREE.BufferGeometry, mat: THREE.Material, arr: number[], tall: number, shadow: boolean, tint: boolean) => {
+    const add = (
+      geo: THREE.BufferGeometry, mat: THREE.Material, arr: number[], tall: number, shadow: boolean, tint: boolean, turf = false,
+    ) => {
       const n = arr.length / 6;
       if (!n) return;
+      if (turf) {
+        // the ground normal under each tuft (the grass material lights the cards with it)
+        const gn = new Float32Array(n * 3);
+        for (let k = 0; k < n; k++) {
+          const x = arr[k * 6], z = arr[k * 6 + 2];
+          const dx = groundHeight(x + 1, z) - groundHeight(x - 1, z);
+          const dz = groundHeight(x, z + 1) - groundHeight(x, z - 1);
+          const v = new THREE.Vector3(-dx / 2, 1, -dz / 2);
+          if (!Number.isFinite(v.x + v.z)) v.set(0, 1, 0);
+          v.normalize().toArray(gn, k * 3);
+        }
+        geo = geo.clone();
+        geo.setAttribute('gNormal', new THREE.InstancedBufferAttribute(gn, 3));
+      }
       const mesh = new THREE.InstancedMesh(geo, mat, n);
+      if (turf) mesh.userData.ownGeometry = true;
       for (let k = 0; k < n; k++) {
         const [x, y, z, sc, rot, alpine] = arr.slice(k * 6, k * 6 + 6);
         q.setFromAxisAngle(up, rot);
@@ -426,17 +455,22 @@ export class GroundCover extends THREE.Group {
       this.add(mesh);
     };
     // Alpine tufts are wider than tall (tall cards read as spiky blades); carritx tussocks stand up
-    add(this.tuft, this.grassMat, grass, this.biome.tussocks ? 1.25 : 0.82, false, true);
+    add(this.tuft, this.grassMat, grass, this.biome.tussocks ? 1.25 : 0.82, false, true, true);
     if (cushions.length && this.shrub && this.shrubMat) add(this.shrub, this.shrubMat, cushions, 0.8, true, true);
     if (this.palm && this.palmMats) add(this.palm, this.palmMats as unknown as THREE.Material, palms, 1, true, false);
-    add(this.flowerTuft, this.flowerMat, flowers, 1.0, false, true);
+    add(this.flowerTuft, this.flowerMat, flowers, 1.0, false, true, true);
     add(this.rock, this.rockMat, rocks, 1, true, false);
     if (this.fern && this.fernMat) add(this.fern, this.fernMat, ferns, 1, false, false);
     this.chunks.set(ci, { index: ci, meshes });
   }
 
   dispose() {
-    for (const chunk of this.chunks.values()) for (const m of chunk.meshes) m.dispose();
+    for (const chunk of this.chunks.values()) {
+      for (const m of chunk.meshes) {
+        m.dispose();
+        if (m.userData.ownGeometry) m.geometry.dispose();
+      }
+    }
     this.chunks.clear();
     this.tuft.dispose();
     this.flowerTuft.dispose();

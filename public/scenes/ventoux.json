@@ -46,5 +46,12 @@
     "1563876183": {
       "building": "industrial"
     }
-  }
+  },
+  "barriers": [
+    {
+      "from": 18400,
+      "to": 30000,
+      "barrier": "stonewall"
+    }
+  ]
 }

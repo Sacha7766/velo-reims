@@ -112,7 +112,7 @@ const COVER: Record<string, CoverClass> = {
   scrub: 'scrub', bare_rock: 'rock', scree: 'rock', cliff: 'rock',
 };
 
-const FLAT_KINDS = new Set(['industrial', 'commercial', 'retail', 'warehouse', 'supermarket', 'garages', 'hangar', 'service', 'parking']);
+const FLAT_KINDS = new Set(['industrial', 'commercial', 'retail', 'warehouse', 'supermarket', 'garages', 'hangar', 'service', 'parking', 'container']);
 
 const ROAD_WIDTH: Record<string, number> = {
   motorway: 14, trunk: 11, primary: 9, secondary: 8, tertiary: 7, unclassified: 5.5, residential: 5.5,
@@ -322,7 +322,7 @@ function buildingHeight(tags: Record<string, string>): number {
   const levels = parseFloat(tags['building:levels'] ?? '');
   if (Number.isFinite(levels)) return Math.min(levels * 3 + 1, 80);
   switch (tags.building) {
-    case 'garage': case 'garages': case 'shed': case 'carport': case 'hut': case 'cabin': return 3.2;
+    case 'garage': case 'garages': case 'shed': case 'carport': case 'hut': case 'cabin': case 'container': return 3.2;
     case 'apartments': case 'hotel': case 'commercial': case 'retail': case 'office': return 13;
     case 'church': case 'chapel': return 14;
     case 'industrial': case 'warehouse': return 9;
@@ -383,7 +383,7 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
     const coverCls = COVER[t.landuse] ?? COVER[t.natural];
     if (t.landuse === 'forest' || t.natural === 'wood') forests.push(...polygonsFrom(route, el));
     else if (t.natural === 'water') water.push(...polygonsFrom(route, el));
-    else if (t.building && el.type === 'way' && el.geometry) {
+    else if (t.building && t.building !== 'no' && el.type === 'way' && el.geometry) {
       const ring = toRing(route, el.geometry);
       if (ring.length < 6) continue;
       const roofTag = t['roof:shape'];
@@ -399,8 +399,11 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
                   // the curved Stelvio hotel); sheds and shops stay flat
                   : (area < 900 || ringArea(ring) < 2500) && !FLAT_KINDS.has(t.building) ? 'gabled' : 'flat';
       const levels = parseFloat(t['building:levels'] ?? '');
+      // tiny untagged footprints out in the meadows are hay barns and sheds, not two-storey houses
+      const shed = t.building === 'yes' && !t.height && !Number.isFinite(levels) && !t.name && ringArea(ring) < 40;
       buildings.push({
-        ring, height: buildingHeight(t), roof, kind: t.building, levels: Number.isFinite(levels) ? levels : undefined,
+        ring, height: shed ? 3.2 : buildingHeight(t), roof, kind: shed ? 'shed' : t.building,
+        levels: Number.isFinite(levels) ? levels : undefined,
         wallColour: t['building:colour'], roofColour: t['roof:colour'], name: t.name, explicitRoof: !!roofTag,
       });
     } else if (t.barrier && el.type === 'way' && el.geometry && !t.area) {

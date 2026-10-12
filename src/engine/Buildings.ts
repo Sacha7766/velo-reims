@@ -178,8 +178,9 @@ function addBuilding(
   const centre = new THREE.Vector3(cx, (base + wallTop) / 2, cz);
   const barn = ['barn', 'farm_auxiliary', 'hut', 'cabin', 'shed', 'stable', 'cowshed'].includes(bld.kind);
   const big = ['apartments', 'commercial', 'industrial', 'retail', 'office', 'school', 'public', 'hospital'].includes(bld.kind);
-  // mountain huts and inns (Goasn Alm, Gersbergalm…): all-timber chalets with shingle roofs
-  const alm = !big && (/alm|hütte|huette|goasn/i.test(bld.name ?? '') || bld.kind === 'hut' || bld.kind === 'cabin');
+  // mountain huts and inns (Goasn Alm, Gersbergalm, the Alpenhaus on the Kitzbüheler Horn…): all-timber
+  // chalets with shingle roofs
+  const alm = !big && (/alm|hütte|huette|goasn|alpenhaus|berghaus/i.test(bld.name ?? '') || bld.kind === 'hut' || bld.kind === 'cabin');
   const wood = WOODS[Math.floor(rnd(seed + 5) * WOODS.length)];
   const wallSet = style.walls;
   const wall = parseColour(bld.wallColour, barn && !med ? wood : wallSet[Math.floor(rnd(seed) * wallSet.length)]).clone();
@@ -193,13 +194,14 @@ function addBuilding(
   const split = woodTop ? wallTop - 2.7 : wallTop;
   // rural Mallorcan houses are often bare marès / limestone masonry
   const mares = med && (barn || (pitched && rnd(seed + 9) > 0.55));
-  // industrial blocks (the base of the Mont Ventoux transmitter) are bare concrete, never a house
-  const plant = bld.kind === 'industrial';
+  // industrial blocks (the base of the Mont Ventoux transmitter) and site containers (the Hochtor) are
+  // bare concrete or metal, never a house
+  const plant = bld.kind === 'industrial' || bld.kind === 'container';
   const wallSurf = plant || church ? TRIM : med ? (mares ? MARES : MALLORCA) : alm ? TIMBER : barn ? WOOD : big && levels > 3 ? GLASSWALL : PLASTER;
   if (plant && !bld.wallColour) wall.copy(srgb(0.84, 0.84, 0.82));
   if (church && !bld.wallColour) wall.copy(srgb(0.94, 0.93, 0.89));
   if (mares) wall.copy(srgb(0.8, 0.7, 0.55));
-  if (alm && !med) wall.copy(srgb(0.46, 0.36, 0.27));
+  if (alm && !med && !bld.wallColour) wall.copy(srgb(0.46, 0.36, 0.27));
 
   for (let i = 0; i < local.length; i++) {
     const p = local[i];

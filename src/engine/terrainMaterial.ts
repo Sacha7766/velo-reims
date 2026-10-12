@@ -324,6 +324,9 @@ float tBump = 0.0;
   // light bounced off the sunlit slopes around: in the mountains a face turned away from the sun
   // still sees the lit valley side opposite, so shade is never skylight alone (it was near-black)
   vec3 bn = normalize(vTWNormal);
+  // skylight on grass in shade: the photo's own shadows are already blue, and the blue sky fill on
+  // top turned shaded meadow teal (blue above green); shade should be a darker ground colour
+  reflectedLight.indirectDiffuse *= vec3(1.04, 1.0, 0.8);
   float away = (1.0 - smoothstep(-0.15, 0.25, dot(bn, uSunDir))) * smoothstep(0.0, 0.2, uSunDir.y);
   reflectedLight.indirectDiffuse += diffuseColor.rgb * uSunColor * vec3(0.92, 1.0, 0.84) * (0.16 * away);
 }`,
@@ -372,6 +375,10 @@ float tBump = 0.0;
   // seagrass and depth); use it as the refracted colour under the reflections
   deep = mix(deep, gl_FragColor.rgb * vec3(0.62, 0.78, 0.88), uPhotoSea);
   vec3 refl = atmoSky(r) * mix(1.0, 0.82, uPhotoSea);
+  // lakes lie between mountains: low reflected rays hit the far shore's forest and rock (hazed with
+  // distance), only steeper ones the sky; a pale horizon sky alone read as a white sheet
+  vec3 shore = mix(vec3(0.045, 0.075, 0.07), atmoSky(normalize(vec3(r.x, 0.03, r.z))), 0.3);
+  refl = mix(mix(shore, refl, smoothstep(0.1, 0.5, r.y)), refl, uPhotoSea);
   float glint = pow(max(dot(r, uSunDir), 0.0), 380.0) * mix(18.0, 9.0, uPhotoSea) + pow(max(dot(r, uSunDir), 0.0), 40.0) * mix(0.4, 0.15, uPhotoSea);
   vec3 water = mix(deep, refl, fres) + uSunColor * glint;
   if (uPhotoSea > 0.5) {

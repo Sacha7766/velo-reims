@@ -1,3 +1,14 @@
 {
-  "osmTags": { "142759507": { "height": "102" } }
+  "osmTags": {
+    "142759507": { "height": "102" },
+    "142678288": { "building:levels": "2", "building:colour": "#4b3a2c", "roof:colour": "#74787c" },
+    "142678289": { "building": "no" },
+    "142678290": { "name": "Alpenhaus", "building:levels": "2", "building:colour": "#4b3a2c", "roof:colour": "#74787c" }
+  },
+  "biomeTweaks": { "centreLine": false },
+  "placements": [
+    { "model": "cow.glb", "lon": 12.428641, "lat": 47.466666, "rot": 38 },
+    { "model": "cow.glb", "lon": 12.428269, "lat": 47.467028, "rot": 87 },
+    { "model": "cow.glb", "lon": 12.429226, "lat": 47.466594, "rot": 349 }
+  ]
 }

@@ -45,6 +45,8 @@ export interface Biome {
   barrier: 'wbeam' | 'stonewall';
   /** Centre line dash and gap (m). */
   dash: [number, number];
+  /** false: no centre line at all (narrow mountain roads painted only at the edges). */
+  centreLine?: boolean;
   /** House style (Buildings.ts): Salzburg Flachgau, Mallorca, French ski resort, Provence. */
   buildings: 'flachgau' | 'mallorca' | 'savoie' | 'provence';
 }
