@@ -233,14 +233,23 @@ float tBump = 0.0;
   // bare limestone reads beige-grey, never snow-white
   float bL = dot(base, vec3(0.3, 0.55, 0.15));
   base = mix(base, base * min(1.0, 0.62 / max(bL, 1e-3)) * vec3(1.0, 0.97, 0.88), uKarst * limestone);
+  // the photo was lit by the flight's sun (summer, around midday, from the south-south-east): slopes
+  // facing away from it photographed dark and we shade them again, so north-facing valley sides
+  // went near-black. Divide that light back out (flat ground unchanged, at most ~2x)
+  {
+    vec3 Lp = vec3(0.166, 0.766, 0.621); // azimuth ~165°, elevation ~50°
+    float flatLit = 0.35 + 0.65 * Lp.y;
+    float photoLit = 0.35 + 0.65 * max(dot(wn, Lp), 0.0);
+    base *= min(flatLit / photoLit, 1.9);
+  }
   // de-light: aerial photos carry the cast shadows of the flight's sun, and we light the ground
   // again; lift near-black photo shadows towards a floor, keeping their hue
   {
     float dl = dot(base, vec3(0.3, 0.55, 0.15));
-    float lifted = sqrt(dl * dl + 0.055 * 0.055);
+    float lifted = sqrt(dl * dl + 0.085 * 0.085);
     // photo shadows are blue (skylight only): lift them towards a vegetation hue, not their own
     vec3 vegHue = mix(vec3(0.82, 1.0, 0.68), vec3(1.0, 0.98, 0.8), uKarst);
-    float darkW = smoothstep(0.09, 0.02, dl);
+    float darkW = smoothstep(0.12, 0.02, dl);
     base = mix(base * (lifted / max(dl, 1e-3)), vegHue * lifted, darkW * 0.8);
   }
   // rock faces and cuts near the road: photographed fractured limestone, ochre to grey
@@ -292,6 +301,17 @@ float tBump = 0.0;
   diffuseColor.rgb *= tc;
 }
 #endif`,
+      )
+      .replace(
+        '#include <aomap_fragment>',
+        `#include <aomap_fragment>
+{
+  // light bounced off the sunlit slopes around: in the mountains a face turned away from the sun
+  // still sees the lit valley side opposite, so shade is never skylight alone (it was near-black)
+  vec3 bn = normalize(vTWNormal);
+  float away = (1.0 - smoothstep(-0.15, 0.25, dot(bn, uSunDir))) * smoothstep(0.0, 0.2, uSunDir.y);
+  reflectedLight.indirectDiffuse += diffuseColor.rgb * uSunColor * vec3(0.92, 1.0, 0.84) * (0.16 * away);
+}`,
       )
       .replace(
         '#include <normal_fragment_maps>',

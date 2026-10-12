@@ -55,6 +55,14 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   scene placed a model. Fix: communication towers render as shaft, drum and banded antenna, small mapped masts as
   steel poles; towers near a scene model are left to it; industrial blocks are bare concrete. Where: `osm.ts`
   `towers`, `Props.towers`.
+- **Shaded slopes went near-black** (Großglockner valley, Kitzbüheler Horn pastures). Not AO, terrain or cloud
+  shadows (toggling each changed nothing): the orthophoto is near-black there itself (the flight's shadows), and a
+  face turned from our sun only gets skylight. Fix: divide out the photo's summer-midday sun by the terrain normal,
+  lift photo shadows to a floor of 0.085 (was 0.055), and add light bounced off the lit slopes opposite to faces
+  turned from the sun. Shade is 20–35 % brighter, sunlit flats unchanged. Measure pixel means in a fixed box: the
+  change is easy to miss on a contact sheet. Where: `terrainMaterial.ts`.
+- **Grass read as tall spiky blades on every Alpine verge.** Fix: the verge (1.8 m from the asphalt) gets low mown
+  tufts, and Alpine tufts are wider than tall (height factor 1.1 → 0.82); carritx unchanged. Where: `GroundCover.ts`.
 
 ## Placement and geometry
 
@@ -136,6 +144,9 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   and the tunnel missing. Fix: `shots-set.mjs` pauses the ride once loaded. Where: `scripts/shots-set.mjs`.
 - **Check a reviewer blocker against the frame before fixing it.** Three of the first Mallorca blockers were the
   capture or the reviewer opening the wrong file, not the scene.
+- **Shots changed when the Mac went on battery.** The app's battery saver drops to 30 fps and Balanced, so frames
+  stop being comparable. Capture scripts now report a charging battery (`navigator.getBattery`). A zsh loop
+  also ate `:c` in `"$1:chase"` (a path modifier): write `"${1}:chase"`.
 
 ## Devices and riding
 

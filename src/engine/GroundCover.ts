@@ -375,7 +375,8 @@ export class GroundCover extends THREE.Group {
           // mown verge next to the asphalt and grazed/mown meadows stay short
           const verge = d < halfWidth + 1.8;
           const short = verge || cover === 1 || cover === 2;
-          const sc = (short ? 0.5 + r() * 0.35 : 0.7 + r() * 0.6) - alpine * 0.2;
+          // the verge is mown to a few centimetres in autumn: low tufts over the turf, not blades
+          const sc = (verge ? 0.3 + r() * 0.22 : short ? 0.5 + r() * 0.35 : 0.7 + r() * 0.6) - alpine * 0.2;
           // October: only a few late flowers left
           const target = r() < 0.025 + (1 - alpine) * 0.015 ? flowers : grass;
           target.push(x, y, z, sc, r() * 6.28, alpine);
@@ -413,7 +414,8 @@ export class GroundCover extends THREE.Group {
       meshes.push(mesh);
       this.add(mesh);
     };
-    add(this.tuft, this.grassMat, grass, this.biome.tussocks ? 1.25 : 1.1, false, true);
+    // Alpine tufts are wider than tall (tall cards read as spiky blades); carritx tussocks stand up
+    add(this.tuft, this.grassMat, grass, this.biome.tussocks ? 1.25 : 0.82, false, true);
     if (cushions.length && this.shrub && this.shrubMat) add(this.shrub, this.shrubMat, cushions, 0.8, true, true);
     if (this.palm && this.palmMats) add(this.palm, this.palmMats as unknown as THREE.Material, palms, 1, true, false);
     add(this.flowerTuft, this.flowerMat, flowers, 1.0, false, true);

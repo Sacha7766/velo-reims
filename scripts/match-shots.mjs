@@ -24,6 +24,8 @@ mkdirSync(outDir, { recursive: true });
 
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+// captures render the same on battery: the app's battery saver would drop to 30 fps and Balanced
+await page.addInitScript(() => { navigator.getBattery = () => Promise.resolve({ charging: true, level: 1, addEventListener() {}, removeEventListener() {} }); });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 for (const e of manifest) {
   const at = Math.max(0, Math.round(e.routeKm * 1000) - 30);

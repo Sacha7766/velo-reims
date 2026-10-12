@@ -22,6 +22,8 @@ const browser = await chromium.launch({
 for (const spec of specs) {
   const [at, cam = 'chase', time = 'golden'] = spec.split(':');
   const page = await browser.newPage({ viewport: { width: 1600, height: 900 }, deviceScaleFactor: 1 });
+  // captures render the same on battery: the app's battery saver would drop to 30 fps and Balanced
+  await page.addInitScript(() => { navigator.getBattery = () => Promise.resolve({ charging: true, level: 1, addEventListener() {}, removeEventListener() {} }); });
   const logs = [];
   page.on('console', (m) => { if (['error', 'warning'].includes(m.type())) logs.push(`[${m.type()}] ${m.text()}`); });
   page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));

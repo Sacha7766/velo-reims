@@ -24,6 +24,8 @@ mkdirSync(dir, { recursive: true });
 
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
+// captures render the same on battery: the app's battery saver would drop to 30 fps and Balanced
+await page.addInitScript(() => { navigator.getBattery = () => Promise.resolve({ charging: true, level: 1, addEventListener() {}, removeEventListener() {} }); });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 await page.goto(`http://localhost:5199/?ride=${route}&sim=1&watts=270&at=${plan.at}&cam=chase&time=${time}`);
 await page.waitForFunction(() => window.__ready || window.__error, null, { timeout: 150000, polling: 500 });
