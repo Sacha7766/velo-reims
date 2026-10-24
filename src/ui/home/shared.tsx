@@ -17,6 +17,13 @@ export interface RouteEntry {
 
 export type RideMode = 'free' | 'workout' | 'hold';
 
+/**
+ * The most finished presets: Gaisberg has every real tree from the canopy height map, two realism passes and an
+ * easy lead-in. They come first, so a new rider starts there, and carry a tag. A route joins when its art
+ * review (docs/art/scorecard.md) says APPROVE.
+ */
+export const SHOWCASE = new Set(['gaisberg']);
+
 export const CATEGORIES = [
   { id: 'all', label: 'All' },
   { id: 'climb', label: 'Climbs' },

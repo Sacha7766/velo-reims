@@ -10,6 +10,8 @@ Download `Serpentine-<version>.dmg` from the [latest release](https://github.com
 
 New versions arrive in the app. On start, Serpentine checks GitHub and installs a new version straight away, before you ride: a progress screen, then it restarts by itself (**Skip, update later** if you want to ride first). While it's open it checks every few hours; what it finds then downloads in the background and installs when you quit, never in the middle of a ride. **Serpentine ▸ Check for Updates…** checks right away.
 
+Something not working? **Help ▸ Copy Diagnostics** copies the app and macOS versions, your saved Bluetooth devices and the end of the log, ready to paste into a message.
+
 The app runs the same build as the Chrome version, in its own copy of Chromium, and serves it on `http://localhost:5198`. Rides, routes, workouts and plans are shared with the Chrome version through `~/Documents/Serpentine`. Riders and their settings are mirrored to `~/Documents/Serpentine/data/local-settings.json`, so a fresh install starts with them. Bluetooth works as in Chrome, with Serpentine's own device list: devices you picked reconnect on the next start without a click (Settings ▸ Devices ▸ **Reconnect saved devices**).
 
 ## Start from the source
@@ -31,7 +33,7 @@ Before pairing, quit Zwift and Zwift Companion. A trainer accepts only one contr
 - **Ghost:** your fastest summit on a route rides with you, with a live time gap.
 - The ride starts as soon as you pedal. At the summit you roll back down and loop.
 - **HUD for the saddle:** sized to read from about 2 m and scaled with the screen height. Top left is your effort (power, W/kg, cadence, heart rate, gear), top right the climb (gradient, VAM over the last 30 s, km and hm to the top, altitude, hairpin count), along the bottom the ride totals.
-- **Nothing gets lost:** a ride in progress is kept in the browser every 5 s. If the laptop dies, the browser crashes or the page reloads, Home offers to carry on where you stopped, save the ride as it is, or discard it. While you ride the display stays awake, and leaving the page asks first. Unplugged and below 20 % battery, the HUD tells you to plug in.
+- **Nothing gets lost:** a ride in progress is kept in the browser every 5 s. If the laptop dies, the browser crashes or the page reloads, Home offers to carry on where you stopped, save the ride as it is, or discard it. While you ride the display stays awake, and leaving the page asks first. Unplugged at 20 % battery or less, a warning at the top of the screen (it stays when the HUD is hidden) tells you to plug in, with the time left, and a chime sounds at 20, 10 and 5 %.
 
 Keys: `1`–`5` camera (chase, drone, moto, rider, cinematic) · `Space` pause · `E` ERG on/off · `Tab` skip interval · `[` `]` gears · `−` `=` difficulty · `↑` `↓` simulator watts (Shift = ±50) · `H` hide HUD · `Esc` end ride.
 
@@ -48,7 +50,7 @@ Settings → Drivetrain replaces Zwift's 24 virtual ratios with the gears of a r
 Preset routes can show their Strava segments with the KOM and your PR, live deltas on the HUD, and ghost riders at KOM pace and at your PR pace. Strava's leaderboards are not open to third-party apps, so this uses the official API only: segment details (`xoms`, your `athlete_segment_stats`), explore and starred segments. Nothing is scraped; times are labelled "from Strava".
 
 1. Create an API application at <https://www.strava.com/settings/api>. Authorization Callback Domain: `localhost`.
-2. Open Settings → Strava, paste the Client ID and Client Secret, Save, then **Connect to Strava** and approve. The callback is `http://localhost:5199/api/strava/callback`.
+2. Open Settings → Strava, paste the Client ID and Client Secret, Save, then **Connect to Strava** and approve. The callback is `http://localhost:5199/api/strava/callback` (`http://localhost:5198/…` in the Mac app); the callback domain `localhost` covers both.
 3. Pick a preset route (first the Gaisberg): the Ride tab lists the segments found on it and offers KOM / PR ghosts. Starting the ride merges them into the route's segments.
 
 Credentials and tokens are stored in `strava.json` in the data folder (`~/Documents/Serpentine`, or `SERPENTINE_DATA`), never in the repo, and refreshed automatically. Segments per route are cached for 7 days in `strava-segments-<route>.json` (`/api/strava/segments?route=gaisberg&refresh=1` forces a refresh). On a Strava rate limit (HTTP 429) the cached list is served. Segment positions along the route are computed on the raw route coordinates with haversine distances, which is within a fraction of a percent of the resampled route the app rides.
@@ -112,7 +114,8 @@ npm run typecheck
 npm run bake-routes   # re-fetch preset routes from BRouter
 npm run bake-osm      # re-bake OSM corridors for presets
 npm run e2e           # Playwright: home → ride → summary → .fit (dev server must run)
-node scripts/test-devices.ts && node scripts/test-workouts.ts && node scripts/test-fit.ts
+npm test              # unit tests (devices, drivetrain, FIT, Strava, training, workouts) and the local API
+npm run check         # typecheck (app + Mac app) and npm test, what CI runs on every push
 node scripts/shots-set.mjs <prefix> 9900:cinematic 3200:chase:inversion   # QA stills, HUD hidden
 node scripts/hud-shots.mjs <prefix>                                          # HUD as read from the saddle (2 m)
 node scripts/flyover.mjs inversion 48 shots/gaisberg/flyover.mp4           # scripted drone film (ffmpeg)
@@ -135,6 +138,6 @@ A lead-in is baked in four steps: `python3 -I scripts/bake-leadin.py gaisberg` (
 
 `?ride=<preset>&sim=1&workout=<id>&at=<metres>&cam=drone&time=golden` starts a ride directly (used for screenshots). It skips the lead-in so `at` stays in route metres; add `&leadin=1` to ride it.
 
-Layout: `src/geo` (projection, DEM, imagery, OSM, routes), `src/engine` (Three.js terrain LOD, road, trees, buildings, rider, sky, camera), `src/devices` (Web Bluetooth), `src/workouts`, `src/sim` (physics, session, stats, FIT, storage), `src/ui`, `electron` (the Mac app: local server, Bluetooth chooser and reconnect, updates, icon). Releasing the app: [docs/releasing.md](docs/releasing.md).
+Layout: `src/geo` (projection, DEM, imagery, OSM, routes), `src/engine` (Three.js terrain LOD, road, trees, buildings, rider, sky, camera), `src/devices` (Web Bluetooth), `src/workouts`, `src/training` (plans, ramp test), `src/sim` (physics, session, stats, FIT, storage), `src/audio`, `src/ui`, `electron` (the Mac app: local server, Bluetooth chooser and reconnect, updates, icon). Releasing the app: [docs/releasing.md](docs/releasing.md). What comes next: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 Visual work follows a brief-first, separate-reviewer loop: see [CLAUDE.md](CLAUDE.md) for the rules, [docs/art/](docs/art/README.md) for the art direction, per-route briefs and the review scorecard, and [docs/lessons.md](docs/lessons.md) for what past fixes taught us.

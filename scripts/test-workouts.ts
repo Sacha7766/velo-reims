@@ -147,6 +147,12 @@ assert.equal(prof[prof.length - 1].t, w3.duration);
 assert.equal(prof.length, w3.steps.length * 2);
 assert.deepEqual([0.3, 0.55, 0.75, 0.76, 0.9, 1.04, 1.05, 1.2, 1.49, 1.5, 2].map(zoneOf), [1, 2, 2, 3, 4, 4, 5, 6, 6, 7, 7]);
 
+// a runaway repeat count is capped instead of freezing the app
+const huge = parseZwo(`<workout_file><name>Huge</name><workout>
+  <IntervalsT Repeat="100000000" OnDuration="30" OffDuration="30" OnPower="1.2" OffPower="0.5"/>
+</workout></workout_file>`);
+assert.equal(huge.steps.length, 400);
+
 // library
 assert.ok(LIBRARY.length >= 16);
 const ids = new Set<string>();

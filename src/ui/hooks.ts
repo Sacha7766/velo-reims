@@ -57,12 +57,15 @@ export function useCanvas(draw: (c: HTMLCanvasElement) => void, deps: unknown[])
 interface BatteryManager extends EventTarget {
   charging: boolean;
   level: number;
+  dischargingTime: number;
 }
 
 export interface Battery {
   charging: boolean;
   /** 0..1 */
   level: number;
+  /** The system's estimate while unplugged, null while it has none. */
+  secondsLeft: number | null;
 }
 
 /** The laptop's battery, null where the browser doesn't tell (a desktop reads as charging at 100 %). */
@@ -71,16 +74,21 @@ export function useBattery(): Battery | null {
   useEffect(() => {
     const nav = navigator as Navigator & { getBattery?: () => Promise<BatteryManager> };
     let bat: BatteryManager | null = null;
-    const update = () => bat && setState({ charging: bat.charging, level: bat.level });
+    const update = () =>
+      bat &&
+      setState({
+        charging: bat.charging,
+        level: bat.level,
+        secondsLeft: !bat.charging && Number.isFinite(bat.dischargingTime) ? bat.dischargingTime : null,
+      });
+    const events = ['chargingchange', 'levelchange', 'dischargingtimechange'];
     void nav.getBattery?.().then((b) => {
       bat = b;
       update();
-      b.addEventListener('chargingchange', update);
-      b.addEventListener('levelchange', update);
+      for (const e of events) b.addEventListener(e, update);
     }).catch(() => undefined);
     return () => {
-      bat?.removeEventListener('chargingchange', update);
-      bat?.removeEventListener('levelchange', update);
+      for (const e of events) bat?.removeEventListener(e, update);
     };
   }, []);
   return state;

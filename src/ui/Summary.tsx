@@ -13,6 +13,8 @@ export interface SummaryData {
   stats: RideStats;
   summitTime: number | null;
   previousBest: number | null;
+  /** Saving failed (disk full, server gone): shown with a retry, the ride's autosaved copy is kept meanwhile. */
+  unsaved?: boolean;
 }
 
 export function Summary({
@@ -23,6 +25,7 @@ export function Summary({
   onDelete,
   weight,
   onApplyFtp,
+  onRetrySave,
 }: {
   data: SummaryData;
   backLabel: string;
@@ -31,8 +34,10 @@ export function Summary({
   onDelete?: () => void;
   weight?: number;
   onApplyFtp?: (ftp: number) => void;
+  onRetrySave?: () => Promise<void>;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const { record, stats, summitTime, previousBest } = data;
   const pb = summitTime !== null && (previousBest === null || summitTime < previousBest);
   const chart = useCanvas((c) => drawRideChart(c, record), [record]);
@@ -43,6 +48,23 @@ export function Summary({
       <div className="summary-inner">
         <p className="muted">{new Date(record.start).toLocaleString('de-AT', { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })}</p>
         <h1 className="s-title">{record.name}</h1>
+        {data.unsaved && (
+          <div className="s-unsaved" role="alert">
+            <span>This ride isn't saved yet. Download the .fit to be safe, or try again.</span>
+            {onRetrySave && (
+              <button
+                className="btn"
+                disabled={retrying}
+                onClick={() => {
+                  setRetrying(true);
+                  void onRetrySave().finally(() => setRetrying(false));
+                }}
+              >
+                {retrying ? 'Saving…' : 'Save again'}
+              </button>
+            )}
+          </div>
+        )}
         {record.workoutName && <p className="s-workout">{record.workoutName}</p>}
         {summitTime !== null && (
           <p className={`s-summit ${pb ? 'pb' : ''}`}>
@@ -132,7 +154,8 @@ export function Summary({
             ))}
         </div>
         <p className="muted small">
-          Saved in Documents/Serpentine/rides. Upload the .fit on strava.com/upload or intervals.icu and it shows up as a Virtual Ride.
+          {data.unsaved ? 'Not saved yet. ' : 'Saved in Documents/Serpentine/rides. '}
+          Upload the .fit on strava.com/upload or intervals.icu and it shows up as a Virtual Ride.
         </p>
       </div>
     </div>

@@ -1300,18 +1300,6 @@ h2 {
   margin-top: calc(10 * var(--u));
 }
 
-.summit .battery-low {
-  color: var(--signal);
-  font-weight: 600;
-}
-
-.summit .battery-low.critical {
-  color: var(--snow);
-  background: var(--sign-red);
-  border-radius: calc(4 * var(--u));
-  padding: calc(2 * var(--u)) calc(8 * var(--u));
-}
-
 .summit .lead-in {
   color: var(--signal);
 }
@@ -1558,6 +1546,78 @@ h2 {
   text-shadow: none;
 }
 
+/* unplugged and low during a ride (BatteryWarning.tsx): outside .hud, so it stays when the HUD is hidden */
+.battery-warning {
+  /* the HUD's scale, read from about 2 m */
+  --u: clamp(0.7px, 0.0895vh, 1.8px);
+  position: fixed;
+  top: calc(18 * var(--u));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: calc(14 * var(--u));
+  padding: calc(10 * var(--u)) calc(24 * var(--u)) calc(10 * var(--u)) calc(18 * var(--u));
+  border-radius: calc(8 * var(--u));
+  background: rgba(13, 27, 36, 0.88);
+  box-shadow: inset 0 0 0 calc(2 * var(--u)) var(--signal);
+  color: var(--signal);
+  pointer-events: none;
+}
+
+.battery-warning svg {
+  width: calc(52 * var(--u));
+  height: calc(28 * var(--u));
+}
+
+.bw-pct {
+  font-family: var(--cond);
+  font-weight: 800;
+  font-size: calc(54 * var(--u));
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.bw-text {
+  display: flex;
+  flex-direction: column;
+  color: var(--snow);
+  font-size: calc(28 * var(--u));
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.bw-text small {
+  font-size: calc(21 * var(--u));
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.battery-warning.critical {
+  color: var(--snow);
+  background: var(--sign-red);
+  box-shadow: 0 calc(8 * var(--u)) calc(28 * var(--u)) rgba(5, 12, 16, 0.5);
+  animation: bw-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes bw-pulse {
+  50% {
+    opacity: 0.75;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .battery-warning.critical {
+    animation: none;
+  }
+}
+
+/* workout messages make room below it */
+.app.battery-low .coach {
+  top: calc(116 * var(--u));
+}
+
 .banner {
   position: absolute;
   top: 30%;
@@ -1667,6 +1727,21 @@ h2 {
   font-size: clamp(44px, 6vw, 84px);
   line-height: 1;
   margin: 6px 0 10px;
+}
+
+.s-unsaved {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 16px;
+  background: var(--ink-2);
+  box-shadow: inset 0 0 0 1px var(--sign-red);
+  border-radius: 6px;
+  padding: 12px 14px 12px 18px;
+}
+
+.s-unsaved > span {
+  flex: 1;
 }
 
 .s-workout {
@@ -2546,6 +2621,16 @@ button.plan-cal-day:hover {
   font-weight: 600;
   font-size: 20px;
   line-height: 1.1;
+}
+
+.rr-tag {
+  margin-left: 8px;
+  vertical-align: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--signal);
 }
 
 .rr-region {

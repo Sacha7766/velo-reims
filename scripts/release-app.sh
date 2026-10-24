@@ -43,6 +43,8 @@ MSG
     exit 1
 fi
 
+# the same checks CI runs: typecheck (app and Mac app), unit tests, the local API
+npm run check
 rm -rf dist-app
 npm run build
 node electron/build.mjs

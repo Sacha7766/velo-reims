@@ -4,16 +4,14 @@
 // (or the first start after the Chrome version) begins with them.
 
 import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { cpus, homedir, totalmem } from 'node:os';
 import { join } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, screen, session, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, screen, session, shell } from 'electron';
 import { attachBluetooth } from './bluetooth.ts';
+import { fromApp, isAppUrl, ORIGIN, PORT } from './origin.ts';
 import { startServer } from './server.ts';
 import { attachUpdates } from './updates.ts';
 
-// The port is part of the origin, and storage belongs to the origin: keep it fixed.
-const PORT = Number(process.env.SERPENTINE_PORT) || 5198;
-const ORIGIN = `http://localhost:${PORT}`;
 const DATA = process.env.SERPENTINE_DATA ?? join(homedir(), 'Documents', 'Serpentine');
 const SETTINGS = join(DATA, 'data', 'local-settings.json');
 
@@ -35,8 +33,8 @@ function log(...parts: unknown[]) {
 /** Pages Serpentine may open in its own window: itself and Strava's sign-in. */
 function staysInApp(url: string): boolean {
   try {
+    if (isAppUrl(url)) return true;
     const u = new URL(url);
-    if (u.origin === ORIGIN) return true;
     const host = u.hostname;
     return (
       u.protocol === 'https:' &&
@@ -132,6 +130,28 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
+/** What a friend pastes into a message when something doesn't work: versions, GPU, devices and the log's end. */
+function diagnostics(): string {
+  let tail = '(no log yet)';
+  try {
+    tail = readFileSync(join(app.getPath('logs'), 'main.log'), 'utf8').trimEnd().split('\n').slice(-80).join('\n');
+  } catch {
+    /* first start */
+  }
+  const devices = Object.values(readJson<Record<string, { name: string }>>(join(app.getPath('userData'), 'bluetooth.json')) ?? {});
+  const gpu = app.getGPUFeatureStatus();
+  const d = screen.getPrimaryDisplay();
+  return [
+    `Serpentine ${app.getVersion()} (${process.arch}), macOS ${process.getSystemVersion()}`,
+    `${cpus()[0]?.model ?? 'Unknown chip'}, ${Math.round(totalmem() / 2 ** 30)} GB`,
+    `Electron ${process.versions.electron}, Chromium ${process.versions.chrome}, WebGL ${gpu.webgl}, GPU compositing ${gpu.gpu_compositing}`,
+    `Display ${d.size.width}×${d.size.height} at ${d.scaleFactor}x`,
+    `Saved devices: ${devices.map((k) => k.name).join(', ') || 'none'}`,
+    '',
+    tail,
+  ].join('\n');
+}
+
 function buildMenu(checkForUpdates: () => Promise<void>) {
   const rides = join(DATA, 'rides');
   Menu.setApplicationMenu(
@@ -174,7 +194,22 @@ function buildMenu(checkForUpdates: () => Promise<void>) {
       { role: 'windowMenu' },
       {
         role: 'help',
-        submenu: [{ label: 'Serpentine on GitHub', click: () => void shell.openExternal('https://github.com/chrisperkles/serpentine') }],
+        submenu: [
+          {
+            label: 'Copy Diagnostics',
+            click: async () => {
+              await clipboard.writeText(diagnostics());
+              await dialog.showMessageBox({
+                message: 'Diagnostics copied.',
+                detail:
+                  'Paste them into a message to whoever helps you with Serpentine. They hold the app and macOS versions, your saved Bluetooth devices and the last lines of the log.',
+              });
+            },
+          },
+          { label: 'Show Log in Finder', click: () => shell.showItemInFolder(join(app.getPath('logs'), 'main.log')) },
+          { type: 'separator' },
+          { label: 'Serpentine on GitHub', click: () => void shell.openExternal('https://github.com/chrisperkles/serpentine') },
+        ],
       },
     ]),
   );
@@ -182,11 +217,17 @@ function buildMenu(checkForUpdates: () => Promise<void>) {
 
 function attachSettings() {
   // read once by the preload before the app's own code runs; empty storage is then filled from it
+  // only for the app's own page: a sign-in page in the same window must not read or write the riders
   ipcMain.on('settings:seed', (e) => {
-    e.returnValue = readJson<Record<string, string>>(SETTINGS);
+    e.returnValue = fromApp(e) ? readJson<Record<string, string>>(SETTINGS) : null;
   });
   let last = '';
-  ipcMain.on('settings:backup', (_e, snapshot: Record<string, string>) => {
+  ipcMain.on('settings:backup', (e, snapshot: Record<string, string>) => {
+    if (!fromApp(e)) return;
+    // the same filter as the preload's, so nothing else can end up in the file
+    snapshot = Object.fromEntries(
+      Object.entries(snapshot).filter(([k, v]) => k.startsWith('serpentine.') && !k.startsWith('serpentine.devices') && typeof v === 'string'),
+    );
     const text = JSON.stringify(snapshot);
     if (text === last || !Object.keys(snapshot).length) return;
     last = text;
@@ -196,8 +237,9 @@ function attachSettings() {
       log('settings backup failed', err);
     }
   });
+  // null tells the preload it is on someone else's page
   ipcMain.on('app:version', (e) => {
-    e.returnValue = app.getVersion();
+    e.returnValue = fromApp(e) ? app.getVersion() : null;
   });
 }
 

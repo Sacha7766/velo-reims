@@ -9,6 +9,8 @@ interface XmlNode {
 }
 
 const NOT_ZWO = 'Not a Zwift workout file';
+/** Longest IntervalsT block we build; Zwift's own workouts stay well under 50. */
+const MAX_REPEAT = 200;
 
 function decode(s: string): string {
   return s.replace(/&(#x[0-9a-fA-F]+|#\d+|amp|lt|gt|quot|apos);/g, (m, e: string) => {
@@ -193,7 +195,8 @@ export function parseZwo(xml: string, id?: string): Workout {
         break;
       }
       case 'intervalst': {
-        const reps = Math.max(1, Math.round(attr(el, 'repeat') ?? 1));
+        // a typo like repeat="1000000" would freeze the app building steps
+        const reps = Math.min(MAX_REPEAT, Math.max(1, Math.round(attr(el, 'repeat') ?? 1)));
         const onD = attr(el, 'onduration') ?? 0;
         const offD = attr(el, 'offduration') ?? 0;
         const onP = attr(el, 'onpower');

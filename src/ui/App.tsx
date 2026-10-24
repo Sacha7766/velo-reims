@@ -19,6 +19,7 @@ import { fmtTime } from './format.ts';
 import { Home, type HomeTab, type StartRequest } from './Home.tsx';
 import { needsPick, takeOpenSettings } from '../sim/profiles.ts';
 import { Hud } from './Hud.tsx';
+import { BatteryWarning, lowBattery } from './BatteryWarning.tsx';
 import { useBattery } from './hooks.ts';
 import { Loading } from './Loading.tsx';
 import { profileFromCoords, type ProfileData } from './profile.ts';
@@ -218,7 +219,15 @@ export function App() {
     // a new ride from Home keeps an unfinished one in history rather than overwriting it
     if (!opts) {
       const pending = await loadUnfinished();
-      if (pending) await storeRide(pending.record, pending.summitTime);
+      if (pending) {
+        try {
+          await storeRide(pending.record, pending.summitTime);
+        } catch (e) {
+          console.error(e);
+          setError(`Could not save your last ride (${(e as Error).message}). It is still kept: try Save ride on Home again.`);
+          return;
+        }
+      }
     }
     const resume = opts?.resume;
     // test starts (?ride=…&at=…) keep the route's own distances unless they ask for the lead-in
@@ -358,11 +367,18 @@ export function App() {
     }
   };
 
+  /** The summary of a ride that could not be saved: the copy kept every 5 s stays, and the summary retries. */
+  const unsavedSummary = (rec: RideRecord, summitTime: number | null, e: unknown): SummaryData => {
+    console.error(e);
+    return { record: rec, stats: rideStats(rec.samples, rec.ftp), summitTime, previousBest: null, unsaved: true };
+  };
+
   const end = async () => {
     if (!ride || !engine) return;
     const rec = ride.session.finish();
+    const summitTime = ride.session.summitTime;
     engine.setOnFrame(undefined);
-    setSummary(await storeRide(rec, ride.session.summitTime));
+    setSummary(await storeRide(rec, summitTime).catch((e: unknown) => unsavedSummary(rec, summitTime, e)));
     prefetchAbort.current?.abort();
     audio.update(0.1, { speed: 0, power: 0, cadence: 0, grade: 0, altitude: 0, forest: 0, urban: 0, sea: 0, biome: 'alpine', descending: false });
     engine.unloadWorld();
@@ -433,7 +449,8 @@ export function App() {
         className="btn ghost"
         onClick={async () => {
           lastStart.current = unfinished.req;
-          setSummary(await storeRide(unfinished.record, unfinished.summitTime));
+          const { record, summitTime } = unfinished;
+          setSummary(await storeRide(record, summitTime).catch((e: unknown) => unsavedSummary(record, summitTime, e)));
           setScreen('summary');
         }}
       >
@@ -453,7 +470,7 @@ export function App() {
   );
 
   return (
-    <div className={`app screen-${screen}`}>
+    <div className={`app screen-${screen}${screen === 'ride' && lowBattery(battery) !== null ? ' battery-low' : ''}`}>
       <canvas ref={canvasRef} className="scene" />
       {screen === 'home' && (
         <>
@@ -490,6 +507,7 @@ export function App() {
           onEnd={() => void end()}
         />
       )}
+      {screen === 'ride' && <BatteryWarning battery={battery} audio={audio} />}
       {screen === 'summary' && summary && (
         <Summary
           data={summary}
@@ -498,6 +516,10 @@ export function App() {
           onApplyFtp={(ftp) => updateSettings({ ...settingsRef.current, ftp })}
           onBack={() => setScreen('home')}
           onAgain={() => lastStart.current && void start(lastStart.current)}
+          onRetrySave={async () => {
+            const { record, summitTime } = summary;
+            setSummary(await storeRide(record, summitTime).catch((e: unknown) => unsavedSummary(record, summitTime, e)));
+          }}
         />
       )}
       {screen === 'detail' && summary && (

@@ -5,10 +5,11 @@ import { getActivePlan, type AppSettings, type RideSummary } from '../../sim/sto
 import { entryFor, isoDate, templateById } from '../../training/plans.ts';
 import type { Workout } from '../../workouts/types.ts';
 import { fmtTime, int, km } from '../format.ts';
-import { useHub } from '../hooks.ts';
+import { lowBattery } from '../BatteryWarning.tsx';
+import { useBattery, useHub } from '../hooks.ts';
 import { WorkoutChart } from '../WorkoutChart.tsx';
 import {
-  CATEGORIES, CATEGORY_LABEL, matchesCategory, Profile, RouteShape, RouteStatsLine, useRouteStats, workoutMeta,
+  CATEGORIES, CATEGORY_LABEL, matchesCategory, Profile, RouteShape, RouteStatsLine, SHOWCASE, useRouteStats, workoutMeta,
   type RideMode, type RouteEntry,
 } from './shared.tsx';
 import { StravaSegments } from './StravaSegments.tsx';
@@ -80,7 +81,10 @@ export function RideTab(p: RideTabProps) {
           {list.map((r) => (
             <li key={r.data.id}>
               <button className={`route-row ${r.data.id === p.route?.data.id ? 'on' : ''}`} onClick={() => p.onRoute(r.data.id)}>
-                <span className="rr-name">{r.data.name}</span>
+                <span className="rr-name">
+                  {r.data.name}
+                  {SHOWCASE.has(r.data.id) && !r.custom && <span className="rr-tag">Most detailed</span>}
+                </span>
                 <span className="rr-region">{r.data.region ?? (r.data.source === 'drawn' ? 'Drawn route' : 'Imported GPX')}</span>
                 <RouteStatsLine entry={r} />
                 <Profile entry={r} height={30} bins={36} className="rr-profile" />
@@ -322,12 +326,14 @@ function StartBar(p: RideTabProps) {
   const trainer = devices.find((d) => d.capabilities.includes('control') && d.protocol !== 'simulator' && d.state === 'connected');
   const ride = devices.find((d) => d.protocol === 'zwift-ride' && d.state === 'connected');
   const ready = !!trainer || simulator;
+  const battery = lowBattery(useBattery());
   const what =
     p.mode === 'workout' && p.workout ? p.workout.name : p.mode === 'hold' ? `Holding ${p.settings.holdWatts} W` : 'Free ride';
   const blocked = p.mode === 'workout' && !p.workout;
   return (
     <footer className="start-bar">
       <div className="ready">
+        {battery !== null && <span className="warn-line">Battery {battery} %: plug in the charger before you ride. </span>}
         {trainer ? (
           <span className="ok">
             {trainer.name} ready{shifting === 'native' ? ', native shifting' : ''}

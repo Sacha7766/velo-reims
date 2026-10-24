@@ -13,7 +13,8 @@ git commit -am "Release 1.1.0"
 NOTES='What changed, in a line or two.' ./scripts/release-app.sh --publish
 ```
 
-`release-app.sh` refuses a dirty tree or a version that is already released. It builds the web app and the
+`release-app.sh` refuses a dirty tree or a version that is already released, and stops if `npm run check`
+(typecheck and tests, as on CI) fails. It builds the web app and the
 Electron bundles, has electron-builder sign the app with the Developer ID (hardened runtime), notarize and
 staple it and pack the DMG and the ZIP, then signs, notarizes and staples the DMG as well. With `--publish` it
 pushes HEAD to `main` (fast-forward only) and creates the release `v1.1.0` with the DMG, the ZIP, their
@@ -41,7 +42,9 @@ Installed copies only take a higher version, so the version in `package.json` al
   for again with a lent user gesture and selected automatically as soon as it advertises (12 s at most).
 - `electron/icon/`: the app icon (see its README). `electron/after-pack.cjs` compiles the Icon Composer
   version into `Assets.car` before signing.
-- Logs: `~/Library/Logs/Serpentine/main.log` (start, update checks, Bluetooth reconnects, errors).
+- Logs: `~/Library/Logs/Serpentine/main.log` (start, update checks, Bluetooth reconnects, errors). **Help ▸ Copy
+  Diagnostics** puts versions, GPU status, saved devices and the log's last 80 lines on the clipboard for a friend to
+  send; **Help ▸ Show Log in Finder** opens the folder.
 
 ## Testing an update without publishing
 

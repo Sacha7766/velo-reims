@@ -612,6 +612,15 @@ export class RideAudio {
     }
   }
 
+  /** Two falling tones, like a phone running low; three and louder when it is nearly empty. */
+  batteryLow(critical: boolean) {
+    const c = this.ready();
+    if (!c) return;
+    const t = c.currentTime + 0.02;
+    const tones = critical ? [988, 784, 587.3] : [880, 659.3];
+    tones.forEach((f, i) => this.partial(c, this.bus, f, t + i * 0.22, 0.5, critical ? 0.26 : 0.2, 'triangle', 0.005));
+  }
+
   countdown() {
     const c = this.ready();
     if (!c) return;

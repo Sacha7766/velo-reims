@@ -7,6 +7,7 @@
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, ipcMain, type BrowserWindow } from 'electron';
+import { fromApp, isAppUrl } from './origin.ts';
 
 interface Known {
   /** Chromium's address for the device, stable on this Mac. */
@@ -59,6 +60,8 @@ export function attachBluetooth(win: BrowserWindow, log: (...a: unknown[]) => vo
 
   wc.on('select-bluetooth-device', (event, list, callback) => {
     event.preventDefault();
+    // devices are for Serpentine's own page, not for a sign-in page shown in the same window
+    if (!isAppUrl(wc.getURL())) return callback('');
     if (!pending) {
       pending = { callback, target: nextTarget, list: [] };
       nextTarget = undefined;
@@ -96,13 +99,13 @@ export function attachBluetooth(win: BrowserWindow, log: (...a: unknown[]) => vo
   });
 
   ipcMain.on('bt:choose', (e, deviceId: string) => {
-    if (e.sender !== wc || pending?.target) return;
+    if (e.sender !== wc || !fromApp(e) || pending?.target) return;
     chosen = deviceId || null;
     finish(deviceId);
   });
 
   ipcMain.on('bt:picked', (e, id: string, name: string, options: string) => {
-    if (e.sender !== wc || !chosen) return;
+    if (e.sender !== wc || !fromApp(e) || !chosen) return;
     const address = chosen;
     chosen = null;
     try {
@@ -115,7 +118,7 @@ export function attachBluetooth(win: BrowserWindow, log: (...a: unknown[]) => vo
   });
 
   ipcMain.handle('bt:reconnect', async (e, ids: string[]) => {
-    if (e.sender !== wc) return [];
+    if (e.sender !== wc || !fromApp(e)) return [];
     const found: string[] = [];
     for (const id of ids) {
       const k = known[id];

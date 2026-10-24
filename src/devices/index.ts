@@ -23,6 +23,8 @@ type Key = 'power' | 'cadence' | 'heartRate' | 'speed';
 type Stamped = { v: number; t: number };
 
 const STALE_MS = 3000;
+// a GATT write that never settles would hold back every command after it
+const WRITE_TIMEOUT_MS = 3000;
 // saved device ids per rider profile (two riders, two trainers)
 const STORAGE_KEY = 'serpentine.devices';
 const BATTERY_SERVICE = 0x180f;
@@ -257,13 +259,23 @@ export function createDeviceHub(): DeviceHub {
 
   // ---- writes ----
 
-  function enqueue(l: Link, fn: () => Promise<void>): Promise<void> {
-    const run = l.queue.then(fn);
+  /** Runs writes one at a time; resolves false when this one failed or timed out. */
+  function enqueue(l: Link, fn: () => Promise<void>): Promise<boolean> {
+    const run = l.queue.then(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('GATT write timed out')), WRITE_TIMEOUT_MS);
+          fn().then(resolve, reject).finally(() => clearTimeout(timer));
+        }),
+    );
     l.queue = run.catch((e) => console.warn('[devices] GATT write failed', e));
-    return run.catch(() => undefined);
+    return run.then(
+      () => true,
+      () => false,
+    );
   }
 
-  function send(l: Link, data: Uint8Array): Promise<void> {
+  function send(l: Link, data: Uint8Array): Promise<boolean> {
     return enqueue(l, async () => {
       if (!l.write) return;
       await l.write(data);
@@ -285,6 +297,12 @@ export function createDeviceHub(): DeviceHub {
 
   // ---- mode ----
 
+  // `sent` is booked before the write lands; a write that fails forgets it, so the next tick (500 ms) sends
+  // again instead of leaving the trainer on the old resistance until the road changes
+  const retryIfFailed = (ok: boolean) => {
+    if (!ok) sent.kind = undefined;
+  };
+
   function dispatch(force: boolean) {
     const l = controllableLink();
     if (!l) return;
@@ -295,8 +313,8 @@ export function createDeviceHub(): DeviceHub {
       sent.kind = 'erg';
       sent.watts = watts;
       sent.at = now;
-      if (l.protocol === 'ftms') void sendFtms(l, ftms.encodeTargetPower(watts));
-      else void send(l, fec.encodeFecTargetPower(watts));
+      if (l.protocol === 'ftms') void sendFtms(l, ftms.encodeTargetPower(watts)).then(retryIfFailed);
+      else void send(l, fec.encodeFecTargetPower(watts)).then(retryIfFailed);
       return;
     }
     const raw = normSim(mode.kind === 'sim' ? mode.params : { grade: 0 });
@@ -324,13 +342,13 @@ export function createDeviceHub(): DeviceHub {
     sent.at = now;
     if (native) {
       if (leavingErg) void sendFtms(l, ftms.encodeSimParams({ grade: 0 }));
-      void sendZwift(l, zwift.encodeSimulation(zwift.simulationFromGrade(target.grade)));
+      void sendZwift(l, zwift.encodeSimulation(zwift.simulationFromGrade(target.grade))).then(retryIfFailed);
       if (leavingErg || force) sendPhysical(l);
     } else if (l.protocol === 'ftms') {
-      void sendFtms(l, ftms.encodeSimParams(target));
+      void sendFtms(l, ftms.encodeSimParams(target)).then(retryIfFailed);
     } else {
-      if (windChanged) void send(l, fec.encodeFecWind(target.cw, target.windSpeed));
-      void send(l, fec.encodeFecTrackResistance(target.grade, target.crr));
+      if (windChanged) void send(l, fec.encodeFecWind(target.cw, target.windSpeed)).then(retryIfFailed);
+      void send(l, fec.encodeFecTrackResistance(target.grade, target.crr)).then(retryIfFailed);
     }
   }
 
@@ -343,7 +361,7 @@ export function createDeviceHub(): DeviceHub {
 
   // ---- zwift protocol writes ----
 
-  function sendZwift(l: Link, data: Uint8Array): Promise<void> {
+  function sendZwift(l: Link, data: Uint8Array): Promise<boolean> {
     return enqueue(l, async () => {
       if (!l.zwiftWrite) return;
       await l.zwiftWrite(data);

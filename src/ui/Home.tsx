@@ -18,7 +18,7 @@ import { Avatar, RiderPicker } from './RiderPicker.tsx';
 import { Welcome } from './Welcome.tsx';
 import { RideTab } from './home/RideTab.tsx';
 import { SettingsTab } from './home/SettingsTab.tsx';
-import { DevicesPanel, type RideMode, type RouteEntry } from './home/shared.tsx';
+import { DevicesPanel, SHOWCASE, type RideMode, type RouteEntry } from './home/shared.tsx';
 import { TrainTab } from './home/TrainTab.tsx';
 
 const RouteBuilder = lazy(() => import('./RouteBuilder.tsx').then((m) => ({ default: m.RouteBuilder })));
@@ -90,7 +90,8 @@ export function Home({
       }),
     );
     const custom = (await listCustomRoutes()).map((data) => ({ data, profile: profileFromCoords(data.coords), custom: true }));
-    setRoutes([...custom, ...presets]);
+    const showcase = (r: RouteEntry) => (SHOWCASE.has(r.data.id) ? 0 : 1);
+    setRoutes([...custom, ...presets.sort((a, b) => showcase(a) - showcase(b))]);
   };
 
   useEffect(() => {

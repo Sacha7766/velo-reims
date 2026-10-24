@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Decoder, Stream } from '@garmin/fitsdk';
 import { encodeFit, fitFileName } from '../src/sim/fit.ts';
 import { rideStats, normalizedPower } from '../src/sim/stats.ts';
@@ -28,8 +30,8 @@ for (let i = 0; i < N; i++) {
 const ride: RideRecord = { id: 'test-ride', name: 'Gaisberg', routeId: 'gaisberg', start, samples, laps: [600], ftp: 250, weight: 75 };
 
 const bytes = encodeFit(ride);
-mkdirSync('/private/tmp/claude-501', { recursive: true });
-writeFileSync('/private/tmp/claude-501/serpentine-test.fit', bytes);
+// kept for a look in a FIT viewer
+writeFileSync(join(tmpdir(), 'serpentine-test.fit'), bytes);
 
 const stream = Stream.fromByteArray(Array.from(bytes));
 assert.ok(Decoder.isFIT(stream));

@@ -18,6 +18,7 @@ local API in `server/` (rides on disk, Strava). Runs at http://localhost:5199 (`
 - `scripts/`: bakes (`bake-*.mjs|py`), capture (`shots-set.mjs`, `match-shots.mjs`, `flyover.mjs`), review
   helpers (`compare.py`, `sheet.py`), probes. `scripts/blender/` drives the open Blender (Blender Lab MCP add-on, :9876).
 - `docs/art/`: art direction, one brief per route, the review scorecard. `docs/lessons.md`: what we learned.
+  `docs/ROADMAP.md`: what comes next, in order; `docs/BACKLOG.md`: parked ideas.
 - `research/<route>/`: fact sheets and QA reviews (committed); photos, street-level frames, data and reference
   boards (gitignored, third-party licences).
 
@@ -49,5 +50,6 @@ Builder and approver are never the same agent.
 - Don't edit `src/` while `flyover.mjs` or a shot batch runs: HMR reloads the page mid-capture.
 - Every new material goes through `patchMaterial` (it is idempotent). Place objects with `terrain.groundHeight`
   (the flattened road surface), not the raw DEM.
-- TypeScript is strict with `erasableSyntaxOnly` (no constructor parameter properties). `npm run typecheck` before committing.
+- TypeScript is strict with `erasableSyntaxOnly` (no constructor parameter properties). `npm run check` (typecheck and
+  tests, what CI runs) before committing.
 - Comment density and naming follow the surrounding code: comments say why, not what.

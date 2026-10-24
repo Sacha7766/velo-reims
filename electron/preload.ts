@@ -4,17 +4,25 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 
+// Strava's sign-in (and Google's or Apple's behind it) opens in this window too. The main process answers
+// null there: those pages get neither the riders' settings nor the bridge.
+const version = ipcRenderer.sendSync('app:version') as string | null;
+
 // --- settings -------------------------------------------------------------------------------------------
 // Device ids belong to one browser, so they are neither restored nor backed up.
 const mirrored = (key: string) => key.startsWith('serpentine.') && !key.startsWith('serpentine.devices');
 
-try {
-  const seed = ipcRenderer.sendSync('settings:seed') as Record<string, string> | null;
-  if (seed && !Object.keys(localStorage).some(mirrored)) {
-    for (const [key, value] of Object.entries(seed)) if (mirrored(key)) localStorage.setItem(key, value);
+if (version !== null) {
+  try {
+    const seed = ipcRenderer.sendSync('settings:seed') as Record<string, string> | null;
+    if (seed && !Object.keys(localStorage).some(mirrored)) {
+      for (const [key, value] of Object.entries(seed)) if (mirrored(key)) localStorage.setItem(key, value);
+    }
+  } catch {
+    /* storage blocked: the app falls back to its defaults */
   }
-} catch {
-  /* storage blocked: the app falls back to its defaults */
+  setInterval(backup, 15_000);
+  window.addEventListener('pagehide', backup);
 }
 
 function backup() {
@@ -29,15 +37,16 @@ function backup() {
     /* storage blocked */
   }
 }
-setInterval(backup, 15_000);
-window.addEventListener('pagehide', backup);
 
 // --- Bluetooth --------------------------------------------------------------------------------------------
-contextBridge.exposeInMainWorld('serpentineApp', {
-  version: ipcRenderer.sendSync('app:version') as string,
-  btPicked: (id: string, name: string, options: string) => ipcRenderer.send('bt:picked', id, name, options),
-  btReconnect: (ids: string[]) => ipcRenderer.invoke('bt:reconnect', ids) as Promise<string[]>,
-});
+if (version !== null) {
+  contextBridge.exposeInMainWorld('serpentineApp', {
+    version,
+    btPicked: (id: string, name: string, options: string) => ipcRenderer.send('bt:picked', id, name, options),
+    btReconnect: (ids: string[]) => ipcRenderer.invoke('bt:reconnect', ids) as Promise<string[]>,
+  });
+  contextBridge.executeInMainWorld({ func: installBluetooth });
+}
 
 /** Runs in the page's own world (serialised: it may only use what it defines itself). */
 function installBluetooth() {
@@ -89,7 +98,6 @@ function installBluetooth() {
     };
   }
 }
-contextBridge.executeInMainWorld({ func: installBluetooth });
 
 // --- overlays: the device chooser and the update notice ----------------------------------------------------
 const STYLE = `

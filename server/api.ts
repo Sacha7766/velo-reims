@@ -2,7 +2,7 @@
 // ~/Documents/Serpentine/rides so history survives browser resets and the .fit files
 // can be dragged straight into Strava.
 
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
@@ -63,6 +63,24 @@ function body(req: IncomingMessage, limit = 80e6): Promise<string> {
   });
 }
 
+/**
+ * Changes come only from Serpentine's own page. Any website open in the same browser can still send a
+ * "simple" POST (text/plain, no preflight) to localhost; the browser marks it with someone else's origin.
+ */
+function crossSite(req: IncomingMessage): boolean {
+  if (req.method === 'GET' || req.method === 'HEAD') return false;
+  const site = req.headers['sec-fetch-site'];
+  if (site && site !== 'same-origin' && site !== 'none') return true;
+  const origin = req.headers.origin;
+  // no Origin: curl and scripts, not a browser page
+  if (!origin) return false;
+  try {
+    return new URL(origin).host !== req.headers.host;
+  } catch {
+    return true;
+  }
+}
+
 function send(res: ServerResponse, status: number, data: unknown) {
   res.statusCode = status;
   res.setHeader('content-type', 'application/json');
@@ -72,12 +90,13 @@ function send(res: ServerResponse, status: number, data: unknown) {
 async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', 'http://local');
   const parts = url.pathname.split('/').filter(Boolean); // after /api
+  if (crossSite(req)) return send(res, 403, { error: 'cross-site request' });
   try {
     if (parts[0] === 'health') return send(res, 200, { ok: true, dir: RIDES });
     if (parts[0] === 'strava') return strava(req, res, url, parts);
     if (parts[0] === 'open' && req.method === 'POST') {
       mkdirSync(RIDES, { recursive: true });
-      exec(`open ${JSON.stringify(RIDES)}`);
+      execFile('open', [RIDES]);
       return send(res, 200, { ok: true });
     }
     if (parts[0] === 'store') {
@@ -145,7 +164,9 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     }
     return send(res, 405, { error: 'method' });
   } catch (e) {
-    return send(res, 500, { error: (e as Error).message });
+    // the message may carry paths and parser details; the terminal gets it, the page doesn't
+    console.error('[api]', e);
+    return send(res, 500, { error: 'Server error' });
   }
 }
 
