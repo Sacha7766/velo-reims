@@ -9,12 +9,13 @@ import { buildRampTest } from '../training/rampTest.ts';
 import { LIBRARY, parseZwo } from '../workouts/index.ts';
 import type { Workout } from '../workouts/types.ts';
 import { hub } from '../devices/index.ts';
-import { needsPick } from '../sim/profiles.ts';
+import { markWelcomed, needsPick, needsWelcome } from '../sim/profiles.ts';
 import { Contours } from './Contours.tsx';
 import { History } from './History.tsx';
 import { useHub } from './hooks.ts';
 import { profileFromCoords } from './profile.ts';
 import { Avatar, RiderPicker } from './RiderPicker.tsx';
+import { Welcome } from './Welcome.tsx';
 import { RideTab } from './home/RideTab.tsx';
 import { SettingsTab } from './home/SettingsTab.tsx';
 import { DevicesPanel, type RideMode, type RouteEntry } from './home/shared.tsx';
@@ -75,6 +76,8 @@ export function Home({
   const [devicesOpen, setDevicesOpen] = useState(false);
   // "Who's riding?" on start when the household has more than one rider
   const [picker, setPicker] = useState<'required' | 'open' | null>(() => (needsPick() ? 'required' : null));
+  // a new install asks for name, weight and FTP before anything else
+  const [welcome, setWelcome] = useState(needsWelcome);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -237,6 +240,18 @@ export function Home({
         </Suspense>
       )}
       {dragging && <div className="dropzone">Drop to import</div>}
+      {welcome && (
+        <Welcome
+          settings={settings}
+          onDone={(s) => {
+            onSettings(s);
+            markWelcomed();
+            setWelcome(false);
+            // next: pair the trainer (or switch on the keyboard simulator)
+            setDevicesOpen(true);
+          }}
+        />
+      )}
       {picker && (
         <RiderPicker
           required={picker === 'required'}

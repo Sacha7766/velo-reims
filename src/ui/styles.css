@@ -3311,6 +3311,64 @@ a.btn {
   z-index: 30;
 }
 
+.welcome {
+  z-index: 30;
+}
+
+.rider-card.welcome-card {
+  display: grid;
+  gap: 16px;
+  width: min(560px, calc(100vw - 32px));
+  text-align: left;
+}
+
+.rider-card.welcome-card .welcome-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.rider-card.welcome-card h2 {
+  margin: 0 0 4px;
+}
+
+.rider-card.welcome-card p {
+  margin: 0;
+}
+
+.rider-card.welcome-card .fields {
+  grid-template-columns: repeat(2, 1fr);
+  margin: 0;
+}
+
+.rider-card.welcome-card .btn {
+  justify-self: end;
+}
+
+.kit-swatches {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--mist);
+}
+
+.kit-swatches span {
+  margin-right: 6px;
+}
+
+.kit-swatches button {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.kit-swatches button[aria-checked='true'] {
+  box-shadow: 0 0 0 3px var(--ink-2), 0 0 0 5px var(--snow);
+}
+
 .rider-card {
   width: min(640px, calc(100vw - 32px));
   padding: 32px;

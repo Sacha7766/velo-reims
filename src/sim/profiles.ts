@@ -32,6 +32,27 @@ function write(key: string, value: unknown) {
   }
 }
 
+/** Name of the active rider, as the picker shows it. */
+export function activeProfileName(): string | undefined {
+  const id = activeProfile();
+  return listProfiles().find((p) => p.id === id)?.name;
+}
+
+const WELCOMED_KEY = 'serpentine.welcomed';
+
+/** First start on this machine: no rider set up yet. Saved settings from before the welcome existed count as set up. */
+export function needsWelcome(): boolean {
+  try {
+    return localStorage.getItem(WELCOMED_KEY) === null && localStorage.getItem(LIST_KEY) === null && localStorage.getItem('serpentine.settings') === null;
+  } catch {
+    return false;
+  }
+}
+
+export function markWelcomed() {
+  write(WELCOMED_KEY, true);
+}
+
 /** All profiles; before the first one is created this is the implicit main profile. */
 export function listProfiles(): Profile[] {
   const list = read<Profile[]>(LIST_KEY, []);
@@ -83,7 +104,8 @@ export function touchProfile(name: string, kit: string) {
   write(LIST_KEY, listProfiles().map((p) => (p.id === id ? { ...p, name: name || p.name, kit } : p)));
 }
 
-const KITS = ['#2e7de8', '#1fa67a', '#d4458f', '#f0a020', '#7b5cd6', '#e8442e'];
+/** Jersey colours offered to new riders. */
+export const KITS = ['#2e7de8', '#1fa67a', '#d4458f', '#f0a020', '#7b5cd6', '#e8442e'];
 
 /** New rider with default settings; returns its id. */
 export function addProfile(name: string): string {

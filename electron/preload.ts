@@ -124,6 +124,10 @@ const STYLE = `
     color: #f4efe6; font-size: 15px; background: rgba(16, 21, 30, 0.94); border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45); }
   .toast small { color: rgba(244, 239, 230, 0.6); font-size: 13px; }
+  .lead { margin: 0; font-size: 15px; line-height: 1.45; color: rgba(244, 239, 230, 0.75); }
+  .progress { height: 6px; border-radius: 3px; overflow: hidden; background: rgba(255, 255, 255, 0.08); }
+  .progress i { display: block; height: 100%; background: linear-gradient(90deg, #e8442e, #ffb15c);
+    transition: width 0.3s ease-out; }
 `;
 
 let root: ShadowRoot | null = null;
@@ -204,6 +208,41 @@ ipcRenderer.on('bt:list', (_e, devices: { id: string; name: string; lastUsed: bo
 });
 
 ipcRenderer.on('bt:close', closeChooser);
+
+// A new version found at start installs before the first ride; the main process restarts the app when it's in.
+let installer: { scrim: HTMLElement; bar: HTMLElement; status: HTMLElement } | null = null;
+ipcRenderer.on('update:installing', (_e, state: { version: string; percent: number } | null) => {
+  if (!state) {
+    installer?.scrim.remove();
+    installer = null;
+    return;
+  }
+  const show = () => {
+    if (!installer) {
+      const scrim = el('div', 'scrim');
+      const panel = el('div', 'panel');
+      panel.setAttribute('role', 'dialog');
+      panel.setAttribute('aria-label', 'Updating Serpentine');
+      const lead = el('p', 'lead', `Serpentine ${state.version} is here. It downloads now and Serpentine restarts by itself.`);
+      const progress = el('div', 'progress');
+      const bar = el('i', '');
+      progress.append(bar);
+      const status = el('div', 'status');
+      const actions = el('div', 'actions');
+      const skip = el('button', 'button', 'Skip, update later');
+      skip.addEventListener('click', () => ipcRenderer.send('update:skip'));
+      actions.append(skip);
+      panel.append(el('h2', '', 'Updating Serpentine'), lead, progress, status, actions);
+      scrim.append(panel);
+      overlayRoot().append(scrim);
+      installer = { scrim, bar, status };
+    }
+    installer.bar.style.width = `${Math.max(2, Math.min(100, state.percent))}%`;
+    installer.status.textContent = state.percent >= 100 ? 'Installing…' : `${Math.round(state.percent)} %`;
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', show, { once: true });
+  else show();
+});
 
 let toast: HTMLElement | null = null;
 ipcRenderer.on('update:ready', (_e, version: string) => {

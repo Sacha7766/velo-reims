@@ -5,7 +5,7 @@ import type { Workout } from '../workouts/types.ts';
 import { DEFAULT_CUSTOM_DRIVETRAIN } from './drivetrain.ts';
 import type { RiderSettings } from './session.ts';
 import { encodeFit } from './fit.ts';
-import { activeProfile, MAIN, profileKey, touchProfile } from './profiles.ts';
+import { activeProfile, activeProfileName, MAIN, profileKey, touchProfile } from './profiles.ts';
 import type { RideRecord } from './types.ts';
 
 export interface AppSettings extends RiderSettings {
@@ -39,11 +39,12 @@ export interface AppSettings extends RiderSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  name: 'Chris',
+  name: 'Rider',
   ftp: 250,
   weight: 75,
   bikeWeight: 8,
-  difficulty: 1,
+  // Zwift's default; 100 % (every percent of the real road) is a choice
+  difficulty: 0.5,
   kit: '#e8442e',
   accent: '#f4efe6',
   bike: '#16181c',
@@ -69,13 +70,15 @@ const SETTINGS_KEY = 'serpentine.settings';
 
 /** Settings of the active rider profile. */
 export function loadSettings(): AppSettings {
+  // settings saved before the name was a setting take it from the rider's profile
+  const defaults = { ...DEFAULT_SETTINGS, name: activeProfileName() ?? DEFAULT_SETTINGS.name };
   try {
     const raw = localStorage.getItem(profileKey(SETTINGS_KEY));
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    if (raw) return { ...defaults, ...JSON.parse(raw) };
   } catch {
     /* storage blocked */
   }
-  return { ...DEFAULT_SETTINGS };
+  return defaults;
 }
 
 export function saveSettings(s: AppSettings) {

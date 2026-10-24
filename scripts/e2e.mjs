@@ -2,6 +2,8 @@
 import { chromium } from 'playwright';
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] });
 const ctx = await browser.newContext({ viewport: { width: 1600, height: 900 }, acceptDownloads: true });
+// a fresh browser would open on the first-start welcome
+await ctx.addInitScript(() => localStorage.setItem('serpentine.welcomed', 'true'));
 const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));

@@ -1,8 +1,9 @@
 # Releasing the Mac app
 
 Riders install the DMG once; every later version arrives in the app. `electron/updates.ts` (electron-updater)
-reads `latest-mac.yml` from the newest GitHub release every four hours, downloads the ZIP in the background and
-installs it when the app quits. The repository and its releases have to stay public for that.
+reads `latest-mac.yml` from the newest GitHub release. On start a new version is installed right away (progress
+screen, restart, "Skip, update later"); found later (a check every four hours) it downloads in the background
+and installs when the app quits. The repository and its releases have to stay public for that.
 
 ## Cutting a release
 

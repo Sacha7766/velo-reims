@@ -6,9 +6,9 @@ Personal indoor cycling app. Ride real roads in 3D on a smart trainer: real elev
 
 Requires a Mac with Apple Silicon and macOS 12 or newer.
 
-Download `Serpentine-<version>.dmg` from the [latest release](https://github.com/chrisperkles/serpentine/releases/latest), open it and drag Serpentine into Applications. The first time you connect a trainer, macOS asks for Bluetooth access.
+Download `Serpentine-<version>.dmg` from the [latest release](https://github.com/chrisperkles/serpentine/releases/latest), open it and drag Serpentine into Applications. On the first start it asks for your name, weight and FTP (not sure? keep the estimate and take the ramp test later). The first time you connect a trainer, macOS asks for Bluetooth access.
 
-New versions arrive in the app: it checks GitHub every few hours, downloads in the background and installs when you quit, never in the middle of a ride. A notice on Home offers **Restart now**; **Serpentine ▸ Check for Updates…** checks right away.
+New versions arrive in the app. On start, Serpentine checks GitHub and installs a new version straight away, before you ride: a progress screen, then it restarts by itself (**Skip, update later** if you want to ride first). While it's open it checks every few hours; what it finds then downloads in the background and installs when you quit, never in the middle of a ride. **Serpentine ▸ Check for Updates…** checks right away.
 
 The app runs the same build as the Chrome version, in its own copy of Chromium, and serves it on `http://localhost:5198`. Rides, routes, workouts and plans are shared with the Chrome version through `~/Documents/Serpentine`. Riders and their settings are mirrored to `~/Documents/Serpentine/data/local-settings.json`, so a fresh install starts with them. Bluetooth works as in Chrome, with Serpentine's own device list: devices you picked reconnect on the next start without a click (Settings ▸ Devices ▸ **Reconnect saved devices**).
 
