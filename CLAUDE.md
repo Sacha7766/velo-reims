@@ -13,6 +13,8 @@ local API in `server/` (rides on disk, Strava). Runs at http://localhost:5199 (`
 - `src/geo/`: routes, DEM, imagery sources, OSM parsing, baked trees. `src/sim/`: ride session, physics,
   drivetrain, storage, rider profiles, Strava client. `src/devices/`: FTMS, FE-C, Zwift Ride, sensors. `src/ui/`: React.
 - `public/`: baked data per route (`routes/`, `osm/`, `trees/`, `dem/`, `scenes/`) and models and textures.
+- `electron/`: the Mac app (Electron): local server on :5198, Bluetooth chooser and silent reconnect, settings
+  mirror, updates from GitHub releases, icon. Releasing: `docs/releasing.md`.
 - `scripts/`: bakes (`bake-*.mjs|py`), capture (`shots-set.mjs`, `match-shots.mjs`, `flyover.mjs`), review
   helpers (`compare.py`, `sheet.py`), probes. `scripts/blender/` drives the open Blender (Blender Lab MCP add-on, :9876).
 - `docs/art/`: art direction, one brief per route, the review scorecard. `docs/lessons.md`: what we learned.

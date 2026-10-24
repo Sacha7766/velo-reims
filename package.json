@@ -1,7 +1,10 @@
 {
   "name": "serpentine",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "description": "Indoor cycling on real roads: a home-made Zwift for smart trainers.",
+  "author": "Chris Perkles",
+  "main": "dist-electron/main.cjs",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,12 +14,17 @@
     "bake-routes": "node scripts/bake-routes.mjs",
     "start": "./Serpentine.command",
     "bake-osm": "node scripts/bake-osm.mjs",
-    "e2e": "node scripts/e2e.mjs"
+    "e2e": "node scripts/e2e.mjs",
+    "app": "npm run build && node electron/build.mjs && electron .",
+    "app:typecheck": "tsc -p electron",
+    "app:dist": "npm run build && node electron/build.mjs && electron-builder --mac --publish never",
+    "app:release": "./scripts/release-app.sh"
   },
   "dependencies": {
     "@fontsource/barlow": "^5.3.0",
     "@fontsource/barlow-condensed": "^5.3.0",
     "@garmin/fitsdk": "^21.218.0",
+    "electron-updater": "^6.8.11",
     "idb-keyval": "^6.3.0",
     "maplibre-gl": "^6.13.0",
     "n8ao": "^2.0.1",
@@ -31,6 +39,8 @@
     "@types/three": "^0.186.0",
     "@types/web-bluetooth": "^0.0.21",
     "@vitejs/plugin-react": "^6.1.2",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
     "playwright": "^1.64.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.4"

@@ -15,3 +15,5 @@ research/*/board*.jpg
 .claude/*
 !.claude/agents/
 __pycache__/
+dist-electron
+dist-app

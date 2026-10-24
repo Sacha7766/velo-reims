@@ -1,10 +1,20 @@
 # Serpentine
 
-Personal indoor cycling app. Ride real roads in 3D on a smart trainer: real elevation, aerial photos, forests and villages from OpenStreetMap, structured workouts with ERG, Strava-ready `.fit` export. Runs locally in Chrome, no subscription.
+Personal indoor cycling app. Ride real roads in 3D on a smart trainer: real elevation, aerial photos, forests and villages from OpenStreetMap, structured workouts with ERG, Strava-ready `.fit` export. A Mac app, or locally in Chrome. No subscription.
 
-## Start
+## Install
 
-Double-click `Serpentine.command` (or `npm start`). It starts the local server on port 5199 and opens Chrome. Use Chrome or Edge: Safari has no Web Bluetooth.
+Requires a Mac with Apple Silicon and macOS 12 or newer.
+
+Download `Serpentine-<version>.dmg` from the [latest release](https://github.com/chrisperkles/serpentine/releases/latest), open it and drag Serpentine into Applications. The first time you connect a trainer, macOS asks for Bluetooth access.
+
+New versions arrive in the app: it checks GitHub every few hours, downloads in the background and installs when you quit, never in the middle of a ride. A notice on Home offers **Restart now**; **Serpentine ▸ Check for Updates…** checks right away.
+
+The app runs the same build as the Chrome version, in its own copy of Chromium, and serves it on `http://localhost:5198`. Rides, routes, workouts and plans are shared with the Chrome version through `~/Documents/Serpentine`. Riders and their settings are mirrored to `~/Documents/Serpentine/data/local-settings.json`, so a fresh install starts with them. Bluetooth works as in Chrome, with Serpentine's own device list: devices you picked reconnect on the next start without a click (Settings ▸ Devices ▸ **Reconnect saved devices**).
+
+## Start from the source
+
+Double-click `Serpentine.command` (or `npm start`). It starts the local server on port 5199 and opens Chrome. Use Chrome or Edge: Safari has no Web Bluetooth. `npm run app` builds and opens the Mac app from the source instead.
 
 Before pairing, quit Zwift and Zwift Companion. A trainer accepts only one controlling app at a time.
 
@@ -106,6 +116,9 @@ node scripts/test-devices.ts && node scripts/test-workouts.ts && node scripts/te
 node scripts/shots-set.mjs <prefix> 9900:cinematic 3200:chase:inversion   # QA stills, HUD hidden
 node scripts/hud-shots.mjs <prefix>                                          # HUD as read from the saddle (2 m)
 node scripts/flyover.mjs inversion 48 shots/gaisberg/flyover.mp4           # scripted drone film (ffmpeg)
+npm run app           # build, then open the Mac app from the source (port 5198)
+npm run app:typecheck
+npm run app:dist      # signed .app, DMG and ZIP in dist-app/ (no notarization without NOTARY env, see docs/releasing.md)
 ```
 
 Bakes that need a Python venv with rasterio, numpy, scipy, pyproj, pillow (not part of the app):
@@ -122,6 +135,6 @@ A lead-in is baked in four steps: `python3 -I scripts/bake-leadin.py gaisberg` (
 
 `?ride=<preset>&sim=1&workout=<id>&at=<metres>&cam=drone&time=golden` starts a ride directly (used for screenshots). It skips the lead-in so `at` stays in route metres; add `&leadin=1` to ride it.
 
-Layout: `src/geo` (projection, DEM, imagery, OSM, routes), `src/engine` (Three.js terrain LOD, road, trees, buildings, rider, sky, camera), `src/devices` (Web Bluetooth), `src/workouts`, `src/sim` (physics, session, stats, FIT, storage), `src/ui`.
+Layout: `src/geo` (projection, DEM, imagery, OSM, routes), `src/engine` (Three.js terrain LOD, road, trees, buildings, rider, sky, camera), `src/devices` (Web Bluetooth), `src/workouts`, `src/sim` (physics, session, stats, FIT, storage), `src/ui`, `electron` (the Mac app: local server, Bluetooth chooser and reconnect, updates, icon). Releasing the app: [docs/releasing.md](docs/releasing.md).
 
 Visual work follows a brief-first, separate-reviewer loop: see [CLAUDE.md](CLAUDE.md) for the rules, [docs/art/](docs/art/README.md) for the art direction, per-route briefs and the review scorecard, and [docs/lessons.md](docs/lessons.md) for what past fixes taught us.

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<defs>
+  <linearGradient id="road" gradientUnits="userSpaceOnUse" x1="0" y1="860" x2="0" y2="172"><stop offset="0" stop-color="#E8442E"/><stop offset="1" stop-color="#FFB15C"/></linearGradient>
+</defs>
+<g transform="scale(1.242718) translate(-100 -100)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M150 800 L700 770 A120 120 0 0 0 700 530 L330 500 A120 120 0 0 1 330 260 L760 232" stroke="url(#road)" stroke-width="120"/>
+  <path d="M150 800 L700 770 A120 120 0 0 0 700 530 L330 500 A120 120 0 0 1 330 260 L760 232" stroke="#0C121C" stroke-width="10" stroke-dasharray="34 30" opacity=".55"/>
+</g>
+</svg>

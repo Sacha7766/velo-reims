@@ -1,0 +1,42 @@
+# The Mac app (electron/). Built by scripts/release-app.sh; see docs/releasing.md.
+appId: at.skyline.serpentine
+productName: Serpentine
+copyright: MIT License, Chris Perkles
+directories:
+  output: dist-app
+  buildResources: electron/icon
+# main and preload are bundles, so the app needs no node_modules
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+  - "!**/node_modules/**/*"
+  - "!dist-electron/*.map"
+asar: true
+afterPack: electron/after-pack.cjs
+mac:
+  target:
+    - target: dmg
+      arch: arm64
+    - target: zip
+      arch: arm64
+  icon: electron/icon/icon.icns
+  category: public.app-category.healthcare-fitness
+  minimumSystemVersion: "12.0"
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: electron/entitlements.mac.plist
+  entitlementsInherit: electron/entitlements.mac.plist
+  notarize: true
+  artifactName: Serpentine-${version}-mac.${ext}
+  extendInfo:
+    CFBundleIconName: AppIcon
+    NSBluetoothAlwaysUsageDescription: Serpentine connects to your smart trainer, power meter, heart-rate strap and Zwift Ride controllers over Bluetooth.
+dmg:
+  title: Serpentine
+  artifactName: Serpentine-${version}.dmg
+publish:
+  provider: github
+  owner: chrisperkles
+  repo: serpentine
+  releaseType: release
