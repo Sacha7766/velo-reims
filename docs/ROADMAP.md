@@ -44,30 +44,26 @@ at a single athlete until it approves more), or keep "bring your own app" for se
 The multiplayer plan: friends' rides as ghosts (share a ride file, it rides with you), then live rooms (a small
 relay, e.g. Cloudflare Durable Objects) with group rides and races. Needs 1.1's clock fix.
 
-## One world: ride freely
+## One world: Serpentine Island
 
-Today every route is its own small world: one road, the terrain, OSM, trees and scenery baked for a corridor
-around it, and the rider moves along it in one dimension. The aim is open worlds where the routes are
-connected by the real roads between them, so you can ride anywhere, take any turn and still ride the famous
-climbs as named routes inside the world.
+The full plan, with the map: [world/README.md](world/README.md). All routes on one invented island, joined by new
+roads, like Los Santos in GTA or Zwift's Watopia: ride anywhere, take any turn, and still ride the famous climbs as
+named routes. Each route keeps its real road, heights, photos, buildings and trees; the land and roads between are
+made up to fit. Real heights stay real, so the island is high in the middle (the Alps) and low at the coasts
+(Mallorca, Sydney); 254 km of real road and about 150 km of new road.
 
-- **Regions first, not literally everything.** Salzburger Land (Gaisberg and Wolfgangsee via Koppl and Fuschl,
-  later the Großglockner and Kitzbüheler Horn via the Pinzgau), Mallorca (Formentor and Sa Calobra via Pollença
-  and Lluc), the Oisans (Alpe d'Huez), Provence (Ventoux), Stelvio, the Wachau. City loops stay their own worlds.
-  A world map jumps between regions; Austria could later grow into one large world, since its routes are
-  connected by real roads.
-- **A road graph instead of one polyline:** OSM roads of the region with junctions and elevation profiles. The
-  rider still rolls along one road at a time; at a junction the default is the main road, and the Zwift Ride's
-  D-pad or the arrow keys pick another, shown on the HUD ahead of the turn.
-- **Streaming instead of one bake per route:** terrain already streams by tiles; OSM, trees, buildings and
-  roadside need to be built in chunks ahead of the rider and freed behind (1.1's dispose work is the first step).
-- **What changes with it:** segments, ghosts, records and the FIT track move from distances along one route to
-  positions on the graph; routes become start, end and a path through the world.
-- **First step: a spike.** Link Gaisberg and Wolfgangsee over the real roads, with junction choice and chunk
-  streaming, and measure memory and load times on the M5 Max and an older MacBook Air.
+- **A road graph instead of one polyline**, with junctions picked by the Zwift Ride's D-pad or the arrow keys.
+- **A land builder:** real ground within about 1.5 km of each road, a soft seam, invented land filled in from the
+  edges; terrain, OSM, trees and roadside streamed in chunks ahead of the rider and freed behind.
+- **Segments, ghosts, records and the FIT track** move from distances along one route to positions on the graph;
+  rides on the island get ocean coordinates and show on Strava as a Virtual Ride. Today's routes stay as they are.
+- **Order:** a spike (Gaisberg and Wolfgangsee joined by the 5.5 km Strobl road), the hard Mallorca-to-Alps seam,
+  then the High Alps as the first world you can ride, then the other regions, the City last.
+- **Later:** famous places with room on the map, Galibier, the Flanders and Roubaix cobbles, the Sella Ronda, the
+  fjord roads and the Champs-Élysées first.
 
-Effort: weeks, not days. It also makes multiplayer better: one shared world per region instead of everyone on
-one road.
+Effort: a few months, after 1.1's clock and memory work. It also makes multiplayer better: everyone in one world
+instead of on one road.
 
 ## Art: every route to APPROVE
 

@@ -1,0 +1,553 @@
+{
+ "routes": {
+  "sa-calobra": [
+   17,
+   68
+  ],
+  "formentor": [
+   27,
+   64
+  ],
+  "wolfgangsee": [
+   13,
+   61
+  ],
+  "gaisberg": [
+   27,
+   58
+  ],
+  "grossglockner": [
+   31,
+   50
+  ],
+  "kitzbueheler-horn": [
+   38,
+   47
+  ],
+  "stelvio": [
+   46,
+   43
+  ],
+  "alpe-dhuez": [
+   38.8,
+   26.8
+  ],
+  "ventoux": [
+   22,
+   21
+  ],
+  "wachau": [
+   45,
+   21
+  ],
+  "vienna-ring": [
+   72,
+   42
+  ],
+  "central-park": [
+   74,
+   48
+  ],
+  "sydney": [
+   80,
+   43
+  ],
+  "neusiedler-see": [
+   76,
+   36
+  ]
+ },
+ "radius": {
+  "default": [
+   1.5,
+   3.0
+  ],
+  "neusiedler-see": [
+   5.5,
+   7.0
+  ],
+  "wolfgangsee": [
+   2.2,
+   3.4
+  ],
+  "wachau": [
+   2.0,
+   3.2
+  ],
+  "central-park": [
+   0.7,
+   1.6
+  ],
+  "vienna-ring": [
+   0.8,
+   1.6
+  ],
+  "sydney": [
+   1.0,
+   2.0
+  ]
+ },
+ "coast": [
+  [
+   8,
+   58
+  ],
+  [
+   10,
+   64
+  ],
+  [
+   14.5,
+   69.8
+  ],
+  [
+   20,
+   70.3
+  ],
+  [
+   24,
+   67.8
+  ],
+  [
+   27.2,
+   66.4
+  ],
+  [
+   30,
+   67.8
+  ],
+  [
+   34,
+   69.8
+  ],
+  [
+   38.6,
+   71.4
+  ],
+  [
+   40,
+   70.4
+  ],
+  [
+   36.5,
+   67.2
+  ],
+  [
+   32.5,
+   64.6
+  ],
+  [
+   31.5,
+   62.6
+  ],
+  [
+   36,
+   61
+  ],
+  [
+   42,
+   58.5
+  ],
+  [
+   48,
+   55
+  ],
+  [
+   55,
+   51.5
+  ],
+  [
+   61,
+   50
+  ],
+  [
+   66,
+   50.5
+  ],
+  [
+   71,
+   53
+  ],
+  [
+   76.5,
+   55
+  ],
+  [
+   79.5,
+   54
+  ],
+  [
+   81.6,
+   50
+  ],
+  [
+   81.2,
+   45.5
+  ],
+  [
+   80.9,
+   43.2
+  ],
+  [
+   80.7,
+   41
+  ],
+  [
+   80.2,
+   39.4
+  ],
+  [
+   80.2,
+   36
+  ],
+  [
+   81.2,
+   30
+  ],
+  [
+   81.5,
+   22
+  ],
+  [
+   80,
+   14
+  ],
+  [
+   75.5,
+   9.5
+  ],
+  [
+   68,
+   8.5
+  ],
+  [
+   61,
+   10.5
+  ],
+  [
+   55,
+   13.5
+  ],
+  [
+   50,
+   15.5
+  ],
+  [
+   44,
+   16
+  ],
+  [
+   36,
+   16.5
+  ],
+  [
+   28,
+   15.6
+  ],
+  [
+   20,
+   17
+  ],
+  [
+   16,
+   20
+  ],
+  [
+   14,
+   25
+  ],
+  [
+   17,
+   29
+  ],
+  [
+   24,
+   31
+  ],
+  [
+   26.5,
+   36
+  ],
+  [
+   26.2,
+   44
+  ],
+  [
+   23,
+   50
+  ],
+  [
+   16,
+   51
+  ],
+  [
+   10,
+   50
+  ],
+  [
+   6,
+   53
+  ]
+ ],
+ "rivers": [
+  {
+   "name": "Danube",
+   "pts": [
+    [
+     34.5,
+     30.5,
+     760
+    ],
+    [
+     36.8,
+     28.6,
+     705
+    ],
+    [
+     38.2,
+     26.2,
+     690
+    ],
+    [
+     41,
+     23.6,
+     420
+    ],
+    [
+     44.2,
+     21.6,
+     214
+    ]
+   ]
+  },
+  {
+   "name": "Danube",
+   "pts": [
+    [
+     64.8,
+     40.9,
+     196
+    ],
+    [
+     68,
+     41.6,
+     180
+    ],
+    [
+     71.5,
+     43.4,
+     160
+    ],
+    [
+     71.2,
+     45.6,
+     120
+    ],
+    [
+     69.6,
+     47.8,
+     60
+    ],
+    [
+     68.4,
+     49.4,
+     10
+    ],
+    [
+     67.4,
+     52.4,
+     0
+    ]
+   ]
+  }
+ ],
+ "connectors": [
+  {
+   "name": "Coast road",
+   "from": [
+    "sa-calobra",
+    "end"
+   ],
+   "to": [
+    "formentor",
+    "start"
+   ]
+  },
+  {
+   "name": "Over to the lakes",
+   "from": [
+    "sa-calobra",
+    "end"
+   ],
+   "to": [
+    "wolfgangsee",
+    "start"
+   ]
+  },
+  {
+   "name": "Strobl to Gaisberg",
+   "from": [
+    "wolfgangsee",
+    13.9
+   ],
+   "to": [
+    "gaisberg",
+    "start"
+   ]
+  },
+  {
+   "name": "Down to the sea",
+   "from": [
+    "gaisberg",
+    "start"
+   ],
+   "to": [
+    "formentor",
+    "start"
+   ]
+  },
+  {
+   "name": "Into the Alps",
+   "from": [
+    "gaisberg",
+    "start"
+   ],
+   "to": [
+    "grossglockner",
+    "start"
+   ]
+  },
+  {
+   "name": "Valley road west",
+   "from": [
+    "grossglockner",
+    "start"
+   ],
+   "to": [
+    "kitzbueheler-horn",
+    "start"
+   ]
+  },
+  {
+   "name": "Valley road east",
+   "from": [
+    "kitzbueheler-horn",
+    "start"
+   ],
+   "to": [
+    "stelvio",
+    "start"
+   ]
+  },
+  {
+   "name": "High road",
+   "from": [
+    "grossglockner",
+    "end"
+   ],
+   "to": [
+    "stelvio",
+    "end"
+   ]
+  },
+  {
+   "name": "Col road",
+   "from": [
+    "alpe-dhuez",
+    "end"
+   ],
+   "to": [
+    "stelvio",
+    14.1
+   ]
+  },
+  {
+   "name": "Sault road",
+   "from": [
+    "alpe-dhuez",
+    "start"
+   ],
+   "to": [
+    "ventoux",
+    14.9
+   ]
+  },
+  {
+   "name": "Danube gorge",
+   "from": [
+    "alpe-dhuez",
+    "start"
+   ],
+   "to": [
+    "wachau",
+    "start"
+   ]
+  },
+  {
+   "name": "Down to the Danube",
+   "from": [
+    "stelvio",
+    "start"
+   ],
+   "to": [
+    "wachau",
+    22.3
+   ]
+  },
+  {
+   "name": "Krems to the city",
+   "from": [
+    "wachau",
+    "end"
+   ],
+   "to": [
+    "vienna-ring",
+    "start"
+   ]
+  },
+  {
+   "name": "Ring to the park",
+   "from": [
+    "vienna-ring",
+    "start"
+   ],
+   "to": [
+    "central-park",
+    "start"
+   ]
+  },
+  {
+   "name": "Ring to Bondi",
+   "from": [
+    "vienna-ring",
+    2.8
+   ],
+   "to": [
+    "sydney",
+    12.0
+   ]
+  },
+  {
+   "name": "Park to Bondi",
+   "from": [
+    "central-park",
+    2.5
+   ],
+   "to": [
+    "sydney",
+    15.6
+   ]
+  },
+  {
+   "name": "Coogee to the lake",
+   "from": [
+    "sydney",
+    5.6
+   ],
+   "to": [
+    "neusiedler-see",
+    "start"
+   ]
+  }
+ ]
+}
