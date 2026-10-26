@@ -39,7 +39,8 @@ Installed copies only take a higher version, so the version in `package.json` al
   chooser and the update notice; installs `navigator.bluetooth.getDevices()`.
 - `electron/bluetooth.ts`: Electron has no device chooser and no `getDevices()`. Devices the rider picks are
   remembered in `~/Library/Application Support/Serpentine/bluetooth.json`; on the next start each one is asked
-  for again with a lent user gesture and selected automatically as soon as it advertises (12 s at most).
+  for again with a lent user gesture and selected automatically as soon as it advertises (12 s per look; the page
+  keeps looking for missing ones for 10 minutes, and the rider opening the chooser stops a look under way).
 - `electron/icon/`: the app icon (see its README). `electron/after-pack.cjs` compiles the Icon Composer
   version into `Assets.car` before signing.
 - Logs: `~/Library/Logs/Serpentine/main.log` (start, update checks, Bluetooth reconnects, device events such as a trainer lost and back after n s, errors). **Help ▸ Copy
