@@ -2,6 +2,7 @@ import type {
   Capability,
   DeviceHub,
   DeviceInfo,
+  DeviceRole,
   Metrics,
   Protocol,
   SimParams,
@@ -14,11 +15,12 @@ import * as cps from './cps.ts';
 import * as hrs from './hrs.ts';
 import * as zwift from './zwift.ts';
 import { createSimulator } from './simulator.ts';
+import { cleanIds, ROLE_ORDER, withoutId, withRole, type SavedIds } from './saved.ts';
 import { profileKey } from '../sim/profiles.ts';
 
 export type * from './types.ts';
 
-type Role = 'trainer' | 'power' | 'hr' | 'controller';
+type Role = DeviceRole;
 type Key = 'power' | 'cadence' | 'heartRate' | 'speed';
 type Stamped = { v: number; t: number };
 
@@ -34,6 +36,10 @@ const LOCKED_MESSAGE =
   'Zwift Ride is locked. Ride firmware 1.3+ needs a daily unlock: open the Zwift app, connect the Ride for ~30 s and press a button, quit Zwift, then connect it here again.';
 const DEFAULT_RIDER_KG = 75;
 const DEFAULT_BIKE_KG = 8;
+// saved devices not found when the app opens are looked for again for this long: a trainer wakes when
+// pedalled, a Zwift Ride when a button is pressed, a strap when it is worn
+const SEARCH_WINDOW_MS = 10 * 60_000;
+const SEARCH_PAUSE_MS = 5000;
 
 interface Link {
   id: string;
@@ -54,6 +60,8 @@ interface Link {
   ftmsRetried: Set<number>;
   lastCmd: Map<number, Uint8Array>;
   attempt: number;
+  /** When the link dropped by itself, until it is back. */
+  lostAt?: number;
   busy: boolean;
   intentional: boolean;
   retryTimer?: ReturnType<typeof setTimeout>;
@@ -94,31 +102,37 @@ async function tryGet<T>(fn: () => Promise<T>): Promise<T | undefined> {
   }
 }
 
-function loadIds(): Partial<Record<Role, string>> {
+function loadIds(): SavedIds {
   try {
-    return JSON.parse(localStorage.getItem(profileKey(STORAGE_KEY)) ?? '{}') ?? {};
+    return cleanIds(JSON.parse(localStorage.getItem(profileKey(STORAGE_KEY)) ?? '{}'));
   } catch {
     return {};
   }
 }
 
-function saveId(role: Role, id: string): void {
+function storeIds(ids: SavedIds): void {
   try {
-    localStorage.setItem(profileKey(STORAGE_KEY), JSON.stringify({ ...loadIds(), [role]: id }));
+    const json = JSON.stringify(ids);
+    if (localStorage.getItem(profileKey(STORAGE_KEY)) !== json) localStorage.setItem(profileKey(STORAGE_KEY), json);
   } catch {
     // storage unavailable
   }
 }
 
-function forgetId(id: string): void {
+const saveId = (role: Role, id: string) => storeIds(withRole(loadIds(), role, id));
+const forgetId = (id: string) => storeIds(withoutId(loadIds(), id));
+
+/** A line for the Mac app's log (Help ▸ Show Log in Finder); a browser keeps it in the console. */
+function note(msg: string): void {
+  console.info(`[devices] ${msg}`);
   try {
-    const ids = loadIds();
-    for (const r of Object.keys(ids) as Role[]) if (ids[r] === id) delete ids[r];
-    localStorage.setItem(profileKey(STORAGE_KEY), JSON.stringify(ids));
+    (globalThis as { serpentineApp?: { btLog?: (line: string) => void } }).serpentineApp?.btLog?.(msg);
   } catch {
-    // storage unavailable
+    // logging must never get in the way
   }
 }
+
+const nameOf = (l: { device: BluetoothDevice; id: string }) => l.device.name || l.id;
 
 const AUTO_KEY = 'serpentine.autoConnect';
 
@@ -143,6 +157,12 @@ export function createDeviceHub(): DeviceHub {
   let emitTimer: ReturnType<typeof setTimeout> | undefined;
   let lastEmit = 0;
   let tick: ReturnType<typeof setInterval> | undefined;
+  // looking for saved devices that weren't found yet (see reconnectKnown)
+  let searchUntil = 0;
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
+  let searchRunning = false;
+  let searching: readonly Role[] = [];
+  let pairing = 0;
 
   const buttonListeners = new Set<(b: ZwiftButton) => void>();
   let gearRatio: number | null = null;
@@ -636,6 +656,8 @@ export function createDeviceHub(): DeviceHub {
       }
       l.attempt = 0;
       l.state = 'connected';
+      note(l.lostAt ? `${nameOf(l)} back after ${Math.round((Date.now() - l.lostAt) / 1000)} s` : `${nameOf(l)} connected as ${l.role}`);
+      l.lostAt = undefined;
       saveId(l.role, l.id);
       l.adAbort?.abort();
       l.adAbort = undefined;
@@ -647,6 +669,8 @@ export function createDeviceHub(): DeviceHub {
       return true;
     } catch (e) {
       console.warn('[devices] connect failed', l.device.name, e);
+      // a missing device fails every retry until it is there: only the first tries are worth a line
+      if (l.attempt <= 1) note(`${nameOf(l)} (${l.role}) could not connect: ${(e as Error)?.message ?? e}`);
       l.lastError = e;
       if (l.locked) {
         l.state = 'disconnected';
@@ -677,14 +701,29 @@ export function createDeviceHub(): DeviceHub {
     scheduleEmit();
   }
 
-  function register(device: BluetoothDevice, role: Role): Link {
+  /**
+   * The link for a device in a role. A reconnect never moves a device that is already linked to another role;
+   * the rider's own pick does, except that a trainer stays the trainer.
+   */
+  function register(device: BluetoothDevice, role: Role, picked = false): Link {
     const existing = links.get(device.id);
     if (existing) {
+      if (existing.role !== role) {
+        if (!picked) return existing;
+        if (existing.role === 'trainer') {
+          throw new Error(`${nameOf(existing)} is already connected as your smart trainer${role === 'power' ? ', and it sends its power from there' : ''}.`);
+        }
+        note(`${nameOf(existing)} moves from ${existing.role} to ${role}`);
+      }
       existing.intentional = false;
       existing.role = role;
       return existing;
     }
-    for (const other of [...links.values()]) if (other.role === role) removeLink(other);
+    for (const other of [...links.values()]) {
+      if (other.role !== role) continue;
+      note(`${nameOf(other)} makes way for ${device.name || device.id} (${role})`);
+      removeLink(other);
+    }
     const l: Link = {
       id: device.id,
       role,
@@ -707,7 +746,13 @@ export function createDeviceHub(): DeviceHub {
         l.zwiftWrite = undefined;
         l.vals = {};
         if (l.intentional) l.state = 'disconnected';
-        else scheduleReconnect(l);
+        else {
+          if (!l.lostAt) {
+            l.lostAt = Date.now();
+            note(`${nameOf(l)} (${l.role}) lost, reconnecting`);
+          }
+          scheduleReconnect(l);
+        }
         updateTicker();
         scheduleEmit();
       },
@@ -731,16 +776,96 @@ export function createDeviceHub(): DeviceHub {
   async function pair(role: Role, options: RequestDeviceOptions) {
     const b = bt();
     if (!b) throw new Error('Web Bluetooth is not supported in this browser');
-    const device = await b.requestDevice(options);
-    const l = register(device, role);
-    if (!(await connectLink(l))) {
-      if (role === 'controller' && l.locked && l.lastError instanceof Error) {
-        removeLink(l);
-        throw l.lastError;
+    pairing++;
+    try {
+      const device = await b.requestDevice(options);
+      const l = register(device, role, true);
+      if (!(await connectLink(l))) {
+        if (role === 'controller' && l.locked && l.lastError instanceof Error) {
+          removeLink(l);
+          throw l.lastError;
+        }
+        if (links.get(l.id) === l && !l.intentional) scheduleReconnect(l);
+        throw new Error(`Could not connect to ${device.name ?? 'device'}`);
       }
-      if (links.get(l.id) === l && !l.intentional) scheduleReconnect(l);
-      throw new Error(`Could not connect to ${device.name ?? 'device'}`);
+    } finally {
+      pairing--;
     }
+  }
+
+  /** Saved roles whose device has no link yet. */
+  function missingRoles(ids = loadIds()): Role[] {
+    return ROLE_ORDER.filter((r) => {
+      const id = ids[r];
+      return !!id && !links.has(id);
+    });
+  }
+
+  function setSearching(roles: Role[]) {
+    if (roles.join() === searching.join()) return;
+    searching = roles;
+    scheduleEmit();
+  }
+
+  /** One look for the saved devices without a link: each one found is linked and starts connecting. */
+  async function searchOnce() {
+    const b = bt();
+    if (!b || typeof b.getDevices !== 'function' || !loadAutoConnect()) return;
+    const ids = loadIds();
+    if (!missingRoles(ids).length) return;
+    // the Mac app answers this by scanning for each missing device in turn (electron/bluetooth.ts)
+    const known = await b.getDevices();
+    for (const role of missingRoles(ids)) {
+      const device = known.find((d) => d.id === ids[role]);
+      if (!device || links.has(device.id)) continue;
+      const l = register(device, role);
+      l.state = 'reconnecting';
+      scheduleEmit();
+      const watch = (device as unknown as {
+        watchAdvertisements?: (o: { signal: AbortSignal }) => Promise<void>;
+      }).watchAdvertisements;
+      const ctrl = new AbortController();
+      let watching = false;
+      if (typeof watch === 'function') {
+        device.addEventListener(
+          'advertisementreceived',
+          () => {
+            ctrl.abort();
+            if (l.state !== 'connected') void connectLink(l).then((ok) => !ok && scheduleReconnect(l));
+          },
+          { once: true },
+        );
+        watching = await watch.call(device, { signal: ctrl.signal }).then(
+          () => true,
+          () => false,
+        );
+        if (watching) l.adAbort = ctrl;
+      }
+      void connectLink(l).then((ok) => {
+        if (!ok && !watching) scheduleReconnect(l);
+      });
+    }
+  }
+
+  /** Looks again every few seconds until every saved device is linked or the search window is over. */
+  async function search() {
+    clearTimeout(searchTimer);
+    if (searchRunning) return;
+    searchRunning = true;
+    try {
+      // the rider is choosing a device: the chooser goes first
+      if (!pairing) await searchOnce();
+    } catch (e) {
+      console.warn('[devices] reconnect search failed', e);
+    } finally {
+      searchRunning = false;
+    }
+    const b = bt();
+    const left = b && typeof b.getDevices === 'function' && loadAutoConnect() ? missingRoles() : [];
+    const more = left.length > 0 && Date.now() < searchUntil;
+    if (!more && left.length && searching.length) note(`stopped looking for the saved ${left.join(', ')}`);
+    setSearching(more ? left : []);
+    if (more) searchTimer = setTimeout(() => void search(), SEARCH_PAUSE_MS);
   }
 
   const hub: DeviceHub = {
@@ -765,6 +890,14 @@ export function createDeviceHub(): DeviceHub {
       } catch {
         // storage unavailable
       }
+      if (on) void hub.reconnectKnown();
+      else {
+        clearTimeout(searchTimer);
+        setSearching([]);
+      }
+    },
+    get searching() {
+      return searching;
     },
     get simulatorEnabled() {
       return simEnabled;
@@ -819,45 +952,11 @@ export function createDeviceHub(): DeviceHub {
     },
 
     async reconnectKnown() {
-      const b = bt();
-      if (!b || typeof b.getDevices !== 'function' || !loadAutoConnect()) return;
-      try {
-        const known = await b.getDevices();
-        const ids = loadIds();
-        for (const role of ['trainer', 'power', 'hr', 'controller'] as Role[]) {
-          const id = ids[role];
-          const device = id ? known.find((d) => d.id === id) : undefined;
-          if (!device || links.get(device.id)?.state === 'connected') continue;
-          const l = register(device, role);
-          l.state = 'reconnecting';
-          scheduleEmit();
-          const watch = (device as unknown as {
-            watchAdvertisements?: (o: { signal: AbortSignal }) => Promise<void>;
-          }).watchAdvertisements;
-          const ctrl = new AbortController();
-          let watching = false;
-          if (typeof watch === 'function') {
-            device.addEventListener(
-              'advertisementreceived',
-              () => {
-                ctrl.abort();
-                if (l.state !== 'connected') void connectLink(l).then((ok) => !ok && scheduleReconnect(l));
-              },
-              { once: true },
-            );
-            watching = await watch.call(device, { signal: ctrl.signal }).then(
-              () => true,
-              () => false,
-            );
-            if (watching) l.adAbort = ctrl;
-          }
-          void connectLink(l).then((ok) => {
-            if (!ok && !watching) scheduleReconnect(l);
-          });
-        }
-      } catch (e) {
-        console.warn('[devices] reconnectKnown failed', e);
-      }
+      if (!loadAutoConnect()) return;
+      searchUntil = Date.now() + SEARCH_WINDOW_MS;
+      const missing = missingRoles();
+      if (missing.length) note(`looking for the saved ${missing.join(', ')}`);
+      await search();
     },
 
     async disconnect(id) {
@@ -866,7 +965,10 @@ export function createDeviceHub(): DeviceHub {
         return;
       }
       const l = links.get(id);
-      if (l) removeLink(l);
+      if (l) {
+        note(`${nameOf(l)} (${l.role}) disconnected by the rider`);
+        removeLink(l);
+      }
       // a manual disconnect also stops the silent reconnect on the next start
       forgetId(id);
     },

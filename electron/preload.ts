@@ -44,6 +44,9 @@ if (version !== null) {
     version,
     btPicked: (id: string, name: string, options: string) => ipcRenderer.send('bt:picked', id, name, options),
     btReconnect: (ids: string[]) => ipcRenderer.invoke('bt:reconnect', ids) as Promise<string[]>,
+    btCancel: () => ipcRenderer.invoke('bt:cancel') as Promise<void>,
+    btMine: (ids: string[]) => ipcRenderer.send('bt:mine', ids),
+    btLog: (line: string) => ipcRenderer.send('bt:log', String(line)),
   });
   contextBridge.executeInMainWorld({ func: installBluetooth });
 }
@@ -53,13 +56,33 @@ function installBluetooth() {
   type Device = BluetoothDevice;
   const bt = (navigator as Navigator & { bluetooth?: Bluetooth & { getDevices?: () => Promise<Device[]> } }).bluetooth;
   const bridge = (window as unknown as {
-    serpentineApp?: { btPicked: (id: string, name: string, options: string) => void; btReconnect: (ids: string[]) => Promise<string[]> };
+    serpentineApp?: {
+      btPicked: (id: string, name: string, options: string) => void;
+      btReconnect: (ids: string[]) => Promise<string[]>;
+      btCancel: () => Promise<void>;
+      btMine: (ids: string[]) => void;
+    };
   }).serpentineApp;
   if (!bt || !bridge) return;
   const request = bt.requestDevice.bind(bt);
   const found = new Map<string, Device>();
 
+  /** The active rider's saved device ids, under the keys src/devices uses. */
+  const savedIds = (): string[] => {
+    try {
+      const profile = JSON.parse(localStorage.getItem('serpentine.profile') ?? '"main"') as string;
+      const key = profile === 'main' ? 'serpentine.devices' : `serpentine.devices.${profile}`;
+      const ids = Object.values(JSON.parse(localStorage.getItem(key) ?? '{}') as Record<string, unknown>);
+      return [...new Set(ids.filter((v): v is string => typeof v === 'string'))];
+    } catch {
+      return [];
+    }
+  };
+
   bt.requestDevice = async (options?: RequestDeviceOptions) => {
+    // the chooser tags this rider's devices, and a silent search for them makes way
+    bridge.btMine(savedIds());
+    await bridge.btCancel();
     const device = await request(options);
     bridge.btPicked(device.id, device.name ?? '', JSON.stringify(options ?? {}));
     return device;
@@ -81,17 +104,7 @@ function installBluetooth() {
 
   if (typeof bt.getDevices !== 'function') {
     bt.getDevices = async () => {
-      let ids: string[] = [];
-      try {
-        // the active rider's saved devices, under the keys src/devices uses
-        const profile = JSON.parse(localStorage.getItem('serpentine.profile') ?? '"main"') as string;
-        const key = profile === 'main' ? 'serpentine.devices' : `serpentine.devices.${profile}`;
-        ids = Object.values(JSON.parse(localStorage.getItem(key) ?? '{}') as Record<string, unknown>).filter(
-          (v): v is string => typeof v === 'string',
-        );
-      } catch {
-        /* nothing saved */
-      }
+      const ids = savedIds();
       const missing = ids.filter((id) => !found.has(id));
       if (missing.length) await bridge.btReconnect(missing);
       return ids.flatMap((id) => found.get(id) ?? []);

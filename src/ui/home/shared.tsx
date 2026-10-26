@@ -204,7 +204,7 @@ export function ColorField({ label, value, onChange }: { label: string; value: s
 
 /** Pairing controls, live values and shifting status. */
 export function DevicesPanel() {
-  const { devices, metrics, simulator, shifting } = useHub();
+  const { devices, metrics, simulator, shifting, searching } = useHub();
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [auto, setAuto] = useState(hub.autoConnect);
@@ -223,11 +223,11 @@ export function DevicesPanel() {
   const real = devices.filter((d) => d.protocol !== 'simulator');
   const has = (cap: string) => real.some((d) => d.capabilities.includes(cap as never) && d.state === 'connected');
   const rows = [
-    { id: 'trainer', label: 'Smart trainer', ok: has('control'), action: () => hub.pairTrainer() },
-    { id: 'ride', label: 'Zwift Ride', ok: has('buttons'), action: () => hub.pairController() },
-    { id: 'hr', label: 'Heart rate', ok: real.some((d) => d.protocol === 'hrs' && d.state === 'connected'), action: () => hub.pairHeartRate() },
-    { id: 'pm', label: 'Power meter', ok: real.some((d) => d.protocol === 'cps' && d.state === 'connected'), action: () => hub.pairPowerMeter() },
-  ];
+    { id: 'trainer', role: 'trainer', label: 'Smart trainer', ok: has('control'), action: () => hub.pairTrainer() },
+    { id: 'ride', role: 'controller', label: 'Zwift Ride', ok: has('buttons'), action: () => hub.pairController() },
+    { id: 'hr', role: 'hr', label: 'Heart rate', ok: real.some((d) => d.protocol === 'hrs' && d.state === 'connected'), action: () => hub.pairHeartRate() },
+    { id: 'pm', role: 'power', label: 'Power meter', ok: real.some((d) => d.protocol === 'cps' && d.state === 'connected'), action: () => hub.pairPowerMeter() },
+  ] as const;
   return (
     <div className="devices-panel">
       {!hub.supported && <p className="error">Bluetooth needs Chrome or Edge on a desktop. The keyboard simulator still works.</p>}
@@ -241,7 +241,11 @@ export function DevicesPanel() {
               <span className="dot" aria-hidden />
               <span className="d-label">{r.label}</span>
               <span className="d-name muted">
-                {dev ? `${dev.name}${dev.state !== 'connected' ? `, ${dev.state}` : ''}${dev.battery !== undefined ? `, ${dev.battery} %` : ''}` : 'Not connected'}
+                {dev
+                  ? `${dev.name}${dev.state !== 'connected' ? `, ${dev.state}` : ''}${dev.battery !== undefined ? `, ${dev.battery} %` : ''}`
+                  : searching.includes(r.role)
+                    ? 'Looking for yours…'
+                    : 'Not connected'}
               </span>
               {dev ? (
                 <button className="link" onClick={() => hub.disconnect(dev.id)}>
@@ -256,6 +260,9 @@ export function DevicesPanel() {
           );
         })}
       </ul>
+      {searching.length > 0 && (
+        <p className="muted small">Looking for your saved devices: pedal to wake the trainer, press a button on the Zwift Ride.</p>
+      )}
       {has('control') && (
         <p className="muted small">
           {shifting === 'native'

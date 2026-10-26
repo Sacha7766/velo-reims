@@ -35,6 +35,9 @@ export type TrainerMode =
   | { kind: 'erg'; watts: number }
   | { kind: 'sim'; params: SimParams };
 
+/** What a paired device is for. One device has one role. */
+export type DeviceRole = 'trainer' | 'power' | 'hr' | 'controller';
+
 export interface DeviceInfo {
   id: string;
   name: string;
@@ -66,8 +69,13 @@ export interface DeviceHub {
   pairTrainer(): Promise<void>;
   pairPowerMeter(): Promise<void>;
   pairHeartRate(): Promise<void>;
-  /** Silent reconnect to previously permitted devices where the browser allows it. */
+  /**
+   * Reconnect the rider's saved devices where the browser allows it, and keep looking for the ones not found
+   * yet for a while (a trainer wakes when pedalled, a Zwift Ride when a button is pressed).
+   */
   reconnectKnown(): Promise<void>;
+  /** Roles whose saved device is still being looked for. */
+  readonly searching: readonly DeviceRole[];
   /** Whether reconnectKnown runs on start (persisted). */
   readonly autoConnect: boolean;
   setAutoConnect(on: boolean): void;

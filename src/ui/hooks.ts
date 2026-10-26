@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { hub } from '../devices/index.ts';
-import type { DeviceInfo, Metrics, ShiftingMode } from '../devices/types.ts';
+import type { DeviceInfo, DeviceRole, Metrics, ShiftingMode } from '../devices/types.ts';
 import type { LiveState, RideSession } from '../sim/session.ts';
 
 interface HubSnapshot {
@@ -9,14 +9,23 @@ interface HubSnapshot {
   simulator: boolean;
   controllable: boolean;
   shifting: ShiftingMode;
+  /** Roles whose saved device is still being looked for. */
+  searching: readonly DeviceRole[];
 }
 
 let last: HubSnapshot | null = null;
 function hubSnapshot(): HubSnapshot {
   const metrics = hub.metrics;
   const devices = hub.devices;
-  if (!last || last.metrics !== metrics || last.devices !== devices || last.simulator !== hub.simulatorEnabled || last.shifting !== hub.shifting) {
-    last = { metrics, devices, simulator: hub.simulatorEnabled, controllable: hub.hasControllableTrainer, shifting: hub.shifting };
+  if (
+    !last ||
+    last.metrics !== metrics ||
+    last.devices !== devices ||
+    last.simulator !== hub.simulatorEnabled ||
+    last.shifting !== hub.shifting ||
+    last.searching !== hub.searching
+  ) {
+    last = { metrics, devices, simulator: hub.simulatorEnabled, controllable: hub.hasControllableTrainer, shifting: hub.shifting, searching: hub.searching };
   }
   return last;
 }

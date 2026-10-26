@@ -12,7 +12,7 @@ New versions arrive in the app. On start, Serpentine checks GitHub and installs 
 
 Something not working? **Help ▸ Copy Diagnostics** copies the app and macOS versions, your saved Bluetooth devices and the end of the log, ready to paste into a message.
 
-The app runs the same build as the Chrome version, in its own copy of Chromium, and serves it on `http://localhost:5198`. Rides, routes, workouts and plans are shared with the Chrome version through `~/Documents/Serpentine`. Riders and their settings are mirrored to `~/Documents/Serpentine/data/local-settings.json`, so a fresh install starts with them. Bluetooth works as in Chrome, with Serpentine's own device list: devices you picked reconnect on the next start without a click (Settings ▸ Devices ▸ **Reconnect saved devices**).
+The app runs the same build as the Chrome version, in its own copy of Chromium, and serves it on `http://localhost:5198`. Rides, routes, workouts and plans are shared with the Chrome version through `~/Documents/Serpentine`. Riders and their settings are mirrored to `~/Documents/Serpentine/data/local-settings.json`, so a fresh install starts with them. Bluetooth works as in Chrome, with Serpentine's own device list: devices you picked reconnect on the next start without a click, each rider's own, and the app keeps looking for them for ten minutes after it opens, so pedalling the trainer awake or pressing a button on the Zwift Ride is enough (Settings ▸ Devices ▸ **Reconnect saved devices**).
 
 ## Start from the source
 

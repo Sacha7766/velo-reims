@@ -199,6 +199,17 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
 - **Opening the app could take over someone else's trainer.** `reconnectKnown` silently reconnected the last
   trainer. Fix: rider profiles each keep their own saved devices; "Who's riding?" comes before any reconnect; a
   toggle for reconnecting saved devices; `?nobt=1`.
+- **The saved devices didn't come back in the Mac app (2026-10-26).** Three causes. The Mac app looked for each
+  saved device for 12 s once, when it opened, and a sleeping trainer or Zwift Ride was missed for good. The KICKR
+  had been picked from the power-meter row too, so it was saved as trainer and power meter; on the next start the
+  second reconnect turned the trainer link into a power meter (no resistance control; the 1.0.2 hub ends with the
+  KICKR stuck on "reconnecting"). And the chooser tagged every device any rider had used, so the household's two
+  KICKR CORE and two "Zwift Ride" entries all said "Last used". Fix: the app keeps looking for missing saved
+  devices for 10 minutes (the rider opening the chooser stops a search under way first); one device has one role
+  (a trainer stays the trainer, `src/devices/saved.ts`); the chooser tags only the active rider's devices; device
+  events (connected, lost, back after n s, disconnected by the rider) go to `main.log`. The renderer's console isn't
+  logged anywhere, so before this an in-ride drop left no trace in the app's own log. Where: `src/devices/index.ts`
+  `search`, `register`, `electron/bluetooth.ts`, `electron/preload.ts`, `scripts/test-hub.ts` (fake devices).
 - **A slight rise in the road needed far more watts.** At 100 % difficulty the physics is right, but a trainer
   flywheel carries far less momentum than 85 kg of rider and bike. Fix: gradient increases ease in (tau 4 s); new
   riders start at 50 %. Where: `session.ts`, `profiles.ts`.

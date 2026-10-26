@@ -5,6 +5,7 @@ import * as cps from '../src/devices/cps.ts';
 import { parseHeartRate } from '../src/devices/hrs.ts';
 import * as zw from '../src/devices/zwift.ts';
 import { newSimState, stepSimulator } from '../src/devices/simulator.ts';
+import { cleanIds, withoutId, withRole } from '../src/devices/saved.ts';
 
 const dv = (...b: number[]) => new DataView(Uint8Array.from(b).buffer);
 const hex = (u: Uint8Array) => [...u].map((x) => x.toString(16).padStart(2, '0')).join(' ');
@@ -233,6 +234,25 @@ t('ftms fallback gear transform', () => {
   assert.equal(zw.gearedGrade(18, 5.49, 12, m), 20);
   assert.equal(zw.gearedGrade(-15, 2.4, 1, m), -10);
   assert.ok(Math.abs(zw.gearedGrade(0, 2.4, 1, m) - (0.4 + (100 * 0.5 * 1.2 * 0.32) / (m * 9.80665))) < 1e-9);
+});
+
+t('saved devices: a trainer also saved as power meter stays the trainer only', () => {
+  // as saved on 2026-10-26: the KICKR paired a second time from the power-meter row
+  const raw = { trainer: 'Q', hr: 'A', power: 'Q', controller: 'X' };
+  assert.deepEqual(cleanIds(raw), { trainer: 'Q', controller: 'X', hr: 'A' });
+  assert.deepEqual(cleanIds({ power: 'P', hr: 'P' }), { hr: 'P' });
+  assert.deepEqual(cleanIds(null), {});
+  assert.deepEqual(cleanIds({ trainer: 7, hr: '', power: 'P' }), { power: 'P' });
+});
+
+t('saved devices: a device takes one role, the rider can move it', () => {
+  const ids = { trainer: 'Q', hr: 'A' };
+  assert.deepEqual(withRole(ids, 'controller', 'X'), { trainer: 'Q', controller: 'X', hr: 'A' });
+  // a new controller replaces the old one
+  assert.deepEqual(withRole({ controller: 'X' }, 'controller', 'Y'), { controller: 'Y' });
+  // a strap saved as power meter by mistake, then picked as heart rate
+  assert.deepEqual(withRole({ power: 'A' }, 'hr', 'A'), { hr: 'A' });
+  assert.deepEqual(withoutId({ trainer: 'Q', power: 'Q', hr: 'A' }, 'Q'), { hr: 'A' });
 });
 
 console.log(`\n${n} tests passed`);

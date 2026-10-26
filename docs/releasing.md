@@ -42,7 +42,7 @@ Installed copies only take a higher version, so the version in `package.json` al
   for again with a lent user gesture and selected automatically as soon as it advertises (12 s at most).
 - `electron/icon/`: the app icon (see its README). `electron/after-pack.cjs` compiles the Icon Composer
   version into `Assets.car` before signing.
-- Logs: `~/Library/Logs/Serpentine/main.log` (start, update checks, Bluetooth reconnects, errors). **Help ▸ Copy
+- Logs: `~/Library/Logs/Serpentine/main.log` (start, update checks, Bluetooth reconnects, device events such as a trainer lost and back after n s, errors). **Help ▸ Copy
   Diagnostics** puts versions, GPU status, saved devices and the log's last 80 lines on the clipboard for a friend to
   send; **Help ▸ Show Log in Finder** opens the folder.
 
