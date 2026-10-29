@@ -55,6 +55,9 @@ export interface Biome {
   buildings: 'flachgau' | 'mallorca' | 'savoie' | 'provence' | 'champagne';
   /** Day of the year the foliage is drawn for, instead of today's date. */
   day?: number;
+  /** Sun elevation and azimuth (degrees) per time of day (atmosphere TIMES id) where the region and season differ
+   * from the presets' Salzburg in mid-October. */
+  sun?: Record<string, [number, number]>;
   /** Orthophoto grading: gain, saturation and gamma (basemap.at needs lifting; IGN plains do not). */
   photoGrade?: [number, number, number];
   /** 1: arable fields photographed in spring are drawn harvested (late summer); see terrainMaterial. */
@@ -134,6 +137,9 @@ export const CHAMPAGNE: Biome = {
   edgeLines: false,
   buildings: 'champagne',
   day: 238,
+  // the sun over Reims (49.25° N) on 26 August: 51° at solar noon; morning and evening low in the east and the
+  // west-north-west, not the south-east and south-west of the October presets
+  sun: { morning: [16, 93], noon: [51, 180], golden: [11, 273], inversion: [14, 91], dusk: [2.5, 283] },
   photoGrade: [1.0, 1.1, 1.08],
   fieldSeason: 1,
   cattle: false,

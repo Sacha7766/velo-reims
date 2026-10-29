@@ -93,8 +93,11 @@ The Alpine and Mediterranean biomes and the other presets: the Champagne look is
 
 - Fixed 2026-10-29: the Alpine fallback (now the Champagne biome) and the near-white ground (Alpine photo grade
   and meadow push on bright chalk; docs/lessons.md).
-- The IGN orthophoto is a spring image; the late-August fields are inferred from its tones (stubble where it was
-  green, beet, maize or potatoes where it was bare). Which crop each parcel really holds: unknown.
+- The IGN orthophoto is a spring image (flown 28 April to 9 May 2025). Since 2026-10-29 the fields are the real
+  parcels and crops of the 2025 RPG (`public/fields/mont-de-berru.json`): wheat, barley and rape are stubble, disced
+  or greening again, beet stands dark green, alfalfa grows back. Which of stubble, disced or regrowth each
+  harvested parcel shows on the day is a draw weighted by its harvest date, not observed. Land no farmer declared
+  is still inferred from the photo's tones.
 - The village signs take the nearest OSM place name; a stretch of houses between two villages may get the wrong one.
 
 ## Feedback log
@@ -104,11 +107,16 @@ The Alpine and Mediterranean biomes and the other presets: the Champagne look is
 | 2026-10-29 | No small detours to reach the mairies | Not useful when riding | Done: villages crossed on their main road |
 | 2026-10-29 | Saw a problem with the IGN imagery | The ground looked wrong | Done: Champagne photo grade and late-August fields |
 | 2026-10-29 | End of August is perfect | Season of the ride | Done: biome day 238, harvested fields, vines in leaf |
-| 2026-10-29 | Build the Champagne scenery with as much variety and realism as possible | The Alpine look didn't fit | Built: houses, crops, vines, bales, signs, landmarks; review pending |
+| 2026-10-29 | Build the Champagne scenery with as much variety and realism as possible | The Alpine look didn't fit | Built: houses, crops, vines, bales, signs, landmarks; first review REJECT, fixes in progress |
+| 2026-10-29 | Best look for the least computing; the app should run easily | A Mac M1 | Terrain shader -42 %, memory held once, terrain detail adapts on a slow GPU |
 
 ## Status
 
 Brief written 2026-10-29 from regional references; Commons photos of Berru, Caurel, Lavannes and Witry
 (`research/champagne/photos/`) show pale stone and rubble churches under slate spires, mairies in pale stone with
-slate roofs and white roller shutters, brick window surrounds on chalk (Lavannes). Champagne biome built 2026-10-29;
-review pending.
+slate roofs and white roller shutters, brick window surrounds on chalk (Lavannes). Champagne biome built 2026-10-29.
+First review 2026-10-29 (`research/mont-de-berru/review-2026-10-29.md`): REJECT, mean 2.63, one blocker (no church
+at km 11.0: it stands beside the rider there, out of a chase frame). Fixed since: real RPG fields, paved village
+ground and photo shadows, per-house windows and muted brick and roofs, white garage doors, plain shutters, kerbs and
+pavements, parked cars and people, street lamps and war memorials, verge variety, the late-August sun. Second
+capture set qa2 (16 frames, Époye from km 10.88) under review.

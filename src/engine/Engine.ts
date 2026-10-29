@@ -13,23 +13,24 @@ import { DEM_MAX_Z, preloadDemForBox } from '../geo/elevation.ts';
 import { lonLatToWorld } from '../geo/mercator.ts';
 import { ESRI, sourcesFor } from '../geo/imagery.ts';
 import { loadOsmElements, parseOsm, type OsmWorld, type Polygon } from '../geo/osm.ts';
+import { GRASS, lateSummer, loadParcels, VINES, type Parcel } from '../geo/fields.ts';
 import { pointAt, RouteIndex, type Route, type RoutePoint } from '../geo/route.ts';
 import { applyTime, atmo, clearTunnels, TIMES } from './atmosphere.ts';
 import { Buildings } from './Buildings.ts';
 import { CameraRig, type CameraMode } from './CameraRig.ts';
 import { Rider, type RiderStyle } from './Rider.ts';
-import { Road } from './Road.ts';
+import { pavements, Road } from './Road.ts';
 import { Sky } from './Sky.ts';
 import { Terrain } from './Terrain.ts';
 import { TerrainShadow } from './TerrainShadow.ts';
-import { clearWaterMask, setFieldMask, setTerrainBiome, setWaterMask } from './terrainMaterial.ts';
+import { clearWaterMask, fieldColour, setFieldMask, setTerrainBiome, setWaterMask } from './terrainMaterial.ts';
 import { Vegetation } from './Vegetation.ts';
 import { GroundCover } from './GroundCover.ts';
 import { Landmarks, loadRouteScene, type Placement } from './Landmarks.ts';
 import { ALPINE, biomeFor, type Biome } from './biome.ts';
 import { Roadside, type BarrierSpan } from './Roadside.ts';
 import { Tunnels } from './Tunnel.ts';
-import { builtUpRuns, Signs } from './Signs.ts';
+import { builtUpRuns, junctionsAlong, Signs } from './Signs.ts';
 import { Ocean } from './Ocean.ts';
 import { Props } from './Props.ts';
 import { Life } from './Life.ts';
@@ -83,6 +84,16 @@ function reversedDepthSupported() {
 }
 
 const tmp: Partial<RoutePoint> = {};
+
+/** A mask's pixels as a texture sharing their buffer with the CPU lookups (no canvas kept around for it). */
+function maskTexture(data: Uint8ClampedArray, w: number, h: number) {
+  const t = new THREE.DataTexture(data, w, h, THREE.RGBAFormat);
+  t.magFilter = t.minFilter = THREE.LinearFilter;
+  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+  t.generateMipmaps = false;
+  t.needsUpdate = true;
+  return t;
+}
 
 export class Engine {
   readonly renderer: THREE.WebGLRenderer;
@@ -218,6 +229,8 @@ export class Engine {
   private scale = 1;
   private slowFor = 0;
   private fastFor = 0;
+  /** Terrain detail as a share of the preset's: down to two thirds when even 1× resolution can't hold the frame rate. */
+  private detailScale = 1;
 
   setFrameCap(fps: number) {
     this.fpsCap = fps;
@@ -250,6 +263,7 @@ export class Engine {
     this.quality = q;
     const cfg = this.preset;
     this.scale = this.maxScale;
+    this.detailScale = 1;
     this.renderer.setPixelRatio(this.scale);
     this.sun.shadow.mapSize.set(cfg.shadow, cfg.shadow);
     this.sun.shadow.map?.dispose();
@@ -287,7 +301,9 @@ export class Engine {
 
   setTime(id: string) {
     this.timeId = id;
-    const t = TIMES.find((x) => x.id === id) ?? TIMES[0];
+    const preset = TIMES.find((x) => x.id === id) ?? TIMES[0];
+    const sun = this.biome.sun?.[preset.id];
+    const t = sun ? { ...preset, sunElevation: sun[0], sunAzimuth: sun[1] } : preset;
     applyTime(t);
     this.updateEnvironment();
     // valley-fog inversions sit a fixed height above the valley floor of the route
@@ -338,7 +354,7 @@ export class Engine {
       // scenes/<id>.json "imagery": "esri" picks Esri where the national photo is the wrong season or cast
       sources: sceneDef?.imagery === 'esri' ? [ESRI] : sourcesFor(p0.lon, p0.lat),
       anisotropy: this.renderer.capabilities.getMaxAnisotropy(),
-      detail: this.preset.detail,
+      detail: this.preset.detail * this.detailScale,
       cutWidth: biome.id === 'mediterranean' ? 3.2 : 14,
     });
     const road = new Road(route, halfWidth, biome);
@@ -386,9 +402,10 @@ export class Engine {
       }
       // the rendered ground (road cuts and fills included): trees and houses must stand on it
       const heightAt = (x: number, z: number) => terrain.groundHeight(x, z);
-      const [elements, baked] = await Promise.all([
+      const [elements, baked, parcels] = await Promise.all([
         loadOsmElements(route, CORRIDOR, (done, total) => (decorStage = `OpenStreetMap ${done + 1} of ${total}`)),
         loadBakedTrees(route.id, frame),
+        biome.fieldSeason ? loadParcels(route) : Promise.resolve([] as Parcel[]),
         Promise.all(jobs),
       ]);
       if (this.world !== world) return;
@@ -400,8 +417,12 @@ export class Engine {
       const fixes = (sceneDef?.osmTags ?? {}) as Record<string, Record<string, string>>;
       for (const e of elements) if (fixes[e.id]) e.tags = { ...e.tags, ...fixes[e.id] };
       const osm: OsmWorld = parseOsm(route, elements);
+      // French villages from sign to sign (posts stop there; kerbs, parked cars and people start), and where side
+      // roads and driveways join ours
+      const towns = route.category !== 'city' && biome.posts === 'fr' ? builtUpRuns(route, osm) : [];
+      const junctions = towns.length ? junctionsAlong(route, index, osm) : [];
+      if (towns.length) road.add(pavements(route, halfWidth, towns, junctions));
       if (route.category !== 'city') {
-        const towns = biome.posts === 'fr' ? builtUpRuns(route, osm) : [];
         world.roadside = new Roadside(
           route, halfWidth, (x, z) => terrain.groundHeight(x, z), biome,
           (sceneDef?.barriers as BarrierSpan[] | undefined) ?? [], osm.barriers,
@@ -411,9 +432,9 @@ export class Engine {
         world.signs = new Signs(route, halfWidth, (x, z) => terrain.groundHeight(x, z), biome, osm, towns);
         this.scene.add(world.signs);
       }
-      this.buildWaterMask(route, osm, baked);
+      this.buildWaterMask(route, osm, baked, parcels);
       if (this.world !== world) return;
-      this.addCover(world, osm);
+      this.addCover(world, osm, towns);
       decorStage = 'Growing forests';
       await new Promise((r) => setTimeout(r, 0));
       const trees = new Vegetation(route, index, osm, {
@@ -430,7 +451,7 @@ export class Engine {
         )
         .catch((e) => console.warn('props failed', e));
       void world.life
-        .build(route, index, osm, (x, z) => terrain.groundHeight(x, z), (x, z) => this.coverAt(x, z), biome)
+        .build(route, index, osm, (x, z) => terrain.groundHeight(x, z), (x, z) => this.coverAt(x, z), biome, towns, junctions, halfWidth)
         .catch((e) => console.warn('life failed', e));
       decorStage = 'Building villages';
       await new Promise((r) => setTimeout(r, 0));
@@ -469,7 +490,7 @@ export class Engine {
 
   private waterMask: { data: Uint8ClampedArray; x0: number; z0: number; res: number; w: number; h: number } | null = null;
 
-  private addCover(world: World, osm: OsmWorld | null) {
+  private addCover(world: World, osm: OsmWorld | null, towns: [number, number][] = []) {
     const mask = this.waterMask;
     const cover = new GroundCover({
       biome: this.biome,
@@ -478,6 +499,7 @@ export class Engine {
       halfWidth: world.halfWidth,
       groundHeight: (x, z) => world.terrain.groundHeight(x, z),
       roads: osm?.roads,
+      towns,
       isWater: mask
         ? (x, z) => {
             const px = Math.floor((x - mask.x0) / mask.res);
@@ -498,7 +520,7 @@ export class Engine {
   }
 
   /** Land mask over the corridor: R water, G meadow/grass, B built-up (terrain shading + ground cover). */
-  private buildWaterMask(route: Route, osm: OsmWorld, baked: BakedTrees | null) {
+  private buildWaterMask(route: Route, osm: OsmWorld, baked: BakedTrees | null, parcels: Parcel[] = []) {
     this.waterMask = null;
     this.canopyMask = null;
     this.fieldMask = null;
@@ -542,11 +564,9 @@ export class Engine {
     ctx.fillStyle = '#ff0000';
     ctx.fill(pathOf(osm.water), 'evenodd');
     this.waterMask = { data: ctx.getImageData(0, 0, cw, ch).data, x0, z0, res, w: cw, h: ch };
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.flipY = false;
-    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-    tex.minFilter = THREE.LinearFilter;
-    tex.generateMipmaps = false;
+    // the pixels live on in that buffer (the texture's data too): the canvas can go
+    canvas.width = canvas.height = 0;
+    const tex = maskTexture(this.waterMask.data, cw, ch);
 
     // canopy: real tree crowns where baked, else OSM forest polygons (forest floor shading, ground cover)
     const cc = document.createElement('canvas');
@@ -584,55 +604,78 @@ export class Engine {
     cx.fill(pathOf(osm.cover.filter((c) => c.cls === 'rock').map((c) => c.poly)), 'evenodd');
     cx.globalCompositeOperation = 'source-over';
     this.canopyMask = { data: cx.getImageData(0, 0, cw, ch).data, x0, z0, res, w: cw, h: ch };
-    const ctex = new THREE.CanvasTexture(cc);
-    ctex.flipY = false;
-    ctex.wrapS = ctex.wrapT = THREE.ClampToEdgeWrapping;
-    ctex.minFilter = THREE.LinearFilter;
-    ctex.generateMipmaps = false;
+    cc.width = cc.height = 0;
+    const ctex = maskTexture(this.canopyMask.data, cw, ch);
     setWaterMask(tex, x0, z0, cw * res, ch * res, ctex);
 
-    // late-summer fields (Champagne): R arable land, G meadows and grass, B vineyards, at half the
-    // land mask's resolution over the same area (parcels are tens of metres wide)
+    // late-summer fields (Champagne): what each field holds at the end of August as its ground colour (RGB; A where
+    // known) over the land mask's area: the RPG parcels farmers declared, OSM meadows and vineyards around them. The
+    // terrain shader guesses the rest from the photo; the ground cover reads each field's state from a raster
     if (!this.biome.fieldSeason) {
       setFieldMask(null);
       return;
     }
-    const fc = document.createElement('canvas');
-    fc.width = Math.ceil(cw / 2);
-    fc.height = Math.ceil(ch / 2);
-    const fx = fc.getContext('2d', { willReadFrequently: true })!;
-    fx.fillStyle = '#000';
-    fx.fillRect(0, 0, fc.width, fc.height);
-    fx.scale(0.5, 0.5);
-    fx.globalCompositeOperation = 'lighter';
-    const fill = (colour: string, keep: (c: OsmWorld['cover'][number]) => boolean) => {
-      fx.fillStyle = colour;
-      fx.fill(pathOf(osm.cover.filter(keep).map((c) => c.poly)), 'evenodd');
-    };
-    fill('#ff0000', (c) => c.kind === 'farmland');
-    fill('#00ff00', (c) => c.cls === 'meadow' && c.kind !== 'farmland');
-    fill('#0000ff', (c) => c.cls === 'vineyard');
-    this.fieldMask = { data: fx.getImageData(0, 0, fc.width, fc.height).data, x0, z0, res: res * 2, w: fc.width, h: fc.height };
-    const ftex = new THREE.CanvasTexture(fc);
-    ftex.flipY = false;
-    ftex.wrapS = ftex.wrapT = THREE.ClampToEdgeWrapping;
-    ftex.minFilter = THREE.LinearFilter;
-    ftex.generateMipmaps = false;
+    // seeds in 16 steps, the precision the state raster keeps: colour and ground cover agree on each field
+    const step16 = (v: number) => (Math.floor(v * 16) + 0.5) / 16;
+    const shapes: { path: Path2D; state: number; seed: number }[] = [];
+    for (const c of osm.cover) {
+      const seed = step16(Math.abs(Math.sin(c.poly.outer[0] * 0.0129898 + c.poly.outer[1] * 0.078233) * 43758.5453) % 1);
+      if (c.cls === 'vineyard') shapes.push({ path: pathOf([c.poly]), state: VINES, seed });
+      else if (c.cls === 'meadow' && c.kind !== 'farmland') shapes.push({ path: pathOf([c.poly]), state: GRASS, seed });
+    }
+    for (const p of parcels) {
+      const path = new Path2D();
+      for (let i = 0; i < p.ring.length; i += 2) {
+        const px = (p.ring[i] - x0) / res, pz = (p.ring[i + 1] - z0) / res;
+        if (i === 0) path.moveTo(px, pz);
+        else path.lineTo(px, pz);
+      }
+      path.closePath();
+      const seed = step16(p.seed);
+      shapes.push({ path, state: lateSummer(p.crop, seed), seed });
+    }
+    const colours = document.createElement('canvas');
+    const states = document.createElement('canvas');
+    colours.width = states.width = cw;
+    colours.height = states.height = ch;
+    const fx = colours.getContext('2d', { willReadFrequently: true })!;
+    const sx = states.getContext('2d', { willReadFrequently: true })!;
+    const srgb8 = (v: number) => Math.round(255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055));
+    for (const s of shapes) {
+      const [r, g, b] = fieldColour(s.state, s.seed);
+      fx.fillStyle = `rgb(${srgb8(r)},${srgb8(g)},${srgb8(b)})`;
+      fx.fill(s.path, 'evenodd');
+      sx.fillStyle = `rgb(${s.state * 16},${Math.floor(s.seed * 16) * 16},0)`;
+      sx.fill(s.path, 'evenodd');
+    }
+    // one byte per pixel: the state, and the seed in 16 steps. Edge pixels blend two fields' codes: only exact
+    // ones count
+    const sd = sx.getImageData(0, 0, cw, ch).data;
+    const known = new Uint8Array(cw * ch);
+    for (let j = 0, i = 0; j < known.length; j++, i += 4) {
+      const s = Math.round(sd[i] / 16);
+      if (s && sd[i + 3] > 200 && Math.abs(sd[i] - s * 16) <= 2) known[j] = s | (sd[i + 1] & 0xf0);
+    }
+    this.fieldMask = { data: known, x0, z0, res, w: cw, h: ch };
+    const ftex = maskTexture(fx.getImageData(0, 0, cw, ch).data, cw, ch);
+    ftex.colorSpace = THREE.SRGBColorSpace;
+    colours.width = colours.height = states.width = states.height = 0;
     setFieldMask(ftex);
   }
 
   private canopyMask: { data: Uint8ClampedArray; x0: number; z0: number; res: number; w: number; h: number } | null = null;
-  private fieldMask: { data: Uint8ClampedArray; x0: number; z0: number; res: number; w: number; h: number } | null = null;
+  private fieldMask: { data: Uint8Array; x0: number; z0: number; res: number; w: number; h: number } | null = null;
 
-  /** OSM field use at a world point: 0 none, 1 arable, 2 meadow, 3 vineyard. */
+  /** What the field at a world point holds at the end of August (a geo/fields.ts state), its seed as the fraction; 0
+   * where no field is known. */
   fieldAt(x: number, z: number): number {
     const m = this.fieldMask;
     if (!m) return 0;
     const px = Math.floor((x - m.x0) / m.res);
     const pz = Math.floor((z - m.z0) / m.res);
     if (px < 0 || pz < 0 || px >= m.w || pz >= m.h) return 0;
-    const i = (pz * m.w + px) * 4;
-    return m.data[i + 2] > 128 ? 3 : m.data[i + 1] > 128 ? 2 : m.data[i] > 128 ? 1 : 0;
+    const v = m.data[pz * m.w + px];
+    return v & 15 ? (v & 15) + ((v >> 4) + 0.5) / 16 : 0;
   }
 
   /** Tree canopy cover 0..1 at a world point. */
@@ -686,13 +729,18 @@ export class Engine {
     }
     w.terrain.dispose();
     w.shadow.dispose();
+    // with the textures the materials hold (village signs, models): a shared one is uploaded again when next used
+    const disposeMat = (x: THREE.Material) => {
+      for (const v of Object.values(x)) if (v instanceof THREE.Texture) v.dispose();
+      x.dispose();
+    };
     const dispose = (o: THREE.Object3D) =>
       o.traverse((c) => {
         const m = c as THREE.Mesh;
         m.geometry?.dispose();
         const mat = m.material as THREE.Material | THREE.Material[] | undefined;
-        if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
-        else mat?.dispose();
+        if (Array.isArray(mat)) mat.forEach(disposeMat);
+        else if (mat) disposeMat(mat);
       });
     if (w.roadside) this.scene.remove(w.roadside);
     if (w.signs) this.scene.remove(w.signs);
@@ -703,9 +751,9 @@ export class Engine {
       w.ocean.material.dispose();
     }
     clearTunnels();
+    [w.road, w.rider, w.ghost, w.trees, w.buildings, w.roadside, w.signs, w.props, w.life, w.landmarks].forEach((o) => o && dispose(o));
     w.props.clear();
     w.life.clear();
-    [w.road, w.rider, w.ghost, w.trees, w.buildings, w.roadside, w.signs].forEach((o) => o && dispose(o));
     w.landmarks.clear();
     this.world = null;
   }
@@ -869,6 +917,17 @@ export class Engine {
       this.slowFor = this.fastFor = 0;
       this.renderer.setPixelRatio(next);
       this.resize();
+      return;
+    }
+    // at 1× and still short of the frame rate: coarser terrain (fewer, larger tiles), down to two thirds of the
+    // preset's detail, and back once there is headroom at full resolution. Under 15 fps it is a loading hitch or a
+    // software renderer (the captures), not a budget to tune
+    const d = this.detailScale;
+    if (this.slowFor >= 3 && this.scale <= 1.001 && this.fps > 15) this.detailScale = Math.max(0.67, d - 0.11);
+    else if (this.fastFor >= 20 && this.scale >= cap - 0.001) this.detailScale = Math.min(1, d + 0.11);
+    if (this.detailScale !== d) {
+      this.slowFor = this.fastFor = 0;
+      this.world.terrain.setDetail(this.preset.detail * this.detailScale);
     }
   }
 

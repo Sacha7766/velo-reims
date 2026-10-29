@@ -1,6 +1,6 @@
 // Small real-world things from OpenStreetMap points and lines, using the Blender-built props in
 // public/models: benches, bus stops, guideposts, wayside crosses, info boards, the summit cross,
-// power poles with sagging wires, fences and walls, and firewood stacks beside farmhouses.
+// power poles with sagging wires, fences and walls, and firewood stacks beside farmhouses; street lamps.
 
 import * as THREE from 'three';
 import type { Building, OsmWorld } from '../geo/osm.ts';
@@ -85,6 +85,8 @@ export class Props extends THREE.Group {
     });
     await Promise.all(jobs);
     this.add(this.wires(osm, poles, groundAt));
+    this.add(this.lamps(route, index, osm, groundAt, halfWidth));
+    this.add(this.memorials(route, index, osm, groundAt, halfWidth));
     this.add(this.towers(osm, groundAt, models, biome));
     this.add(this.fences(osm, index, groundAt, halfWidth, biome));
   }
@@ -175,6 +177,91 @@ export class Props extends THREE.Group {
     }
     if (!parts.length) return new THREE.Group();
     const mat = patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.1 }), { key: 'tower' });
+    const mesh = new THREE.Mesh(mergeColored(parts), mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return mesh;
+  }
+
+  /**
+   * Street lamps at the OSM points within 60 m of the route: a grey steel post with an arm reaching over the street
+   * and a flat lantern (the Reims villages, research/champagne/streetlevel/reims-grand-tour-km34.00), one mesh for all.
+   */
+  private lamps(route: Route, index: RouteIndex, osm: OsmWorld, groundAt: (x: number, z: number) => number, halfWidth: number): THREE.Object3D {
+    const parts: [THREE.BufferGeometry, THREE.Color][] = [];
+    const srgb = (r: number, g: number, b: number) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
+    const steel = srgb(0.52, 0.54, 0.55), head = srgb(0.3, 0.31, 0.32), lens = srgb(0.93, 0.92, 0.86);
+    for (const p of osm.pois) {
+      if (p.kind !== 'street_lamp') continue;
+      const near = index.nearest(p.x, p.z, 60);
+      if (near.index < 0) continue;
+      const h = route.heading[near.index];
+      const rx = Math.cos(h), rz = Math.sin(h);
+      const side = (p.x - route.x[near.index]) * rx + (p.z - route.z[near.index]) * rz >= 0 ? 1 : -1;
+      let x = p.x, z = p.z;
+      if (near.dist < halfWidth + 0.6) {
+        x = route.x[near.index] + rx * side * (halfWidth + 0.8);
+        z = route.z[near.index] + rz * side * (halfWidth + 0.8);
+      }
+      const y = groundAt(x, z);
+      if (!Number.isFinite(y)) continue;
+      // the arm reaches across towards the route
+      const ax = -rx * side, az = -rz * side;
+      const yaw = Math.atan2(-az, ax);
+      const H = 6.4;
+      parts.push([new THREE.CylinderGeometry(0.045, 0.07, H + 0.3, 8).translate(x, y - 0.3 + (H + 0.3) / 2, z), steel]);
+      parts.push([new THREE.BoxGeometry(0.07, 0.4, 0.07).rotateZ(-0.6).rotateY(yaw).translate(x + ax * 0.1, y + H + 0.12, z + az * 0.1), steel]);
+      parts.push([new THREE.BoxGeometry(1.0, 0.06, 0.06).rotateY(yaw).translate(x + ax * 0.68, y + H + 0.3, z + az * 0.68), steel]);
+      parts.push([new THREE.BoxGeometry(0.62, 0.12, 0.3).rotateY(yaw).translate(x + ax * 1.35, y + H + 0.26, z + az * 1.35), head]);
+      parts.push([new THREE.BoxGeometry(0.5, 0.03, 0.22).rotateY(yaw).translate(x + ax * 1.35, y + H + 0.19, z + az * 1.35), lens]);
+    }
+    if (!parts.length) return new THREE.Group();
+    const mat = patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.3 }), { key: 'lamp' });
+    const mesh = new THREE.Mesh(mergeColored(parts), mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return mesh;
+  }
+
+  /**
+   * The war memorial at the heart of each village (monument aux morts): a pale limestone obelisk on a pedestal and
+   * two steps, iron posts at its corners, facing the street. One mesh for all.
+   */
+  private memorials(route: Route, index: RouteIndex, osm: OsmWorld, groundAt: (x: number, z: number) => number, halfWidth: number): THREE.Object3D {
+    const parts: [THREE.BufferGeometry, THREE.Color][] = [];
+    const srgb = (r: number, g: number, b: number) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
+    const stone = srgb(0.84, 0.82, 0.76), step = srgb(0.74, 0.72, 0.67), iron = srgb(0.16, 0.17, 0.18);
+    for (const p of osm.pois) {
+      if (p.kind !== 'memorial') continue;
+      const near = index.nearest(p.x, p.z, 400);
+      if (near.index < 0) continue;
+      const h = route.heading[near.index];
+      const rx = Math.cos(h), rz = Math.sin(h);
+      const side = (p.x - route.x[near.index]) * rx + (p.z - route.z[near.index]) * rz >= 0 ? 1 : -1;
+      let x = p.x, z = p.z;
+      if (near.dist < halfWidth + 3) {
+        x = route.x[near.index] + rx * side * (halfWidth + 3);
+        z = route.z[near.index] + rz * side * (halfWidth + 3);
+      }
+      const y = groundAt(x, z);
+      if (!Number.isFinite(y)) continue;
+      const yaw = Math.atan2(-rz * side, rx * side);
+      const box = (w: number, hgt: number, d: number, y0: number, c: THREE.Color) =>
+        parts.push([new THREE.BoxGeometry(w, hgt, d).rotateY(yaw).translate(x, y0 + hgt / 2, z), c]);
+      box(2.4, 0.5, 2.4, y - 0.3, step);
+      box(1.7, 0.3, 1.7, y + 0.2, step);
+      box(1.0, 1.3, 1.0, y + 0.5, stone);
+      box(1.15, 0.12, 1.15, y + 1.8, stone);
+      // the obelisk tapers; a four-sided cone makes its point
+      parts.push([new THREE.CylinderGeometry(0.25, 0.38, 2.8, 4, 1).rotateY(Math.PI / 4 + yaw).translate(x, y + 1.92 + 1.4, z), stone]);
+      parts.push([new THREE.ConeGeometry(0.25, 0.4, 4).rotateY(Math.PI / 4 + yaw).translate(x, y + 4.72 + 0.2, z), stone]);
+      for (const [a, b] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        const ox = (Math.cos(yaw) * a + Math.sin(yaw) * b) * 1.55, oz = (-Math.sin(yaw) * a + Math.cos(yaw) * b) * 1.55;
+        parts.push([new THREE.CylinderGeometry(0.05, 0.06, 0.8, 6).translate(x + ox, y + 0.1, z + oz), iron]);
+      }
+    }
+    if (!parts.length) return new THREE.Group();
+    const mat = patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }), { key: 'memorial' });
     const mesh = new THREE.Mesh(mergeColored(parts), mat);
     mesh.castShadow = true;
     mesh.receiveShadow = true;

@@ -1,7 +1,7 @@
 // Things that move: paragliders thermalling over the real Gaisberg take-off sites (OSM
 // sport=free_flying), Pinzgauer cattle grazing on OSM meadows, a flock of jackdaws at the
 // summit, and road traffic (oncoming cars and motorbikes, the odd car overtaking). On Mallorca:
-// goats, sailboats, tour coaches and other cyclists.
+// goats, sailboats, tour coaches and other cyclists. In French villages: parked cars and people about.
 
 import * as THREE from 'three';
 import type { OsmWorld } from '../geo/osm.ts';
@@ -10,6 +10,7 @@ import { patchMaterial } from './atmosphere.ts';
 import { loadModel } from './Landmarks.ts';
 import type { Biome } from './biome.ts';
 import { Rider } from './Rider.ts';
+import { PAVEMENT } from './Road.ts';
 
 const CANOPIES = ['#f5a11a', '#d7263d', '#1b98e0', '#2bb673', '#f4d35e', '#7b2cbf', '#ff6b35', '#e0e0e0'];
 const KITS = ['#e63946', '#1d3557', '#2a9d8f', '#f4a261', '#f1f1ee', '#111214', '#ffb703', '#8338ec'];
@@ -126,6 +127,11 @@ export class Life extends THREE.Group {
     groundAt: (x: number, z: number) => number,
     coverAt: (x: number, z: number) => number,
     biome?: Biome,
+    /** Built-up stretches [from, to] (m) of the route: villages get parked cars and people. */
+    towns: [number, number][] = [],
+    /** Where side roads and driveways join the route (m): no car parks across them. */
+    junctions: number[] = [],
+    halfWidth = 3.1,
   ) {
     this.route = route;
     this.groundAt = groundAt;
@@ -253,6 +259,7 @@ export class Life extends THREE.Group {
         });
       }
     }
+    if (towns.length) await this.buildVillages(route, osm, groundAt, towns, junctions, halfWidth, r);
     // --- vehicle models for traffic
     const [hatch, van, moto] = await Promise.all([loadModel('car-hatchback.glb'), loadModel('car-van.glb'), loadModel('motorbike.glb')]);
     for (let i = 0; i < 4; i++) this.cars.push(tinted(hatch, ['car-hatchback_body'], CAR_COLOURS[i * 2 % CAR_COLOURS.length]));
@@ -262,6 +269,117 @@ export class Life extends THREE.Group {
       c.visible = false;
       this.add(c);
     }
+  }
+
+  /**
+   * Village streets: cars parked on the pavement facing their side's traffic, and a few people standing about; none
+   * at a junction or driveway, none inside a house front. Instanced per village, so a village is a dozen draw calls
+   * and the ones out of view are culled.
+   */
+  private async buildVillages(
+    route: Route, osm: OsmWorld, groundAt: (x: number, z: number) => number, towns: [number, number][], junctions: number[],
+    halfWidth: number, r: () => number,
+  ) {
+    const [hatch, van, stand] = await Promise.all([loadModel('car-hatchback.glb'), loadModel('car-van.glb'), loadModel('person-stand.glb')]);
+    // house footprints by 60 m cell of their first corner
+    const cells = new Map<number, Float32Array[]>();
+    for (const b of osm.buildings) {
+      const k = Math.floor(b.ring[0] / 60) * 100003 + Math.floor(b.ring[1] / 60);
+      const l = cells.get(k);
+      if (l) l.push(b.ring);
+      else cells.set(k, [b.ring]);
+    }
+    const inHouse = (x: number, z: number) => {
+      const cx = Math.floor(x / 60), cz = Math.floor(z / 60);
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dz = -1; dz <= 1; dz++) {
+          for (const ring of cells.get((cx + dx) * 100003 + cz + dz) ?? []) {
+            let inside = false;
+            for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
+              const xi = ring[i], zi = ring[i + 1], xj = ring[j], zj = ring[j + 1];
+              if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+            }
+            if (inside) return true;
+          }
+        }
+      }
+      return false;
+    };
+    const p: Partial<RoutePoint> = {};
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const up = new THREE.Vector3(0, 1, 0);
+    const one = new THREE.Vector3(1, 1, 1);
+    const at = new THREE.Vector3();
+    const paint = (hex: string) => new THREE.Color(hex).convertSRGBToLinear();
+    // the people dress for the village, not the summit
+    const CLOTHES = ['#1d3557', '#f1f1ee', '#6c757d', '#c9b79c', '#a4161a', '#2a6f4e', '#222222', '#e9c46a'];
+    for (const [a, b] of towns) {
+      const hatchAt: THREE.Matrix4[] = [], vanAt: THREE.Matrix4[] = [], folkAt: THREE.Matrix4[] = [];
+      const hatchPaint: THREE.Color[] = [], vanPaint: THREE.Color[] = [], folkPaint: THREE.Color[] = [];
+      for (let s = a + 20 + r() * 25; s < b - 20; s += 7 + r() * 34) {
+        if (junctions.some((j) => Math.abs(j - s) < 14)) continue;
+        const side = r() < 0.5 ? 1 : -1;
+        const pt = pointAt(route, s, p);
+        const h = pt.heading;
+        const fx = Math.sin(h), fz = -Math.cos(h), rx = Math.cos(h) * side, rz = Math.sin(h) * side;
+        // on the pavement, as most cars in these villages stand
+        const x = pt.x + rx * (halfWidth + 1.0), z = pt.z + rz * (halfWidth + 1.0);
+        if ([[2.2, 0.9], [2.2, -0.9], [-2.2, 0.9], [-2.2, -0.9]].some(([f, l]) => inHouse(x + fx * f + rx * l, z + fz * f + rz * l))) continue;
+        // not against a bank or a wall rising behind the pavement
+        const back = groundAt(x + rx * 0.9, z + rz * 0.9);
+        if (!Number.isFinite(back) || back > pt.ele + 0.5) continue;
+        q.setFromAxisAngle(up, -h + (side > 0 ? 0 : Math.PI));
+        const isVan = r() < 0.25;
+        (isVan ? vanAt : hatchAt).push(m.compose(at.set(x, pt.ele + 0.06 + PAVEMENT, z), q, one).clone());
+        (isVan ? vanPaint : hatchPaint).push(paint(CAR_COLOURS[Math.floor(r() * CAR_COLOURS.length)]));
+      }
+      // two to five people on the pavements
+      for (let n = 2 + Math.floor(r() * 4), tries = 0; folkAt.length < n && tries < 30; tries++) {
+        const s = a + r() * (b - a);
+        const side = r() < 0.5 ? 1 : -1;
+        const pt = pointAt(route, s, p);
+        const h = pt.heading;
+        const off = halfWidth + 1.9 + r() * 1.0;
+        const x = pt.x + Math.cos(h) * side * off, z = pt.z + Math.sin(h) * side * off;
+        const y = groundAt(x, z);
+        if (!Number.isFinite(y) || inHouse(x, z)) continue;
+        q.setFromAxisAngle(up, -h + r() * Math.PI * 2);
+        const k = 0.92 + r() * 0.14;
+        folkAt.push(m.compose(at.set(x, y - 0.03, z), q, new THREE.Vector3(k, k, k)).clone());
+        folkPaint.push(paint(CLOTHES[Math.floor(r() * CLOTHES.length)]));
+      }
+      this.instanced(hatch, hatchAt, 'car-hatchback_body', hatchPaint);
+      this.instanced(van, vanAt, 'car-van_body', vanPaint);
+      this.instanced(stand, folkAt, 'person_body', folkPaint, ['person_pack']);
+    }
+  }
+
+  /** One InstancedMesh per part of a model at the given placements; the `paint` material takes a colour per instance. */
+  private instanced(src: THREE.Group, at: THREE.Matrix4[], paint: string, colours: THREE.Color[], skip: string[] = []) {
+    if (!at.length) return;
+    src.updateMatrixWorld(true);
+    const m = new THREE.Matrix4();
+    src.traverse((c) => {
+      const part = c as THREE.Mesh;
+      if (!part.isMesh) return;
+      let mat = part.material as THREE.MeshStandardMaterial;
+      if (skip.includes(mat.name)) return;
+      const painted = mat.name === paint;
+      if (painted) {
+        // white, so the instance colour is the paint
+        const cl = mat.clone();
+        cl.color.set(0xffffff);
+        mat = patchMaterial(cl, { key: `inst:${paint}` });
+      }
+      const im = new THREE.InstancedMesh(part.geometry, mat, at.length);
+      at.forEach((a, i) => im.setMatrixAt(i, m.multiplyMatrices(a, part.matrixWorld)));
+      if (painted) colours.forEach((col, i) => im.setColorAt(i, col));
+      im.castShadow = true;
+      im.receiveShadow = true;
+      im.computeBoundingSphere();
+      this.add(im);
+    });
   }
 
   /** Feral goats on the slopes and the road near the cape, sailboats on the bay. */

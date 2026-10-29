@@ -206,6 +206,57 @@ export class Road extends THREE.Group {
 
 }
 
+/** Height of the village pavements above the asphalt (Life parks cars on them). */
+export const PAVEMENT = 0.12;
+
+/**
+ * Village kerbs and pavements from sign to sign: a kerb stone 13 cm high and a 1.5 m pavement behind it on both
+ * sides, broken for 12 m where a side road or driveway joins. One mesh for the route.
+ */
+export function pavements(route: Route, halfWidth: number, towns: [number, number][], gaps: number[]): THREE.Mesh {
+  const pos: number[] = [];
+  const col: number[] = [];
+  const kerb = new THREE.Color().setRGB(0.66, 0.65, 0.62, THREE.SRGBColorSpace);
+  const walk = new THREE.Color().setRGB(0.44, 0.43, 0.41, THREE.SRGBColorSpace);
+  // across from the asphalt's edge and up from its surface: kerb face, kerb top, pavement, its back face into the ground
+  const prof: [number, number, THREE.Color][] = [
+    [0.02, 0, kerb], [0.02, 0.13, kerb], [0.17, 0.13, kerb], [0.17, PAVEMENT, walk], [1.7, PAVEMENT - 0.01, walk], [1.7, -0.5, walk],
+  ];
+  for (const [a, b] of towns) {
+    for (const side of [-1, 1]) {
+      let prev: number[][] | null = null;
+      for (let i = Math.ceil(a / route.step); i <= Math.min(route.n - 1, Math.floor(b / route.step)); i++) {
+        if (gaps.some((g) => Math.abs(g - i * route.step) < 6)) {
+          prev = null;
+          continue;
+        }
+        const h = route.heading[i], rx = Math.cos(h) * side, rz = Math.sin(h) * side;
+        // the asphalt's surface (Road lays it 6 cm above the route)
+        const y = route.ele[i] + 0.06;
+        const sec = prof.map(([o, dy]) => [route.x[i] + rx * (halfWidth + o), y + dy, route.z[i] + rz * (halfWidth + o)]);
+        if (prev) {
+          for (let k = 0; k + 1 < prof.length; k++) {
+            for (const p of [prev[k], prev[k + 1], sec[k + 1], prev[k], sec[k + 1], sec[k]]) {
+              pos.push(p[0], p[1], p[2]);
+              col.push(prof[k][2].r, prof[k][2].g, prof[k][2].b);
+            }
+          }
+        }
+        prev = sec;
+      }
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.computeVertexNormals();
+  // both sides of the road wind opposite ways: lit from either face
+  const mat = patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, side: THREE.DoubleSide }), { key: 'pavement' });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
 /** Street lamps every 32 m, alternating sides (city routes). */
 function lamps(route: Route, halfWidth: number): THREE.Group {
   const g = new THREE.Group();

@@ -10,7 +10,12 @@ are **est.**. Route km are along each route file.
 
 - [ROUTE] public/routes/<id>.json (BRouter, elevations from its DEM).
 - [OSM] BBBike extract of 2026-10-29 (3.89–4.41 E, 49.23–49.44 N), baked into public/osm/<id>.json.
-- [IGN] BD ORTHO tiles (data.geopf.fr), looked at around Nogent-l'Abbesse.
+- [IGN] BD ORTHO tiles (data.geopf.fr), looked at around Nogent-l'Abbesse. The Marne mosaic around the Mont de Berru
+  was flown on 28 April, 29 April and 9 May 2025 at 20 cm (IGN mosaic graph, WFS layer
+  `ORTHOIMAGERY.ORTHOPHOTOS.GRAPHE-MOSAIQUAGE:graphe_bdortho`): the photo shows the plain in spring.
+- [RPG] Registre Parcellaire Graphique, latest campaign (IGN / ASP, Licence Ouverte 2.0), WFS layer
+  `RPG.LATEST:parcelles_graphiques`, baked by `scripts/bake-fields.mjs` into `public/fields/<id>.json`: each
+  declared parcel's outline and crop code.
 - [PNX-n] Panoramax 360° photos, cut to a forward view along the route (`streetlevel/`, manifest.json holds the
   links). All by **atchisson**, 2025-08-26, CC BY-SA 4.0:
 
@@ -71,6 +76,11 @@ per village go to `photos/` (manifest.json) as the rate limit on the shared buil
 - Sugar beet: low, dark green [PNX-7, 10]; maize: tall, mid green [PNX-3].
 - Verges: green grass with tall dry grass at the field edge [PNX-4, 10].
 - Exact hex values: **unknown** until sampled from the frames.
+- Crops around the Mont de Berru loop, by area of the parcels within 1.1 km [RPG]: winter wheat 33 %, sugar beet
+  21 %, winter barley 14 %, spring barley 10 %, alfalfa 9 %, winter rape 7 %; vines 1 % of the area but 500 small
+  parcels on the hill's flanks; fallow, potatoes, hemp, maize each under 1 %. At the end of August the cereals
+  and rape are harvested (stubble, disced or greening again), beet still stands dark green until its harvest
+  from mid-September, alfalfa grows back between cuts.
 
 ## Buildings
 

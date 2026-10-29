@@ -417,6 +417,16 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
       }
       continue;
     }
+    // a memorial mapped as its railed plot: a point at the plot's centre
+    if (t.historic === 'memorial' && !t.building && el.type === 'way' && el.geometry) {
+      const kind = poiKind(t);
+      const ring = toRing(route, el.geometry);
+      if (kind && ring.length >= 6) {
+        const [a, b, c, d] = ringBbox(ring);
+        pois.push({ x: (a + c) / 2, z: (b + d) / 2, kind, name: t.name });
+      }
+      continue;
+    }
     const coverCls = COVER[t.landuse] ?? COVER[t.natural];
     if (t.landuse === 'forest' || t.natural === 'wood') forests.push(...polygonsFrom(route, el));
     else if (t.natural === 'water') water.push(...polygonsFrom(route, el));
@@ -486,6 +496,8 @@ function poiKind(t: Record<string, string>): string | null {
   if (t.amenity === 'shelter') return 'shelter';
   if (t.historic === 'wayside_cross' || t.man_made === 'cross' || t.summit_cross === 'yes') return 'cross';
   if (t.historic === 'wayside_shrine') return 'shrine';
+  // war memorials; graves and plaques are left out
+  if (t.historic === 'memorial' && !/tombe|grave|plaque|commonwealth|cwgc/i.test(t.name ?? '')) return 'memorial';
   if (t.tourism === 'information' && (t.information === 'guidepost' || !t.information)) return 'guidepost';
   if (t.tourism === 'information' && t.information === 'board') return 'board';
   if (t.tourism === 'viewpoint') return 'viewpoint';

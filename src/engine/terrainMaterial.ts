@@ -4,9 +4,10 @@
 // sky reflections, waves and sun glints.
 
 import * as THREE from 'three';
-import { patchMaterial } from './atmosphere.ts';
+import { patchMaterial, tunnelUniforms } from './atmosphere.ts';
 import { groundTextures } from './groundTextures.ts';
 import type { Biome } from './biome.ts';
+import { ALFALFA, BEET, DISCED, FLAX, GRASS, HEMP, MAIZE, POTATO, REGROWTH, STUBBLE, SUNFLOWER, VINES } from '../geo/fields.ts';
 
 const blank = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
 blank.needsUpdate = true;
@@ -32,7 +33,8 @@ export const terrainUniforms = {
   uMaskSize: { value: new THREE.Vector2(1, 1) },
   /** Orthophoto gain, saturation and gamma (biome.photoGrade). */
   uPhotoGrade: { value: new THREE.Vector3(1.32, 1.28, 1.06) },
-  /** Late-summer fields from a spring photo (biome.fieldSeason), over the land mask: R arable, G meadow, B vineyard. */
+  /** Late-summer fields from a spring photo (biome.fieldSeason), over the land mask: each known field's colour at the end
+   * of August (sRGB) and A where one is known (Engine.buildWaterMask). */
   uFieldSeason: { value: 0 },
   uFields: { value: blank as THREE.Texture },
   /** Grass that replaces the photo's grey road edge on verges (Alpine green; Champagne dry in August). */
@@ -52,11 +54,41 @@ export function setWaterMask(tex: THREE.Texture, x0: number, z0: number, w: numb
 
 let cliffTex: { c: THREE.Texture; n: THREE.Texture } | null = null;
 
-/** Arable / meadow / vineyard mask over the same area as the land mask (null: none). */
+/** Known fields' late-summer colours over the same area as the land mask (null: none). */
 export function setFieldMask(tex: THREE.Texture | null) {
   const old = terrainUniforms.uFields.value;
   terrainUniforms.uFields.value = tex ?? blank;
   if (old !== blank && old !== tex) old.dispose();
+}
+
+/** A field's ground at the end of August, linear albedo, for its state (geo/fields.ts) and seed. */
+export function fieldColour(state: number, seed: number): [number, number, number] {
+  const t = (seed * 7.31) % 1;
+  const mix = (a: number[], b: number[]): [number, number, number] => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  switch (state) {
+    // pale beige straw to tan (the Panoramax frames of 26 August: stubble around sRGB 150, 135, 118)
+    case STUBBLE: return mix([0.42, 0.38, 0.3], [0.37, 0.32, 0.23]);
+    // disced chalky soil, grey-beige with the straw worked in: pale, never white
+    case DISCED: return mix([0.4, 0.38, 0.33], [0.33, 0.3, 0.25]);
+    // stubble greening with volunteer cereals or rape and the first cover crops
+    case REGROWTH: return mix([0.3, 0.31, 0.19], [0.22, 0.27, 0.12]);
+    case BEET: return mix([0.07, 0.13, 0.045], [0.09, 0.155, 0.055]);
+    case MAIZE: return mix([0.1, 0.17, 0.05], [0.13, 0.19, 0.06]);
+    // haulms dying back, yellow-brown, some still green
+    case POTATO: return mix([0.24, 0.21, 0.1], [0.16, 0.19, 0.07]);
+    // alfalfa between cuts; a quarter just cut, pale straw-green
+    case ALFALFA: return t < 0.25 ? [0.3, 0.31, 0.17] : mix([0.12, 0.2, 0.06], [0.16, 0.23, 0.08]);
+    // grassland dried by the summer
+    case GRASS: return mix([0.2, 0.23, 0.1], [0.27, 0.27, 0.13]);
+    // the grassed rows between the vines (near the road the vines themselves are 3D rows)
+    case VINES: return [0.16, 0.2, 0.09];
+    case HEMP: return mix([0.08, 0.14, 0.05], [0.1, 0.16, 0.06]);
+    case SUNFLOWER: return [0.2, 0.18, 0.08];
+    // flax pulled in July, retting grey-brown in swaths
+    case FLAX: return [0.3, 0.28, 0.21];
+    // fallow and the rest: weedy, half green, half straw
+    default: return mix([0.25, 0.26, 0.12], [0.31, 0.29, 0.16]);
+  }
 }
 
 export function setTerrainBiome(b: Biome) {
@@ -105,6 +137,9 @@ export function terrainMaterial(map: THREE.Texture) {
     terrainUniforms.uGravelTex.value = g.gravel;
   }
   const mat = new THREE.MeshLambertMaterial({ map });
+  // only tunnels, underpasses and a photographed sea cut holes in the ground. Elsewhere the shader has no
+  // discard, so the GPU can still drop the ground hidden behind a hill (and what lies behind it) unshaded
+  if (tunnelUniforms.uTunnelCount.value > 0 || terrainUniforms.uPhotoSea.value > 0.5) mat.defines = { TERRAIN_CUTS: '' };
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, terrainUniforms);
     shader.vertexShader = shader.vertexShader
@@ -138,10 +173,12 @@ ${NOISE}`,
       )
       .replace(
         '#include <map_fragment>',
-        `// tunnel portals: no terrain inside the bore
+        `#ifdef TERRAIN_CUTS
+// tunnel portals: no terrain inside the bore
 if (atmoTunnel(vAtmoWorld).x > 0.5) discard;
 // coastal routes: the open-sea plane takes over far out (no tile edges or skirts on the horizon)
 if (uPhotoSea > 0.5 && vAtmoWorld.y < 0.6 && length(vAtmoWorld.xz - cameraPosition.xz) > 8000.0) discard;
+#endif
 vec3 tPert = vec3(0.0);
 float tWater = 0.0;
 float tDetail = 1.0;
@@ -208,21 +245,23 @@ float tBump = 0.0;
   vec3 area = texture(map, vMapUv, 5.0).rgb * photoFix;
   float la = dot(area, vec3(0.2126, 0.7152, 0.0722));
   area = pow(max(mix(vec3(la), area, gSat), vec3(0.0)), vec3(mix(uPhotoGrade.z, 1.12, uKarst))) * gGain;
-  vec3 wide = texture(map, vMapUv, 7.5).rgb * photoFix;
-  float lw = dot(wide, vec3(0.2126, 0.7152, 0.0722));
-  wide = pow(max(mix(vec3(lw), wide, uPhotoGrade.y * 0.94), vec3(0.0)), vec3(uPhotoGrade.z)) * uPhotoGrade.x;
 
   // detail textures (mean ~1): two scales against tiling
   float gd = texture2D(uGrassTex, p * 0.6).r * 2.0 * (0.55 + 0.9 * texture2D(uGrassTex, p * 0.063 + 0.31).r);
   gd = 1.0 + (gd - 1.0) * mix(0.5, 0.3, smoothstep(30.0, 160.0, camD));
-  vec3 bw = pow(abs(wn), vec3(4.0));
-  bw /= (bw.x + bw.y + bw.z);
-  float rd = (texture2D(uRockTex, q.zy * vec2(0.13, 0.21)).r * bw.x + texture2D(uRockTex, q.xz * 0.13).r * bw.y + texture2D(uRockTex, q.xy * vec2(0.13, 0.21)).r * bw.z) * 2.0;
-  float rd2 = (texture2D(uRockTex, q.zy * 0.037 + 0.5).r * bw.x + texture2D(uRockTex, q.xz * 0.037 + 0.5).r * bw.y + texture2D(uRockTex, q.xy * 0.037 + 0.5).r * bw.z) * 2.0;
-  rd = mix(rd, rd * rd2, 0.6);
-  rd *= 0.7 + 0.6 * (texture2D(uRockTex, q.xz * 0.021 + q.y * 0.01).r);
-  // karst pavement is smooth, rounded limestone: much less crackle than Alpine rock
-  rd = 1.0 + (rd - 1.0) * mix(1.0, 0.35, uKarst);
+  // the tri-planar rock is 7 of the shader's texture reads: only where there is rock near the camera (its
+  // weight has faded to nothing where the branch flips, so the skipped side looks the same)
+  float rd = 1.0;
+  if (wRock * near > 0.002) {
+    vec3 bw = pow(abs(wn), vec3(4.0));
+    bw /= (bw.x + bw.y + bw.z);
+    rd = (texture2D(uRockTex, q.zy * vec2(0.13, 0.21)).r * bw.x + texture2D(uRockTex, q.xz * 0.13).r * bw.y + texture2D(uRockTex, q.xy * vec2(0.13, 0.21)).r * bw.z) * 2.0;
+    float rd2 = (texture2D(uRockTex, q.zy * 0.037 + 0.5).r * bw.x + texture2D(uRockTex, q.xz * 0.037 + 0.5).r * bw.y + texture2D(uRockTex, q.xy * 0.037 + 0.5).r * bw.z) * 2.0;
+    rd = mix(rd, rd * rd2, 0.6);
+    rd *= 0.7 + 0.6 * (texture2D(uRockTex, q.xz * 0.021 + q.y * 0.01).r);
+    // karst pavement is smooth, rounded limestone: much less crackle than Alpine rock
+    rd = 1.0 + (rd - 1.0) * mix(1.0, 0.35, uKarst);
+  }
   float gv = texture2D(uGravelTex, p * 0.9).r * 2.0;
   float d = 1.0;
   d = mix(d, gd, wGrass);
@@ -235,14 +274,15 @@ float tBump = 0.0;
   // close to the camera the photo blurs and smears at grazing angles: keep its colour, not its texels
   float soft = (1.0 - smoothstep(30.0, 180.0, camD));
   vec3 base = mix(tc, area, soft * 0.9);
-  // Champagne at the end of August: the orthophoto shows the plain in spring. Winter wheat, barley and
-  // rape (green then) are harvested to stubble by now; the spring-sown beet, maize and potatoes (bare
-  // chalk in the photo) stand green. Each parcel keeps its photographed outline, so the strips stay
-  // real, and its photographed tone picks its late-summer state.
+  // Champagne at the end of August: the orthophoto shows the plain in spring. Fields known from the RPG parcels (and
+  // OSM meadows and vineyards) carry their late-summer colour in uFields (A: known). Elsewhere each parcel's
+  // photographed tone picks its state: green then (winter wheat, barley, rape) is harvested to stubble by now, bare
+  // chalk then (the spring-sown beet, maize, potatoes) stands green
   if (uFieldSeason > 0.5) {
-    vec3 fm = inMask ? texture2D(uFields, lmuv).rgb : vec3(0.0);
-    float meadowTrue = smoothstep(0.3, 0.8, fm.g);
-    float vines = smoothstep(0.3, 0.8, fm.b);
+    vec4 fk = inMask ? texture2D(uFields, lmuv) : vec4(0.0);
+    // ground metres per pixel, for the grain below (derivatives belong outside the per-pixel branches)
+    vec2 fw = fwidth(p);
+    float foot = max(fw.x, fw.y);
     float open = (1.0 - smoothstep(0.3, 0.8, land.b)) * (1.0 - smoothstep(0.3, 0.8, land.r)) * (1.0 - canopy) * (1.0 - verge) * (1.0 - steep);
     // the parcel's tone: the tile photo at 16 px (about 6 m at zoom 18, Terrain.photoAt reads the same), so a
     // sparse crop with chalk showing through decides as one parcel instead of a camouflage of patches
@@ -256,76 +296,107 @@ float tBump = 0.0;
     // hedges and copses OSM doesn't map are dark and rough in the photo: they stay as photographed
     float rough = abs(dot(img - imgB, vec3(0.333)));
     float treeish = smoothstep(0.03, 0.07, rough) * smoothstep(0.36, 0.26, L);
+    // keep the photo's tram lines and soil patches inside the parcel, faintly: stronger, they read as a noise texture
+    float det = clamp(dot(img, vec3(0.3, 0.55, 0.15)) / max(dot(pcl, vec3(0.3, 0.55, 0.15)), 1e-3), 0.8, 1.2);
+    // straw grain close up, tone patches where the swaths lay. Where a pixel spans more ground than the grain it
+    // only shimmered as the road went by: there it is its mean
+    float grain = 0.95;
+    if (foot < 0.35) grain = mix(0.9 + 0.2 * tNoise(p * 0.9) * tNoise(p * 2.7 + 7.0), grain, smoothstep(0.12, 0.35, foot));
+    grain *= 0.94 + 0.12 * tNoise(p * 0.11 + 3.0);
+    float known = smoothstep(0.2, 0.6, fk.a) * open * (1.0 - treeish);
+    if (known > 0.0) {
+      // (un-premultiplied: unknown texels are black with no alpha)
+      vec3 kc = fk.rgb / max(fk.a, 1e-3);
+      // stubble and disced chalk carry the grain; the green crops' own texture is their 3D leaves
+      float strawy = smoothstep(0.17, 0.3, dot(kc, vec3(0.3, 0.55, 0.15)));
+      kc *= mix(1.0, grain, strawy) * mix(1.0, det, 0.3);
+      base = mix(base, kc, known);
+    }
     // a crop in spring is green, or dark where it is dense (winter wheat reads near black-green); bare soil is
     // chalk-white to light brown, never grey asphalt (sampled on the Mont de Berru loop at 3 m per pixel)
     float green = max(smoothstep(0.005, 0.03, pV), smoothstep(0.32, 0.24, pL) * 0.8) * smoothstep(0.06, 0.12, pS);
     float bare = (1.0 - green) * smoothstep(0.26, 0.38, pL) * (1.0 - smoothstep(0.35, 0.45, pS)) * smoothstep(0.04, 0.08, pS);
-    // smooth inside a parcel, different from its neighbours
-    float pick = fract(pL * 5.3 + pV * 23.0 + pS * 3.1);
-    // harvested: pale to golden stubble, some with green regrowth, some already disced to chalk
-    // straw is bright but not white: the render read (198, 193, 167) where the Panoramax frames of 26 August show
-    // stubble around (150, 135, 118)
-    vec3 stubble = mix(vec3(0.42, 0.37, 0.26), vec3(0.38, 0.3, 0.17), smoothstep(0.2, 0.7, pick));
-    stubble = mix(stubble, vec3(0.24, 0.27, 0.12), smoothstep(0.78, 0.84, pick) * (1.0 - smoothstep(0.88, 0.92, pick)));
-    stubble = mix(stubble, vec3(0.46, 0.44, 0.38), smoothstep(0.9, 0.95, pick));
-    // straw grain close up, tone patches where the swaths lay
-    stubble *= (0.9 + 0.2 * tNoise(p * 0.9) * tNoise(p * 2.7 + 7.0)) * (0.94 + 0.12 * tNoise(p * 0.11 + 3.0));
-    // spring-sown: spring barley and peas are harvested to stubble by now too; beet dark green, maize mid green,
-    // potatoes yellowing, a few fields already disced bare
-    vec3 crop = mix(stubble, vec3(0.12, 0.2, 0.06), smoothstep(0.34, 0.38, pick));
-    crop = mix(crop, vec3(0.18, 0.27, 0.08), smoothstep(0.58, 0.62, pick));
-    crop = mix(crop, vec3(0.3, 0.3, 0.12), smoothstep(0.7, 0.74, pick));
-    crop = mix(crop, vec3(0.55, 0.52, 0.45), smoothstep(0.84, 0.88, pick));
-    // keep the photo's furrows, tram lines and soil patches inside the parcel
-    float det = clamp(dot(img, vec3(0.3, 0.55, 0.15)) / max(dot(pcl, vec3(0.3, 0.55, 0.15)), 1e-3), 0.7, 1.3);
-    float wobble = 0.92 + 0.16 * tNoise(p * 0.02);
-    vec3 field = mix(stubble, crop, bare / max(bare + green, 1e-3)) * mix(1.0, det, 0.45) * wobble;
-    float fieldW = open * (1.0 - meadowTrue) * (1.0 - vines) * (1.0 - treeish) * clamp(green + bare, 0.0, 1.0);
-    base = mix(base, field, fieldW);
-    // August meadows are drier than the spring photo; vines are in full leaf over the chalk
-    vec3 hay = mix(vec3(0.3, 0.33, 0.14), vec3(0.46, 0.41, 0.21), tNoise(p * 0.04));
-    base = mix(base, hay * mix(1.0, det, 0.4), open * meadowTrue * 0.6);
-    vec3 vineCol = mix(vec3(0.2, 0.28, 0.1), vec3(0.5, 0.48, 0.4), 0.25 + 0.2 * tNoise(p * 0.5));
-    base = mix(base, vineCol, open * vines * 0.7);
+    float fieldW = open * (1.0 - known) * (1.0 - treeish) * clamp(green + bare, 0.0, 1.0);
+    if (fieldW > 0.0) {
+      // smooth inside a parcel, different from its neighbours
+      float pick = fract(pL * 5.3 + pV * 23.0 + pS * 3.1);
+      // harvested: pale beige to tan stubble, some greening again, some already disced to chalky soil (the
+      // Panoramax frames of 26 August show stubble around (150, 135, 118)); the colours are fieldColour's
+      vec3 stubble = mix(vec3(0.42, 0.38, 0.3), vec3(0.37, 0.32, 0.23), smoothstep(0.2, 0.7, pick));
+      stubble = mix(stubble, vec3(0.26, 0.28, 0.15), smoothstep(0.78, 0.84, pick) * (1.0 - smoothstep(0.88, 0.92, pick)));
+      stubble = mix(stubble, vec3(0.4, 0.38, 0.33), smoothstep(0.9, 0.95, pick));
+      stubble *= grain;
+      // spring-sown: spring barley and peas are harvested to stubble by now too; beet dark green, maize mid green,
+      // potatoes yellowing, a few fields already disced
+      vec3 crop = mix(stubble, vec3(0.08, 0.14, 0.05), smoothstep(0.34, 0.38, pick));
+      crop = mix(crop, vec3(0.11, 0.18, 0.055), smoothstep(0.58, 0.62, pick));
+      crop = mix(crop, vec3(0.24, 0.21, 0.1), smoothstep(0.7, 0.74, pick));
+      crop = mix(crop, vec3(0.38, 0.36, 0.31), smoothstep(0.84, 0.88, pick));
+      float wobble = 0.92 + 0.16 * tNoise(p * 0.02);
+      vec3 field = mix(stubble, crop, bare / max(bare + green, 1e-3)) * mix(1.0, det, 0.3) * wobble;
+      base = mix(base, field, fieldW);
+    }
     // verges: the photo's spring-green grass is olive and straw by now (its grey asphalt pixels become
     // verge grass further down)
     float lushVerge = smoothstep(0.015, 0.05, img.g - max(img.r, img.b) * 0.95);
-    vec3 august = mix(vec3(0.17, 0.2, 0.08), vec3(0.3, 0.29, 0.14), tNoise(p * 0.3));
-    base = mix(base, august * mix(1.0, det, 0.5), verge * (1.0 - steep) * lushVerge * 0.7);
-    // village squares, yards and pavements: the photo's bright concrete and gravel, with its JPEG colour noise,
-    // read near white and blue-violet beside the road (Berru km 23.8, Witry km 0.6, where OSM maps no built-up
-    // land); worn concrete grey instead. Warm chalk (the white field tracks) is left alone
+    if (verge * lushVerge > 0.0) {
+      vec3 august = mix(vec3(0.22, 0.24, 0.1), vec3(0.34, 0.32, 0.17), tNoise(p * 0.3));
+      base = mix(base, august * mix(1.0, det, 0.5), verge * (1.0 - steep) * lushVerge * 0.7);
+    }
+    // village squares, yards and pavements: the photo's bright concrete and gravel, with its JPEG colour noise, read
+    // near white and blue-violet beside the road (Berru km 23.8, Witry km 0.6). In built-up land any pale,
+    // unsaturated ground is paved, elsewhere cool bright ground off the fields: worn concrete grey. The photo's
+    // building shadows (blue-black, under our own shadows) become a darker ground, not black
     float imgL = dot(img, vec3(0.3, 0.55, 0.15));
+    float builtUp = smoothstep(0.3, 0.8, land.b);
+    float ground = (1.0 - canopy) * (1.0 - steep) * (1.0 - verge);
+    float pale = smoothstep(0.22, 0.4, imgL) * smoothstep(0.3, 0.15, sat);
     float coolBright = smoothstep(0.3, 0.5, imgL) * smoothstep(-0.005, 0.02, img.b - img.r);
-    float paved = max(smoothstep(0.3, 0.8, land.b), 1.0 - fieldW) * (1.0 - canopy) * (1.0 - steep) * (1.0 - verge) * coolBright;
-    base = mix(base, vec3(min(dot(base, vec3(0.3, 0.55, 0.15)), 0.4)) * vec3(1.0, 0.98, 0.94) * mix(1.0, det, 0.5), paved * 0.75);
+    float paved = max(builtUp * pale, (1.0 - max(known, fieldW)) * coolBright) * ground;
+    float pvL = min(dot(base, vec3(0.3, 0.55, 0.15)), 0.26);
+    base = mix(base, vec3(pvL) * vec3(1.0, 0.97, 0.92) * mix(1.0, det, 0.5), paved * 0.9);
+    float photoShade = builtUp * smoothstep(0.1, 0.04, imgL) * ground;
+    base = mix(base, vec3(max(dot(base, vec3(0.3, 0.55, 0.15)), 0.12)) * vec3(1.0, 0.97, 0.9), photoShade * 0.85);
   }
   // meadows: pull bleached summer-photo grass back to a living green-gold
-  float bl = dot(base, vec3(0.3, 0.55, 0.15));
   float grassy = max(meadow, wGrass * 0.6 * uMeadowPush) * (1.0 - steep) * (1.0 - canopy);
-  // two tones: living green and dry straw patches, like mown autumn meadows
-  float straw = smoothstep(0.55, 0.8, tNoise(p * 0.035) * 0.7 + tNoise(p * 0.21) * 0.3);
-  // mown grass has a fairly constant albedo: clamp bright (snowy or bleached) photo texels
-  float blc = min(bl, 0.3 + 0.06 * straw);
-  vec3 meadowCol = mix(blc * vec3(0.8, 1.06, 0.5), blc * vec3(1.05, 1.0, 0.62), straw * 0.6) * 1.05;
   float bright = smoothstep(0.5, 0.75, L) * (1.0 - smoothstep(1500.0, 1950.0, vAtmoWorld.y)) * uMeadowPush * (1.0 - scree);
-  base = mix(base, meadowCol, clamp(grassy * 0.6 + bright * 0.9 * (1.0 - canopy), 0.0, 1.0));
+  float push = clamp(grassy * 0.6 + bright * 0.9 * (1.0 - canopy), 0.0, 1.0);
+  if (push > 0.0) {
+    float bl = dot(base, vec3(0.3, 0.55, 0.15));
+    // two tones: living green and dry straw patches, like mown autumn meadows
+    float straw = smoothstep(0.55, 0.8, tNoise(p * 0.035) * 0.7 + tNoise(p * 0.21) * 0.3);
+    // mown grass has a fairly constant albedo: clamp bright (snowy or bleached) photo texels
+    float blc = min(bl, 0.3 + 0.06 * straw);
+    vec3 meadowCol = mix(blc * vec3(0.8, 1.06, 0.5), blc * vec3(1.05, 1.0, 0.62), straw * 0.6) * 1.05;
+    base = mix(base, meadowCol, push);
+  }
   // under the canopy: shaded forest floor, leaf litter close up
-  vec3 litter = vec3(0.3, 0.22, 0.14) * (0.7 + 0.6 * tNoise(p * 0.7));
-  base = mix(base, base * vec3(0.66, 0.64, 0.6), canopy * 0.75 * (1.0 - uKarst));
-  base = mix(base, litter * (0.6 + 0.4 * dot(base, vec3(0.33))), canopy * near * 0.55 * (1.0 - uKarst));
+  if (canopy > 0.0) {
+    vec3 litter = vec3(0.3, 0.22, 0.14) * (0.7 + 0.6 * tNoise(p * 0.7));
+    base = mix(base, base * vec3(0.66, 0.64, 0.6), canopy * 0.75 * (1.0 - uKarst));
+    base = mix(base, litter * (0.6 + 0.4 * dot(base, vec3(0.33))), canopy * near * 0.55 * (1.0 - uKarst));
+  }
   // steep faces: the photo smears vertically, tint rock from the wide average instead
-  vec3 rockTint = mix(wide, vec3(dot(wide, vec3(0.33))) * vec3(1.03, 1.0, 0.95), 0.5);
-  // karst coasts: the blurred photo mixes in the sea; cliffs and cuts are grey limestone
-  rockTint = mix(rockTint, vec3(0.5, 0.48, 0.44) * (0.85 + 0.3 * tNoise(q.xz * 0.08 + q.y * 0.05)), uKarst);
-  base = mix(base, rockTint, steep);
+  if (steep > 0.0) {
+    vec3 wide = texture(map, vMapUv, 7.5).rgb * photoFix;
+    float lw = dot(wide, vec3(0.2126, 0.7152, 0.0722));
+    wide = pow(max(mix(vec3(lw), wide, uPhotoGrade.y * 0.94), vec3(0.0)), vec3(uPhotoGrade.z)) * uPhotoGrade.x;
+    vec3 rockTint = mix(wide, vec3(dot(wide, vec3(0.33))) * vec3(1.03, 1.0, 0.95), 0.5);
+    // karst coasts: the blurred photo mixes in the sea; cliffs and cuts are grey limestone
+    if (uKarst > 0.0) rockTint = mix(rockTint, vec3(0.5, 0.48, 0.44) * (0.85 + 0.3 * tNoise(q.xz * 0.08 + q.y * 0.05)), uKarst);
+    base = mix(base, rockTint, steep);
+  }
   // limestone weathers warm grey with ochre stains (fresh cuts are orange-ochre)
-  float ochre = smoothstep(0.45, 0.8, tNoise(q.xz * 0.05 + q.y * 0.03)) * uRockOchre;
-  vec3 limeTint = mix(vec3(1.0, 0.95, 0.86), vec3(1.08, 0.88, 0.66), ochre * steep);
-  base *= mix(vec3(1.0), limeTint, uKarst * max(limestone, steep));
-  // bare limestone reads beige-grey, never snow-white
-  float bL = dot(base, vec3(0.3, 0.55, 0.15));
-  base = mix(base, base * min(1.0, 0.62 / max(bL, 1e-3)) * vec3(1.0, 0.97, 0.88), uKarst * limestone);
+  float ochre = 0.0;
+  if (uKarst > 0.0) {
+    ochre = smoothstep(0.45, 0.8, tNoise(q.xz * 0.05 + q.y * 0.03)) * uRockOchre;
+    vec3 limeTint = mix(vec3(1.0, 0.95, 0.86), vec3(1.08, 0.88, 0.66), ochre * steep);
+    base *= mix(vec3(1.0), limeTint, uKarst * max(limestone, steep));
+    // bare limestone reads beige-grey, never snow-white
+    float bL = dot(base, vec3(0.3, 0.55, 0.15));
+    base = mix(base, base * min(1.0, 0.62 / max(bL, 1e-3)) * vec3(1.0, 0.97, 0.88), uKarst * limestone);
+  }
   // the photo was lit by the flight's sun (summer, around midday, from the south-south-east): slopes
   // facing away from it photographed dark and we shade them again, so north-facing valley sides
   // went near-black. Divide that light back out (flat ground unchanged, at most ~2x)
@@ -367,25 +438,31 @@ float tBump = 0.0;
     tBump = mix(tBump, (cl - 0.45) * 4.0 * cliffNear, cliffW);
     tDetail = mix(tDetail, 1.0, cliffW); // the scan carries its own detail
   }
-  // under pines the Mediterranean floor is dry needle litter, not dark mould
-  base = mix(base, mix(base * 0.7, vec3(0.36, 0.29, 0.22) * (0.8 + 0.4 * tNoise(p * 0.5)), 0.65), canopy * uKarst);
-  // Mediterranean soil is mid grey-brown (terra rossa, needle litter); the orthophoto's
-  // sun-bleached open ground photographs far brighter than it looks from the road
-  float soilL = dot(base, vec3(0.3, 0.55, 0.15));
-  float soilCap = mix(0.2, 0.38, max(limestone, steep));
-  base = mix(base, base * min(1.0, soilCap / max(soilL, 1e-3)) * vec3(1.0, 0.95, 0.88), uKarst);
+  if (uKarst > 0.0) {
+    // under pines the Mediterranean floor is dry needle litter, not dark mould
+    base = mix(base, mix(base * 0.7, vec3(0.36, 0.29, 0.22) * (0.8 + 0.4 * tNoise(p * 0.5)), 0.65), canopy * uKarst);
+    // Mediterranean soil is mid grey-brown (terra rossa, needle litter); the orthophoto's
+    // sun-bleached open ground photographs far brighter than it looks from the road
+    float soilL = dot(base, vec3(0.3, 0.55, 0.15));
+    float soilCap = mix(0.2, 0.38, max(limestone, steep));
+    base = mix(base, base * min(1.0, soilCap / max(soilL, 1e-3)) * vec3(1.0, 0.95, 0.88), uKarst);
+  }
   // the orthophoto's real road is often wider than or offset from our asphalt ribbon: grey,
   // unsaturated photo pixels in the road corridor become verge (grass in the Alps)
   float photoRoad = verge * smoothstep(0.14, 0.06, sat) * (1.0 - uKarst) * (1.0 - steep);
-  vec3 vergeGrass = uVergeCol * (0.85 + 0.3 * tNoise(p * 0.8)) * (0.9 + 0.2 * gd);
-  base = mix(base, vergeGrass, photoRoad * 0.9);
+  if (photoRoad > 0.0) {
+    vec3 vergeGrass = uVergeCol * (0.85 + 0.3 * tNoise(p * 0.8)) * (0.9 + 0.2 * gd);
+    base = mix(base, vergeGrass, photoRoad * 0.9);
+  }
   // road verges: grey-brown dirt with pale rubble (not the orthophoto's grey asphalt)
-  float rubble = smoothstep(0.72, 0.8, tNoise(p * 2.3)) * 0.5 + smoothstep(0.78, 0.86, tNoise(p * 6.1 + 3.0)) * 0.5;
-  vec3 dirt = mix(vec3(0.34, 0.29, 0.24), vec3(0.46, 0.44, 0.39), rubble * 0.6) * (0.82 + 0.3 * tNoise(p * 0.9));
-  base = mix(base, dirt, uKarst * verge * (1.0 - steep * 0.6) * 0.85);
+  if (uKarst * verge > 0.0) {
+    float rubble = smoothstep(0.72, 0.8, tNoise(p * 2.3)) * 0.5 + smoothstep(0.78, 0.86, tNoise(p * 6.1 + 3.0)) * 0.5;
+    vec3 dirt = mix(vec3(0.34, 0.29, 0.24), vec3(0.46, 0.44, 0.39), rubble * 0.6) * (0.82 + 0.3 * tNoise(p * 0.9));
+    base = mix(base, dirt, uKarst * verge * (1.0 - steep * 0.6) * 0.85);
+  }
   // scree is pale grey stone, never snow-white or smooth: cap its value, mottle it with stones and
   // the odd plant (Mont Ventoux's top)
-  {
+  if (scree * (1.0 - uKarst) > 0.0) {
     float sL = dot(base, vec3(0.3, 0.55, 0.15));
     vec3 stone = base * min(1.0, 0.36 / max(sL, 1e-3)) * vec3(1.0, 0.98, 0.94);
     stone *= 0.78 + 0.3 * tNoise(p * 0.09) + 0.14 * (tNoise(p * 0.7) - 0.5);
@@ -393,9 +470,8 @@ float tBump = 0.0;
   }
   tc = base * tDetail;
 
-  // water: OSM mask, or sea level
-  vec2 muv = (p - uMaskOrigin) / uMaskSize;
-  float mask = (muv.x > 0.0 && muv.y > 0.0 && muv.x < 1.0 && muv.y < 1.0) ? texture2D(uWaterMask, muv).r : 0.0;
+  // water: OSM mask (the land mask's red channel), or sea level
+  float mask = land.r;
   // DEM sea level (national DEMs store the sea as 0); coastal flats a metre up are land
   float sea = (1.0 - smoothstep(mix(0.4, 0.08, uPhotoSea), mix(1.6, 0.35, uPhotoSea), vAtmoWorld.y)) * (1.0 - smoothstep(0.01, 0.04, slope)) * (1.0 - canopy) * (1.0 - verge);
   tWater = clamp(max(smoothstep(0.35, 0.75, mask), sea), 0.0, 1.0);

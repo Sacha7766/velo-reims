@@ -3,6 +3,7 @@
 // chunks around the rider and recycled as they ride on.
 
 import * as THREE from 'three';
+import { ALFALFA, BEET, DISCED, FALLOW, GRASS, HEMP, MAIZE, POTATO, REGROWTH, STUBBLE, VINES } from '../geo/fields.ts';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Line } from '../geo/osm.ts';
 import type { Route, RouteIndex } from '../geo/route.ts';
@@ -130,9 +131,9 @@ function vineGeometry(): THREE.BufferGeometry {
   return cards(list);
 }
 
-// what a field holds at the end of August, read from its spring photo exactly as terrainMaterial's field
-// season reads it: green then (winter cereals) is stubble now, bare chalk then is beet, maize or potatoes
-const STUBBLE = 1, BEET = 2, MAIZE = 3, POTATO = 4, BARE = 5;
+// what a field outside the known parcels holds at the end of August, read from its spring photo exactly as
+// terrainMaterial's field season reads it: green then (winter cereals) is stubble now, bare chalk then is beet,
+// maize or potatoes
 const smooth = (a: number, b: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
@@ -149,7 +150,7 @@ function fieldState(rgb: number[]): { state: number; pick: number } {
   if (green + bare < 0.5) return { state: 0, pick };
   if (green >= bare) return { state: STUBBLE, pick };
   // spring-bare fields: spring barley and peas (stubble by now), beet, maize, potatoes, or disced bare
-  return { state: pick < 0.36 ? STUBBLE : pick < 0.6 ? BEET : pick < 0.72 ? MAIZE : pick < 0.86 ? POTATO : BARE, pick };
+  return { state: pick < 0.36 ? STUBBLE : pick < 0.6 ? BEET : pick < 0.72 ? MAIZE : pick < 0.86 ? POTATO : DISCED, pick };
 }
 
 function rockGeometry(): THREE.BufferGeometry {
@@ -181,6 +182,8 @@ export interface GroundCoverOptions {
   halfWidth: number;
   groundHeight: (x: number, z: number) => number;
   roads?: Line[];
+  /** Village stretches [from, to] (m): kerbs and pavements line the road there (Road.pavements), no tufts on them. */
+  towns?: [number, number][];
   isWater?: (x: number, z: number) => boolean;
   density?: number;
   /** Land cover at a point: 0 none, 1 meadow, 2 built-up, 3 water. */
@@ -189,7 +192,8 @@ export interface GroundCoverOptions {
   canopyAt?: (x: number, z: number) => number;
   /** OSM scree / bare rock 0..1 at a point: no grass there, only the odd boulder. */
   screeAt?: (x: number, z: number) => number;
-  /** OSM field use at a point: 0 none, 1 arable, 2 meadow, 3 vineyard (biomes with a field season). */
+  /** What the field at a point holds at the end of August (a geo/fields.ts state, its seed as the fraction; 0 where
+   * no field is known), for biomes with a field season. */
   fieldAt?: (x: number, z: number) => number;
   /** The orthophoto's sRGB colour at parcel scale (Terrain.photoAt): metres per pixel, 0 while no tile covers it. */
   photoAt?: (x: number, z: number, out: number[]) => number;
@@ -425,6 +429,7 @@ export class GroundCover extends THREE.Group {
     const beets: number[] = [];
     const maize: number[] = [];
     const potatoes: number[] = [];
+    const alfalfa: number[] = [];
     const bales: number[] = [];
     const vines: number[] = [];
     const vineKeys = new Set<string>();
@@ -438,6 +443,7 @@ export class GroundCover extends THREE.Group {
       const h = route.heading[i];
       const fx = Math.sin(h), fz = -Math.cos(h);
       const rx = Math.cos(h), rz = Math.sin(h);
+      const kerbed = this.o.towns?.some(([a, b]) => i * route.step >= a && i * route.step <= b) ?? false;
       for (const side of [-1, 1]) {
         const tries = Math.round(120 * density);
         for (let k = 0; k < tries; k++) {
@@ -449,6 +455,7 @@ export class GroundCover extends THREE.Group {
           const z = route.z[i] + rz * d * side + fz * t;
           const near = index.nearest(x, z, halfWidth + 1.2);
           if (near.index >= 0 && near.dist < halfWidth + 0.5) continue;
+          if (kerbed && d < halfWidth + 1.8) continue;
           if (this.onOtherRoad(x, z)) continue;
           if (isWater?.(x, z)) continue;
           const cover = this.o.coverAt?.(x, z) ?? 0;
@@ -484,24 +491,32 @@ export class GroundCover extends THREE.Group {
           }
           // beyond the verge, what each field holds now; true meadows and gardens keep their grass
           if (B.fieldSeason && d > halfWidth + 3) {
-            const field = this.o.fieldAt?.(x, z) ?? 0;
-            if (field === 3) {
+            const known = this.o.fieldAt?.(x, z) ?? 0;
+            let state = Math.floor(known);
+            let seed = known - state;
+            if (state === VINES) {
               this.vineRow(x, z, i0, i1, vines, vineKeys, rowDir);
               continue;
             }
-            const res = field !== 2 && cover !== 2 ? (this.o.photoAt?.(x, z, rgb) ?? 0) : -1;
-            // a field read from a blurred tile could be any crop: leave it bare until the chunk is rebuilt
-            if (res === 0 || res >= FIELD_PHOTO) {
-              coarse = true;
-              continue;
+            if (!state && cover !== 2) {
+              const res = this.o.photoAt?.(x, z, rgb) ?? 0;
+              // a field read from a blurred tile could be any crop: leave it bare until the chunk is rebuilt
+              if (res === 0 || res >= FIELD_PHOTO) {
+                coarse = true;
+                continue;
+              }
+              ({ state, pick: seed } = fieldState(rgb));
             }
-            const f = res > 0 ? fieldState(rgb) : null;
-            if (f?.state) {
-              if (f.state === BEET && r() < 0.75) beets.push(x, y - 0.05, z, 0.85 + r() * 0.35, r() * 6.28, 0);
-              else if (f.state === MAIZE && r() < 0.6) maize.push(x, y - 0.05, z, 0.95 + r() * 0.25, r() * 6.28, 0);
-              else if (f.state === POTATO && r() < 0.5) potatoes.push(x, y - 0.05, z, 0.7 + r() * 0.3, r() * 6.28, 0);
+            // meadows and fallow keep their grass
+            if (state && state !== GRASS && state !== FALLOW) {
+              if (state === BEET && r() < 0.75) beets.push(x, y - 0.05, z, 0.85 + r() * 0.35, r() * 6.28, 0);
+              else if ((state === MAIZE || state === HEMP) && r() < 0.6) maize.push(x, y - 0.05, z, (state === HEMP ? 0.75 : 0.95) + r() * 0.25, r() * 6.28, 0);
+              else if (state === POTATO && r() < 0.5) potatoes.push(x, y - 0.05, z, 0.7 + r() * 0.3, r() * 6.28, 0);
+              // alfalfa grown back since its last cut (fieldColour: a quarter of the fields were just cut)
+              else if (state === ALFALFA && (seed * 7.31) % 1 >= 0.25 && r() < 0.35) alfalfa.push(x, y - 0.03, z, 0.5 + r() * 0.3, r() * 6.28, 0);
+              else if (state === REGROWTH && r() < 0.12) alfalfa.push(x, y - 0.03, z, 0.3 + r() * 0.25, r() * 6.28, 0);
               // round bales left on some straw-coloured stubble, one every few hundred square metres
-              else if (f.state === STUBBLE && f.pick < 0.75 && (f.pick * 7.13) % 1 < 0.45 && r() < 0.003) bales.push(x, y, z, 1, r() * 6.28, 0);
+              else if (state === STUBBLE && seed < 0.75 && (seed * 7.13) % 1 < 0.45 && r() < 0.003) bales.push(x, y, z, 1, r() * 6.28, 0);
               continue;
             }
           }
@@ -537,6 +552,8 @@ export class GroundCover extends THREE.Group {
           // patchy meadow mask
           const patch = Math.sin(x * 0.11 + Math.sin(z * 0.07) * 2.0) * Math.cos(z * 0.09 + x * 0.03);
           if (d > halfWidth + 5 && patch < -0.35 && r() < 0.7) continue;
+          // late-summer verges grow in clumps with bare, mown and trodden gaps, not an even band
+          if (B.fieldSeason && d <= halfWidth + 5 && patch < -0.15 && r() < 0.65) continue;
           // open meadows away from the verge are mown short: only scattered tufts
           if (cover === 1 && d > halfWidth + 4 && r() < 0.55) continue;
           if (alpine > 0.75 && r() < alpine * 0.6) continue;
@@ -545,8 +562,8 @@ export class GroundCover extends THREE.Group {
           const short = verge || cover === 1 || cover === 2;
           // the verge is mown to a few centimetres in autumn: low tufts over the turf, not blades
           const sc = (verge ? 0.3 + r() * 0.22 : short ? 0.5 + r() * 0.35 : 0.7 + r() * 0.6) - alpine * 0.2;
-          // October: only a few late flowers left
-          const target = r() < 0.025 + (1 - alpine) * 0.015 ? flowers : grass;
+          // October: only a few late flowers left; the end of August still has wild carrot, tansy and chicory
+          const target = r() < (B.fieldSeason ? 0.08 : 0.025 + (1 - alpine) * 0.015) ? flowers : grass;
           target.push(x, y, z, sc, r() * 6.28, alpine);
         }
       }
@@ -592,7 +609,9 @@ export class GroundCover extends THREE.Group {
           mesh.setColorAt(k, col.copy(this.biome.shrubTint).multiplyScalar(0.8 + 0.3 * ((rot * 7.3) % 1)));
         } else if (tint) {
           const v = (Math.sin(x * 0.21 + z * 0.13) + Math.sin(z * 0.17 - x * 0.05)) * 0.25 + 0.5;
-          col.copy(lush).lerp(dry, v * 0.6).lerp(pale, alpine * 0.7).multiplyScalar(0.82 + 0.18 * ((rot * 13.7) % 1));
+          // a field season's verges: a third of the tufts already straw among the green
+          const straw = this.biome.fieldSeason && (rot * 31.7) % 1 < 0.33 ? 0.65 : 0;
+          col.copy(lush).lerp(dry, v * 0.6).lerp(pale, Math.max(alpine * 0.7, straw)).multiplyScalar(0.82 + 0.18 * ((rot * 13.7) % 1));
           mesh.setColorAt(k, col);
         }
       }
@@ -612,6 +631,7 @@ export class GroundCover extends THREE.Group {
     // the atlas leaves are a pale blue-green, its grass near neutral: the crops' own greens
     add(this.mound, this.grassMat, beets, 1, false, new THREE.Color(0.5, 0.8, 0.36), true);
     add(this.mound, this.grassMat, potatoes, 0.8, false, new THREE.Color(0.72, 0.66, 0.3), true);
+    add(this.tuft, this.grassMat, alfalfa, 0.6, false, new THREE.Color(0.5, 0.82, 0.34), true);
     add(this.tuft, this.grassMat, maize, 5.6, true, new THREE.Color(0.58, 0.86, 0.34), true);
     add(this.vine, this.grassMat, vines, 1, true, new THREE.Color(0.6, 0.86, 0.44), true);
     add(this.bale, this.baleMat, bales, 1, true, new THREE.Color().setRGB(0.8, 0.67, 0.42, THREE.SRGBColorSpace));

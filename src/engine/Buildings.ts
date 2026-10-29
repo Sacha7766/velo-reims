@@ -41,10 +41,10 @@ const CHAMP_WALLS = [
   srgb(0.95, 0.94, 0.9), srgb(0.9, 0.8, 0.62), srgb(0.82, 0.78, 0.7),
 ];
 const CHALK_WALLS = [srgb(0.9, 0.87, 0.8), srgb(0.86, 0.83, 0.76), srgb(0.92, 0.9, 0.84), srgb(0.88, 0.82, 0.7)];
-const BRICKS = [srgb(0.62, 0.32, 0.22), srgb(0.68, 0.38, 0.26), srgb(0.55, 0.28, 0.2), srgb(0.72, 0.45, 0.32)];
+const BRICKS = [srgb(0.52, 0.27, 0.2), srgb(0.58, 0.31, 0.23), srgb(0.48, 0.25, 0.19), srgb(0.6, 0.36, 0.27)];
 const CHAMP_ROOFS = [
-  srgb(0.6, 0.3, 0.2), srgb(0.55, 0.27, 0.18), srgb(0.66, 0.36, 0.24), srgb(0.45, 0.28, 0.2),
-  srgb(0.6, 0.3, 0.2), srgb(0.3, 0.31, 0.34), srgb(0.22, 0.22, 0.24), srgb(0.52, 0.25, 0.17),
+  srgb(0.5, 0.3, 0.23), srgb(0.46, 0.27, 0.21), srgb(0.55, 0.34, 0.26), srgb(0.42, 0.28, 0.22),
+  srgb(0.49, 0.31, 0.25), srgb(0.3, 0.31, 0.34), srgb(0.22, 0.22, 0.24), srgb(0.44, 0.25, 0.19),
 ];
 const SHEDS = [
   srgb(0.6, 0.62, 0.6), srgb(0.45, 0.5, 0.45), srgb(0.75, 0.72, 0.64), srgb(0.52, 0.55, 0.58), srgb(0.3, 0.38, 0.32), srgb(0.82, 0.8, 0.74),
@@ -103,9 +103,9 @@ const STYLES: Record<Biome['buildings'], Style> = {
   },
   // shutters off-white, pale blue-grey, brown and oxblood; steep roofs with short eaves and zinc gutters
   champagne: {
-    med: false, flatTowns: false, walls: CHAMP_WALLS, roofs: CHAMP_ROOFS, woodTop: 0, balcony: 'none', pitch: [30, 44],
-    shutters: [V(0.72, 0.72, 0.68), V(0.32, 0.38, 0.42)], moreShutters: [V(0.2, 0.12, 0.07), V(0.3, 0.07, 0.05)],
-    eaves: [0.35, 0.12], masonry: [0.25, 0.2], chimneys: 0.6, barns: 'masonry',
+    med: false, flatTowns: false, walls: CHAMP_WALLS, roofs: CHAMP_ROOFS, woodTop: 0, balcony: 'none', pitch: [26, 36],
+    shutters: [V(0.72, 0.72, 0.68), V(0.32, 0.38, 0.42)], moreShutters: [V(0.16, 0.1, 0.06), V(0.19, 0.06, 0.045)],
+    eaves: [0.35, 0.12], masonry: [0.25, 0.1], chimneys: 0.6, barns: 'masonry',
   },
 };
 
@@ -129,8 +129,11 @@ class Builder {
   surf: number[] = [];
   base: number[] = [];
   private y0 = 0;
-  setBase(y: number) {
+  private id = 0;
+  /** The building being added: its base height (storeys count from it) and an id, 0–255, for per-house variety. */
+  setBase(y: number, id = 0) {
     this.y0 = y;
+    this.id = id;
   }
   tri(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, color: THREE.Color, s: number, centre: THREE.Vector3) {
     const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a));
@@ -139,7 +142,8 @@ class Builder {
     for (const p of pts) {
       this.pos.push(p.x, p.y, p.z);
       this.col.push(color.r, color.g, color.b);
-      this.surf.push(s);
+      // surface ids stay below 64: the building id goes above them
+      this.surf.push(s + this.id * 64);
       this.base.push(this.y0);
     }
   }
@@ -193,7 +197,7 @@ function addBuilding(
     gmax = Math.max(gmax, h);
   }
   const base = gmin - 0.6;
-  b.setBase(gmax);
+  b.setBase(gmax, Math.floor(rnd(seed + 61) * 256));
   // Mallorca: small rural houses have low hipped/gabled tile roofs, town blocks are flat with terraces
   let roofShape = bld.roof;
   if (style.flatTowns && !bld.explicitRoof) {
@@ -275,7 +279,8 @@ function addBuilding(
     } else if (civic) {
       wallSurf = r < 0.7 ? CHALK : PLASTER;
       if (!bld.wallColour) wall.copy(pick(CHALK_WALLS, 43));
-      if (!bld.roofColour && rnd(seed + 53) < 0.6) roofCol.copy(SLATE);
+      // the nineteenth-century mairie-écoles are slated (Berru, Caurel, Lavannes, Witry)
+      if (!bld.roofColour && rnd(seed + 53) < 0.85) roofCol.copy(SLATE);
     } else if (barn || (bld.kind === 'yes' && area > 240)) {
       // garages and garden sheds mostly rendered, barns in brick or chalk
       const small = area < 40;
@@ -553,15 +558,18 @@ vec2 fBrick(float u, float hy, float px) {
   float wallF = 1.0 - smoothstep(0.25, 0.5, abs(n.y));
   float u = abs(n.x) > abs(n.z) ? wp.z : wp.x;
   float hy = wp.y - vBaseY;
-  // a building's id for hashing: its base height quantised. The interpolated varying differs in its last bits
-  // from pixel to pixel, and a sin hash turns that into speckle (shutters and roller boxes half drawn)
-  float bid = floor(vBaseY * 4.0 + 0.5) * 0.25;
+  int raw = int(vSurf + 0.5);
+  int hid = raw / 64;
+  raw -= hid * 64;
+  int mode = raw / 16;
+  int sid = raw - mode * 16;
+  // a building's id for hashing: its own id (Builder.setBase) and its base height quantised. Hashing the
+  // interpolated height alone gave speckle (its last bits differ from pixel to pixel) and, on the flat plain,
+  // whole streets of houses with the same hash
+  float bid = floor(vBaseY * 4.0 + 0.5) * 0.25 + float(hid) * 7.31;
   // derivatives before any branching on the surface id
   vec3 fw = fwidth(wp);
   float px = max(max(fw.x, fw.y), fw.z);
-  int raw = int(vSurf + 0.5);
-  int mode = raw / 16;
-  int sid = raw - mode * 16;
   if (sid == 1) {
     // vertical larch boards, weathered darker towards the bottom and in the joints
     float board = fract(u / 0.22);
@@ -578,9 +586,10 @@ vec2 fBrick(float u, float hy, float px) {
   } else if (sid == 0 || sid == 5 || sid == 9 || sid == 10) {
     // render (0), glass-walled blocks (5), Champagne chalk ashlar dressed in brick (9) and brick (10): a socle,
     // windows with frames, shutters and sky reflections; or wide doors (garages, barns), or church windows
-    float house = fHash(floor(vec2(vBaseY, vBaseY * 0.37)));
+    float house = fHash(vec2(bid, 0.37));
     float k = wallF * detail;
-    vec3 brickCol = mix(vec3(0.33, 0.08, 0.04), vec3(0.42, 0.14, 0.07), fHash(vec2(bid, 9.0)));
+    // dull red-brown dressings; orange-red read as painted trim
+    vec3 brickCol = mix(vec3(0.2, 0.075, 0.045), vec3(0.27, 0.11, 0.065), fHash(vec2(bid, 9.0)));
     float brickTone = 0.8 + 0.4 * fBrick(u, hy, px).y;
     if (sid == 9) {
       vec2 c = fChalk(u, hy, px);
@@ -594,34 +603,35 @@ vec2 fBrick(float u, float hy, float px) {
     float socle = (1.0 - step(0.55, hy)) * wallF;
     if (sid == 9 && mode != 3) diffuseColor.rgb = mix(diffuseColor.rgb, brickCol * brickTone, socle * step(0.5, house));
     else diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.72, 0.7, 0.66), socle);
-    float bay = sid == 5 ? 2.2 : 3.1;
-    float fx = fract(u / bay);
+    // each house its own window grid: bays of 2.7 to 3.5 m, windows 0.95 to 1.25 m wide, off the neighbours' rhythm
+    float bay = sid == 5 ? 2.2 : 2.7 + 0.8 * fHash(vec2(bid, 4.0));
+    float gx = u / bay + (sid == 5 ? 0.0 : fHash(vec2(bid, 5.0)));
+    float fx = fract(gx);
     float fy = fract((hy - 0.45) / 2.9);
-    float ww = sid == 5 ? 0.42 : 0.2;
+    float ww = sid == 5 ? 0.42 : (0.95 + 0.3 * fHash(vec2(bid, 6.0))) / (2.0 * bay);
     float open = mode == 0 ? 1.0 : 0.0;
     float rowIn = step(0.3, fy) * step(fy, 0.78) * step(0.4, hy);
     float win = open * step(0.5 - ww, fx) * step(fx, 0.5 + ww) * rowIn;
     float frame = win * (1.0 - step(0.5 - ww + 0.025, fx) * step(fx, 0.5 + ww - 0.025) * step(0.32, fy) * step(fy, 0.76));
     float mullion = win * step(abs(fx - 0.5), 0.008) * (sid == 5 ? 0.0 : 1.0);
-    // dressings: brick jambs, lintels and a band at each floor on chalk; a pale stone sill and lintel on brick
+    // dressings: brick jambs and lintels on some chalk houses (the Lavannes mairie); a pale stone sill and lintel on brick
     float dx = 0.13 / bay, dy = 0.045;
     float around = open * (1.0 - win) * step(0.5 - ww - dx, fx) * step(fx, 0.5 + ww + dx) * step(0.4, hy);
     float jambs = around * step(0.3 - dy, fy) * step(fy, 0.78 + dy * 1.8);
     float sills = around * (step(0.3 - dy, fy) * step(fy, 0.3) + step(0.78, fy) * step(fy, 0.78 + dy * 1.8));
-    float band = open * step(fy, 0.05) * step(1.5, hy);
-    if (sid == 9) diffuseColor.rgb = mix(diffuseColor.rgb, brickCol * brickTone, max(jambs, band) * k);
+    if (sid == 9) diffuseColor.rgb = mix(diffuseColor.rgb, brickCol * brickTone, jambs * step(0.55, fHash(vec2(bid, 11.0))) * k);
     if (sid == 10) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.62, 0.6, 0.55), sills * k);
     // shutters beside rural windows, one colour per house. In Champagne many houses have roller shutters
     // instead (a box over the window, the blind part way down), and some side shutters are closed
-    float cell = fHash(floor(vec2(u / bay, (hy - 0.45) / 2.9)) + bid);
+    float cell = fHash(floor(vec2(gx, (hy - 0.45) / 2.9)) + bid);
     float roller = uShut4 * step(sid == 0 ? 0.5 : 0.82, fHash(vec2(bid * 0.71, 2.0)));
     float closed = uShut4 * (1.0 - roller) * step(0.78, cell);
     float side = step(0.5 - ww - 0.13, fx) * step(fx, 0.5 - ww - 0.01) + step(0.5 + ww + 0.01, fx) * step(fx, 0.5 + ww + 0.13);
     float shut = (sid == 5 ? 0.0 : 1.0) * open * rowIn * side * (1.0 - roller) * (1.0 - closed);
-    float slats = 1.0 - smoothstep(0.01, 0.03, px);
-    vec3 shutterCol = fShutter(house) * mix(0.925, 0.85 + 0.15 * step(0.5, fract(fy * 9.0)), slats);
+    float slats = 1.0 - smoothstep(0.005, 0.015, px);
+    vec3 shutterCol = fShutter(house) * mix(0.95, 0.9 + 0.1 * step(0.5, fract(hy * 14.0)), slats);
     float wy = (fy - 0.3) / 0.48;
-    float blindDown = win * roller * step(1.0 - 0.9 * pow(cell, 1.6), wy);
+    float blindDown = win * roller * step(1.0 - 0.7 * pow(cell, 1.6), wy);
     float rollerBox = open * roller * step(0.5 - ww, fx) * step(fx, 0.5 + ww) * step(0.78, fy) * step(fy, 0.83) * step(0.4, hy);
     vec3 v = normalize(wp - cameraPosition);
     vec3 r = reflect(v, n);
@@ -634,10 +644,10 @@ vec2 fBrick(float u, float hy, float px) {
     diffuseColor.rgb = mix(diffuseColor.rgb, shutterCol, win * closed * k);
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.72, 0.72, 0.7) * mix(0.94, 0.88 + 0.12 * step(0.5, fract(hy * 16.0)), slats), max(blindDown, rollerBox) * k);
     if (mode == 2) {
-      // a wide door every ~7 m: white (garages), green, brown or grey per building, in horizontal panels
+      // a wide door every ~7 m: mostly white (garages), some green, brown or grey, in horizontal panels
       float dxu = fract(u / 7.0 + house * 5.0);
       float door = step(0.32, dxu) * step(dxu, 0.68) * step(hy, 2.4) * wallF;
-      vec3 dc = house < 0.4 ? vec3(0.78, 0.78, 0.76) : house < 0.6 ? vec3(0.1, 0.18, 0.12) : house < 0.8 ? vec3(0.2, 0.12, 0.06) : vec3(0.32, 0.33, 0.34);
+      vec3 dc = house < 0.65 ? vec3(0.78, 0.78, 0.76) : house < 0.75 ? vec3(0.1, 0.18, 0.12) : house < 0.88 ? vec3(0.2, 0.12, 0.06) : vec3(0.32, 0.33, 0.34);
       diffuseColor.rgb = mix(diffuseColor.rgb, dc * (0.86 + 0.14 * step(0.5, fract(hy * 2.0))), door * detail);
     } else if (mode == 3) {
       // round-headed church windows every 3.8 m
@@ -705,7 +715,7 @@ vec2 fBrick(float u, float hy, float px) {
     float web = smoothstep(0.26, 0.3, rib) * smoothstep(0.38, 0.34, rib) + smoothstep(0.88, 0.92, rib) * smoothstep(1.0, 0.96, rib);
     float prof = mix(0.95, 1.04, 1.0 - smoothstep(0.28, 0.32, rib)) * (1.0 - 0.2 * web);
     diffuseColor.rgb *= mix(0.96, prof, 1.0 - smoothstep(0.02, 0.06, px));
-    float house = fHash(floor(vec2(vBaseY, vBaseY * 0.37)));
+    float house = fHash(vec2(bid, 0.37));
     diffuseColor.rgb *= 0.9 + 0.14 * fHash(vec2(floor(ru), bid));
     diffuseColor.rgb *= mix(1.0, mix(0.75, 1.0, smoothstep(-0.2, 1.4, hy)), wallF);
     float dxu = fract(ru / 14.0 + house * 3.0);

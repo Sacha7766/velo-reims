@@ -108,6 +108,27 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   and gravel, JPEG colour noise included, went through the photo grade untouched. Fix: in built-up land, bright photo
   pixels become worn concrete grey. Where: `terrainMaterial.ts` field-season block.
 
+- **The terrain shader was most of the frame (74 % in the software-renderer probe at Berru km 23.85).** Every pixel paid
+  for everything: seven tri-planar rock reads on the flat chalk plain, karst-only noise in Champagne, meadow, litter
+  and scree work where their weights were 0, a second read of the land mask for water, and the wide photo average
+  only steep faces use. Fix: branches on the weights (`wRock * near`, `canopy`, `steep`, meadow `push`, `photoRoad`,
+  `uKarst`, `scree`); each flips where its weight has faded to nothing, so the frame doesn't change, and the water
+  reads the land mask's red channel. Terrain -42 %, frame -31 % (`probe-perf2.cjs`, 960×540, detail 1.4), with the
+  RPG fields added. Where: `terrainMaterial.ts`.
+- **The terrain shader could discard on every route.** Only tunnels, underpasses and a photographed sea cut the
+  ground, and a shader that can discard keeps the GPU from dropping hidden ground before shading it. Fix: a
+  `TERRAIN_CUTS` define on those routes only. Where: `terrainMaterial.ts`.
+- **Stubble grain shimmered as the road went by.** Its 0.37 m noise aliases once a pixel spans more ground, about
+  15 m ahead of a chase camera at grazing angle. Fix: fade the grain to its mean by the pixel's footprint
+  (`fwidth`), which also skips the noise there. Where: `terrainMaterial.ts` field season.
+- **Long house shadows at Midday on the Champagne plain (review 2026-10-29, finding 15).** The time presets are
+  Salzburg in mid-October, 35° at noon. Fix: `biome.sun`, the region's sun per time of day; over Reims on 26 August
+  it stands at 51° at noon, rises in the east and sets west-north-west. Where: `biome.ts`, `Engine.setTime`.
+- **The adaptive resolution had nothing left on a slow GPU.** At 1× it could not lower the cost further. Fix: at 1×
+  and still slow, terrain detail steps down to two thirds of the preset's and back up with headroom at full
+  resolution; below 15 fps (loading hitches, the software renderer of the captures) it leaves detail alone. Where:
+  `Engine.adaptScale`.
+
 ## Placement and geometry
 
 - **Floating trunks and buildings.** They were placed on the raw DEM, but the road corridor is flattened. Fix:
@@ -172,6 +193,18 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   across the footprint and a model sits at one height, while the OSM building drops its walls to the lowest corner
   like the real downhill façade. Where: `public/scenes/kitzbueheler-horn.json`.
 
+- **Neighbouring houses had the same shutters, doors and windows (review 2026-10-29, finding 6).** The facade hash
+  came from the base height, quantised: on the flat plain whole streets shared it, and the window grid was one
+  world-aligned 3.1 m rhythm for every house. Fix: a building id in the surface attribute's upper bits (surface ids
+  stay below 64), and a window grid per house (bays 2.7–3.5 m, windows 0.95–1.25 m, its own phase). Where:
+  `Buildings.ts` `Builder.setBase`, facade shader.
+- **Village streets read as empty sets (review 2026-10-29, findings 9 and 10).** No parked car, person, lamp, kerb or
+  memorial. Fix: from sign to sign (`builtUpRuns`), kerbs and 1.5 m pavements broken where side roads and driveways
+  leave the route (`Signs.junctionsAlong`), cars parked on the pavement and people behind it, instanced per village
+  (`Life.buildVillages`); street lamps at the OSM `street_lamp` points and war memorials at `historic=memorial`
+  (not graves or plaques), each merged into one mesh (`Props.lamps`, `Props.memorials`). Where: `Road.pavements`,
+  `Life.ts`, `Props.ts`.
+
 ## Data and bakes
 
 - **Turnaround bake found no loop.** `shortestCycle` returned `[]`, which is not null. Fix: a simple-cycle DFS with
@@ -208,6 +241,22 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   the route crosses anyway, move a point that still causes an out-and-back onto the spur's base, then check for
   U-turns, doubled road and yard spurs; the D 944 near Loivre has no minor-road alternative, so say so in the brief.
   Tooling lives with the session's route scripts (not in the repo).
+
+- **Fields mottled, blotched and dotted with green (review 2026-10-29, findings 4, 5 and 17).** The spring photo's
+  tone chose each patch's late-August crop: a sparse crop with chalk showing through flipped between stubble and
+  beet inside one parcel. Fix: the real parcels and crops of the RPG (IGN / ASP, Licence Ouverte), baked by
+  `scripts/bake-fields.mjs`; each parcel takes one state from its crop and harvest date (`geo/fields.ts`
+  `lateSummer`: winter barley mostly disced by then, spring barley still stubble, beet standing), drawn as its
+  colour into the field texture, and the ground cover reads the same states. The photo guess remains for land no
+  farmer declared. Where: `Engine.buildWaterMask`, `terrainMaterial.ts` `fieldColour`, `GroundCover.ts`.
+- **Which year are the photo's fields?** The Marne BD ORTHO around Berru was flown 28 April to 9 May 2025 (IGN
+  mosaic graph, WFS `ORTHOIMAGERY.ORTHOPHOTOS.GRAPHE-MOSAIQUAGE:graphe_bdortho`); RPG.LATEST is that 2025 campaign.
+- **Memory held twice.** Each terrain tile kept its 512×512 ImageBitmap beside the GPU texture (1 MB each, 500 tiles
+  in view at Beautiful), and the land, canopy and field masks kept their canvas beside the pixel copy the CPU reads
+  (50 MB each on a 12 km loop). Fix: the bitmap closes once uploaded (`tex.onUpdate`, a tile is uploaded once), the
+  masks are DataTextures sharing that copy. Unloading a world now disposes the textures its materials hold (village
+  signs, models) and the props, traffic and landmarks it built. Where: `Terrain.loadTexture`,
+  `Engine.buildWaterMask`, `Engine.unloadWorld`.
 
 ## Capture and review
 

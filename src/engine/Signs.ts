@@ -8,7 +8,7 @@
 
 import * as THREE from 'three';
 import type { OsmWorld } from '../geo/osm.ts';
-import type { Route } from '../geo/route.ts';
+import type { Route, RouteIndex } from '../geo/route.ts';
 import { patchMaterial } from './atmosphere.ts';
 import type { Biome } from './biome.ts';
 
@@ -325,6 +325,22 @@ export function builtUpRuns(route: Route, osm: OsmWorld): [number, number][] {
     k = e;
   }
   return runs.filter(([a, b]) => b - a >= 150);
+}
+
+/** Where side roads and driveways leave the route (m along it): a way's points switch from on our road to off it. */
+export function junctionsAlong(route: Route, index: RouteIndex, osm: OsmWorld): number[] {
+  const out: number[] = [];
+  for (const l of osm.roads) {
+    if (l.kind === 'footway' || l.kind === 'path' || l.kind === 'steps' || l.kind === 'cycleway') continue;
+    let prev: { index: number; dist: number } | null = null;
+    for (let i = 0; i < l.pts.length; i += 2) {
+      const n = index.nearest(l.pts[i], l.pts[i + 1], 40);
+      const on = n.index >= 0 && n.dist < 7;
+      if (prev && on !== (prev.index >= 0 && prev.dist < 7)) out.push((on ? n : prev).index * route.step);
+      prev = n;
+    }
+  }
+  return out;
 }
 
 /** Entry and exit signs of each built-up stretch, named after the nearest village place within 2.5 km (hamlets

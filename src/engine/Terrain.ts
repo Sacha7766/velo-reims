@@ -90,6 +90,8 @@ class Node {
   /** The tile photo at PHOTO × PHOTO, north up (sRGB RGBA). */
   photo: Uint8ClampedArray | null = null;
   abort: AbortController | null = null;
+  /** Failed loads so far: a tile is tried three times before it is given up. */
+  tries = 0;
   // world bounds
   minX: number;
   maxX: number;
@@ -279,7 +281,7 @@ export class Terrain extends THREE.Group {
       this.buildMesh(node, dz, tex);
       node.state = READY;
     } catch {
-      if (!abort.signal.aborted) node.state = FAILED;
+      if (!abort.signal.aborted) node.state = ++node.tries < 3 ? EMPTY : FAILED;
     } finally {
       this.active--;
       if (node.abort === abort) node.abort = null;
@@ -324,6 +326,9 @@ export class Terrain extends THREE.Group {
     tex.generateMipmaps = true;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.needsUpdate = true;
+    // once on the GPU the bitmap is a second copy of the tile (1 MB each, hundreds of tiles): let it go. A tile
+    // texture is uploaded once and disposed with its tile, never re-uploaded
+    tex.onUpdate = () => bmp?.close();
     return tex;
   }
 

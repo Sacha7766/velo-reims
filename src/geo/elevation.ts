@@ -47,7 +47,8 @@ export async function localDemCovers(points: Iterable<[number, number]>, z: numb
 
 async function fetchDem(z: number, x: number, y: number): Promise<Dem> {
   const local = (await localIndex()).has(`${z}/${x}/${y}`);
-  const res = await fetch(local ? `/dem/${z}/${x}/${y}.png` : demUrl(z, x, y));
+  // a stalled download would hold its tiles loading for good: give up after 20 s (the tile is tried again)
+  const res = await fetch(local ? `/dem/${z}/${x}/${y}.png` : demUrl(z, x, y), { signal: AbortSignal.timeout(20000) });
   if (!res.ok) throw new Error(`DEM ${z}/${x}/${y}: ${res.status}`);
   const bmp = await createImageBitmap(await res.blob(), {
     colorSpaceConversion: 'none',
