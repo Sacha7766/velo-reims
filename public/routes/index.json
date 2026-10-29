@@ -153,5 +153,49 @@
     "gain": 16,
     "startEle": 165.8,
     "endEle": 165.8
+  },
+  {
+    "id": "reims-grand-tour",
+    "name": "Grand tour des 17 villages",
+    "region": "Marne, FR",
+    "category": "rolling",
+    "loop": true,
+    "lengthKm": 69.6,
+    "gain": 296,
+    "startEle": 91,
+    "endEle": 91
+  },
+  {
+    "id": "mont-de-berru",
+    "name": "Boucle du Mont de Berru",
+    "region": "Marne, FR",
+    "category": "rolling",
+    "loop": true,
+    "lengthKm": 32.5,
+    "gain": 251,
+    "startEle": 131.3,
+    "endEle": 131.3
+  },
+  {
+    "id": "vallee-de-la-suippe",
+    "name": "Boucle de la Suippe",
+    "region": "Marne, FR",
+    "category": "flat",
+    "loop": true,
+    "lengthKm": 34.42,
+    "gain": 89,
+    "startEle": 85.3,
+    "endEle": 85.3
+  },
+  {
+    "id": "plaine-de-betheny",
+    "name": "Boucle de Bétheny et Fresne",
+    "region": "Marne, FR",
+    "category": "flat",
+    "loop": true,
+    "lengthKm": 24.93,
+    "gain": 83,
+    "startEle": 91,
+    "endEle": 91
   }
 ]
