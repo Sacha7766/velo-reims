@@ -160,10 +160,10 @@
     "region": "Marne, FR",
     "category": "rolling",
     "loop": true,
-    "lengthKm": 59.51,
-    "gain": 301,
-    "startEle": 96,
-    "endEle": 96
+    "lengthKm": 57.76,
+    "gain": 298,
+    "startEle": 96.3,
+    "endEle": 96.3
   },
   {
     "id": "mont-de-berru",
@@ -171,10 +171,10 @@
     "region": "Marne, FR",
     "category": "rolling",
     "loop": true,
-    "lengthKm": 31.56,
-    "gain": 249,
-    "startEle": 133.8,
-    "endEle": 133.8
+    "lengthKm": 31.34,
+    "gain": 245,
+    "startEle": 137.3,
+    "endEle": 137.3
   },
   {
     "id": "vallee-de-la-suippe",
@@ -182,10 +182,10 @@
     "region": "Marne, FR",
     "category": "flat",
     "loop": true,
-    "lengthKm": 35.34,
-    "gain": 122,
-    "startEle": 87,
-    "endEle": 87
+    "lengthKm": 33.9,
+    "gain": 124,
+    "startEle": 85,
+    "endEle": 85
   },
   {
     "id": "plaine-de-betheny",
@@ -193,9 +193,9 @@
     "region": "Marne, FR",
     "category": "flat",
     "loop": true,
-    "lengthKm": 22.51,
-    "gain": 81,
-    "startEle": 92.8,
-    "endEle": 92.8
+    "lengthKm": 22.2,
+    "gain": 77,
+    "startEle": 96,
+    "endEle": 96
   }
 ]
