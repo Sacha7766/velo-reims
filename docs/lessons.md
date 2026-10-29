@@ -74,6 +74,16 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
 - **Lakes were a pale white sheet from the road.** At a grazing view the fresnel reflection is mostly the horizon
   sky, which is pale. In the Alps the low reflected rays hit the mountains across the lake. Fix: low reflected rays
   take a dark, hazed shore colour, steeper ones the sky (sea unchanged). Where: `terrainMaterial.ts` water block.
+- **The Champagne plain rendered as Alpine meadows, with near-white chalk fields.** No biome matched the Marne, so
+  it fell back to the Alpine one (Salzburg farmhouses, spruce, Austrian posts), and the Alpine photo grade (gain
+  1.32) plus the meadow push bleached the bright IGN chalk. Fix: a Champagne biome picked by bounds, a photo grade per
+  biome (`photoGrade`), no meadow push. Where: `biome.ts`, `terrainMaterial.ts`.
+- **A spring orthophoto for a late-August ride.** IGN BD ORTHO shows the plain in spring: winter cereals green, the
+  ground for beet and maize bare chalk; by late August it is the other way round. Fix (`fieldSeason`): every parcel
+  keeps its photographed outline and its blurred tone picks its state (green then: stubble now; bare then: beet,
+  maize or potatoes), OSM meadows dry to hay, vineyards get leaf colour, the verge's spring green dries to olive. The
+  3D crops by the road read the same photo the same way (`Terrain.photoAt`, `fieldState` in `GroundCover.ts`), so a
+  maize wall stands where the ground is maize-green. Where: `terrainMaterial.ts`, `GroundCover.ts`, `Terrain.ts`.
 
 ## Placement and geometry
 
@@ -164,6 +174,17 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   fixes in `scenes/<id>.json` `osmTags` (`{ "<element id>": { "building:levels": "1" } }`). Where: `Engine.loadWorld`.
 - **Five routes still had their first OSM bake** (no meadows, barriers, power lines, benches, bus stops,
   crosses). Re-bake every preset after `bake-osm.mjs` learns a new feature; compare tag counts with Gaisberg's file.
+- **The plain had none of its landmarks.** Water towers mapped as nodes were not in the bake query; an untyped
+  `man_made=tower` with a height (the 71 m TDF tower on the Mont de Berru) was not an antenna; cadastre silos carry no
+  height (7 m default); all of them stand outside the 420 m corridor. Fix: water towers, silos, chimneys, wind
+  turbines and village names baked from 4 km (`FAR`), untyped towers of 25 m or more drawn as transmitters, silo
+  heights by footprint (15, 28, 36 m), water towers and turbines in `Props.towers`. Where: `bake-osm.mjs`, `osm.ts`,
+  `Props.ts`.
+- **Loops planned through each village's centre point made detours.** BRouter rides into the centre and back out
+  the same street. Plan from a point on the most important road inside the village's built-up area, drop the points
+  the route crosses anyway, move a point that still causes an out-and-back onto the spur's base, then check for
+  U-turns, doubled road and yard spurs; the D 944 near Loivre has no minor-road alternative, so say so in the brief.
+  Tooling lives with the session's route scripts (not in the repo).
 
 ## Capture and review
 
@@ -179,6 +200,15 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
 - **Shots changed when the Mac went on battery.** The app's battery saver drops to 30 fps and Balanced, so frames
   stop being comparable. Capture scripts now report a charging battery (`navigator.getBattery`). A zsh loop
   also ate `:c` in `"$1:chase"` (a path modifier): write `"${1}:chase"`.
+- **The road vanished under green ground 50 m ahead on the open plain while `stats.pending` read 0.** A parent tile
+  stays drawn until all four children have loaded; the children near the rider were in, but a sibling 10 km away was
+  still loading, so a 25 km tile (never flattened along the road) covered the asphalt, and its shader painted the
+  photo's road as verge grass. The counter only counted tiles within 3 km. Fix: the children of a near parent count
+  as pending wherever they are, so the loading screen and the capture scripts wait for them. Where:
+  `Terrain.visit`. In a slow sandbox the full load at high detail took 26 minutes (6,900 IGN tiles).
+- **Playwright's page screenshot timed out (240 s) under SwiftShader.** It waits for a compositor frame. Read the
+  WebGL canvas instead: `toDataURL` in a `requestAnimationFrame` registered after the engine's own, while the
+  drawing buffer still holds the frame.
 
 ## Devices and riding
 

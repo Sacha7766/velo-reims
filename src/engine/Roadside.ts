@@ -1,7 +1,8 @@
 // Road furniture that depends on the terrain: galvanised W-beam guard rails where the
-// ground drops away beside the road and on the outside of hairpins, Austrian delineator
-// posts (Leitpflöcke: white, black band, red reflector on the right, white on the left,
-// StVO §57) where there is no rail, and red/white chevron boards at hairpin apexes.
+// ground drops away beside the road and on the outside of hairpins, delineator posts where
+// there is no rail (Austrian Leitpflöcke: white, black band, red reflector on the right, white
+// on the left, StVO §57; French J6: plain white with a red reflector facing the traffic on its
+// side), and red/white chevron boards at hairpin apexes.
 
 import * as THREE from 'three';
 import { findHairpins, type Route } from '../geo/route.ts';
@@ -58,7 +59,7 @@ export class Roadside extends THREE.Group {
     // masonry cut walls where the road's walls are stone (the Mallorcan roads, not the Alpine ones)
     const cutWalls = this.cutRuns.filter((r) => typeAt(Math.round((r.a + r.b) / 2)) === 'stonewall');
     if (cutWalls.length) this.add(this.cutWalls(route, halfWidth, cutWalls, groundAt));
-    if (biome.posts === 'at') this.add(this.posts(route, halfWidth, runs, groundAt));
+    if (biome.posts === 'at' || biome.posts === 'fr') this.add(this.posts(route, halfWidth, runs, groundAt, biome.posts));
     const chevrons = this.chevrons(route, halfWidth, groundAt);
     if (chevrons) this.add(chevrons);
   }
@@ -382,21 +383,25 @@ export class Roadside extends THREE.Group {
   }
 
   /** Leitpflöcke every 50 m (25 m in bends) where there is no guard rail. */
-  private posts(route: Route, hw: number, runs: Run[], groundAt: (x: number, z: number) => number): THREE.InstancedMesh {
+  private posts(route: Route, hw: number, runs: Run[], groundAt: (x: number, z: number) => number, style: 'at' | 'fr'): THREE.InstancedMesh {
     const white = new THREE.Color(0.93, 0.93, 0.91);
     const black = new THREE.Color(0.03, 0.03, 0.03);
     // reflector colours are HDR-ish so they catch the light like retroreflectors
     const red = new THREE.Color(1.6, 0.08, 0.05);
     const clear = new THREE.Color(1.6, 1.6, 1.5);
     // local frame: +Z faces the traffic the post is on the right of
-    const mk = (front: THREE.Color, back: THREE.Color) =>
-      mergeColored([
+    const geo = style === 'fr'
+      // J6: a white post a little taller than the Leitpflock, a tall red reflector near the top, plain white behind
+      ? mergeColored([
+        [new THREE.BoxGeometry(0.11, 1.1, 0.08).translate(0, 0.55, 0), white],
+        [new THREE.BoxGeometry(0.06, 0.18, 0.012).translate(0, 0.9, 0.045), red],
+      ])
+      : mergeColored([
         [new THREE.BoxGeometry(0.12, 1.0, 0.1).translate(0, 0.5, 0), white],
         [new THREE.BoxGeometry(0.124, 0.25, 0.104).translate(0, 0.8, 0), black],
-        [new THREE.BoxGeometry(0.05, 0.12, 0.012).translate(0, 0.8, 0.055), front],
-        [new THREE.BoxGeometry(0.05, 0.12, 0.012).translate(0, 0.8, -0.055), back],
+        [new THREE.BoxGeometry(0.05, 0.12, 0.012).translate(0, 0.8, 0.055), red],
+        [new THREE.BoxGeometry(0.05, 0.12, 0.012).translate(0, 0.8, -0.055), clear],
       ]);
-    const geo = mk(red, clear);
     const mat = patchMaterial(new THREE.MeshLambertMaterial({ vertexColors: true }), { key: 'leitpflock' });
     const railAt = (side: 1 | -1, i: number) => runs.some((r) => r.side === side && i >= r.a - 3 && i <= r.b + 3);
     const mats: THREE.Matrix4[] = [];
@@ -405,7 +410,8 @@ export class Roadside extends THREE.Group {
     for (let i = 0; i < route.n; i++) {
       if (i < next) continue;
       const bend = route.radius[i] < 150;
-      next = i + Math.round((bend ? 25 : 50) / route.step);
+      // French country roads carry them far more sparsely than Austrian ones (one in the Panoramax frames)
+      next = i + Math.round((bend ? 25 : 50) * (style === 'fr' ? 2 : 1) / route.step);
       const h = route.heading[i];
       for (const side of [1, -1] as const) {
         if (railAt(side, i)) continue;

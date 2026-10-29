@@ -197,5 +197,27 @@
     "gain": 77,
     "startEle": 96,
     "endEle": 96
+  },
+  {
+    "id": "massif-de-saint-thierry",
+    "name": "Boucle du Massif de Saint-Thierry",
+    "region": "Marne, FR",
+    "category": "rolling",
+    "loop": true,
+    "lengthKm": 24.25,
+    "gain": 172,
+    "startEle": 80,
+    "endEle": 80
+  },
+  {
+    "id": "suippe-amont",
+    "name": "Boucle de la Haute Suippe",
+    "region": "Marne, FR",
+    "category": "rolling",
+    "loop": true,
+    "lengthKm": 34.66,
+    "gain": 136,
+    "startEle": 81,
+    "endEle": 81
   }
 ]

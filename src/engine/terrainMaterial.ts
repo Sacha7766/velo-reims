@@ -30,6 +30,13 @@ export const terrainUniforms = {
   uCliffSlope: { value: new THREE.Vector2(0.42, 0.62) },
   uRockOchre: { value: 1 },
   uMaskSize: { value: new THREE.Vector2(1, 1) },
+  /** Orthophoto gain, saturation and gamma (biome.photoGrade). */
+  uPhotoGrade: { value: new THREE.Vector3(1.32, 1.28, 1.06) },
+  /** Late-summer fields from a spring photo (biome.fieldSeason), over the land mask: R arable, G meadow, B vineyard. */
+  uFieldSeason: { value: 0 },
+  uFields: { value: blank as THREE.Texture },
+  /** Grass that replaces the photo's grey road edge on verges (Alpine green; Champagne dry in August). */
+  uVergeCol: { value: new THREE.Vector3(0.13, 0.18, 0.08) },
 };
 
 export function setWaterMask(tex: THREE.Texture, x0: number, z0: number, w: number, h: number, canopy?: THREE.Texture) {
@@ -45,7 +52,17 @@ export function setWaterMask(tex: THREE.Texture, x0: number, z0: number, w: numb
 
 let cliffTex: { c: THREE.Texture; n: THREE.Texture } | null = null;
 
+/** Arable / meadow / vineyard mask over the same area as the land mask (null: none). */
+export function setFieldMask(tex: THREE.Texture | null) {
+  const old = terrainUniforms.uFields.value;
+  terrainUniforms.uFields.value = tex ?? blank;
+  if (old !== blank && old !== tex) old.dispose();
+}
+
 export function setTerrainBiome(b: Biome) {
+  terrainUniforms.uPhotoGrade.value.set(...(b.photoGrade ?? [1.32, 1.28, 1.06]));
+  terrainUniforms.uFieldSeason.value = b.fieldSeason ?? 0;
+  terrainUniforms.uVergeCol.value.set(...((b.fieldSeason ? [0.2, 0.2, 0.09] : [0.13, 0.18, 0.08]) as [number, number, number]));
   terrainUniforms.uMeadowPush.value = b.meadowPush;
   terrainUniforms.uKarst.value = b.karst;
   terrainUniforms.uPhotoSea.value = b.id === 'mediterranean' ? 1 : 0;
@@ -112,6 +129,10 @@ uniform float uPhotoSea;
 uniform sampler2D uCliffTex;
 uniform sampler2D uCliffNor;
 uniform vec2 uMaskSize;
+uniform vec3 uPhotoGrade;
+uniform float uFieldSeason;
+uniform sampler2D uFields;
+uniform vec3 uVergeCol;
 varying vec3 vTWNormal;
 ${NOISE}`,
       )
@@ -181,15 +202,15 @@ float tBump = 0.0;
   // photo grading
   float tl = dot(img, vec3(0.2126, 0.7152, 0.0722));
   // PNOA is exposed brighter than basemap.at: grade the Mediterranean photo gently
-  float gGain = mix(1.32, 0.9, uKarst);
-  float gSat = mix(1.28, 1.18, uKarst);
-  vec3 tc = pow(max(mix(vec3(tl), img, gSat), vec3(0.0)), vec3(mix(1.06, 1.12, uKarst))) * gGain;
+  float gGain = mix(uPhotoGrade.x, 0.9, uKarst);
+  float gSat = mix(uPhotoGrade.y, 1.18, uKarst);
+  vec3 tc = pow(max(mix(vec3(tl), img, gSat), vec3(0.0)), vec3(mix(uPhotoGrade.z, 1.12, uKarst))) * gGain;
   vec3 area = texture(map, vMapUv, 5.0).rgb * photoFix;
   float la = dot(area, vec3(0.2126, 0.7152, 0.0722));
-  area = pow(max(mix(vec3(la), area, gSat), vec3(0.0)), vec3(mix(1.06, 1.12, uKarst))) * gGain;
+  area = pow(max(mix(vec3(la), area, gSat), vec3(0.0)), vec3(mix(uPhotoGrade.z, 1.12, uKarst))) * gGain;
   vec3 wide = texture(map, vMapUv, 7.5).rgb * photoFix;
   float lw = dot(wide, vec3(0.2126, 0.7152, 0.0722));
-  wide = pow(max(mix(vec3(lw), wide, 1.2), vec3(0.0)), vec3(1.06)) * 1.32;
+  wide = pow(max(mix(vec3(lw), wide, uPhotoGrade.y * 0.94), vec3(0.0)), vec3(uPhotoGrade.z)) * uPhotoGrade.x;
 
   // detail textures (mean ~1): two scales against tiling
   float gd = texture2D(uGrassTex, p * 0.6).r * 2.0 * (0.55 + 0.9 * texture2D(uGrassTex, p * 0.063 + 0.31).r);
@@ -214,6 +235,54 @@ float tBump = 0.0;
   // close to the camera the photo blurs and smears at grazing angles: keep its colour, not its texels
   float soft = (1.0 - smoothstep(30.0, 180.0, camD));
   vec3 base = mix(tc, area, soft * 0.9);
+  // Champagne at the end of August: the orthophoto shows the plain in spring. Winter wheat, barley and
+  // rape (green then) are harvested to stubble by now; the spring-sown beet, maize and potatoes (bare
+  // chalk in the photo) stand green. Each parcel keeps its photographed outline, so the strips stay
+  // real, and its photographed tone picks its late-summer state.
+  if (uFieldSeason > 0.5) {
+    vec3 fm = inMask ? texture2D(uFields, lmuv).rgb : vec3(0.0);
+    float meadowTrue = smoothstep(0.3, 0.8, fm.g);
+    float vines = smoothstep(0.3, 0.8, fm.b);
+    float open = (1.0 - smoothstep(0.3, 0.8, land.b)) * (1.0 - smoothstep(0.3, 0.8, land.r)) * (1.0 - canopy) * (1.0 - verge) * (1.0 - steep);
+    // the parcel's tone: the photo blurred to about the width of one strip
+    vec3 pcl = texture(map, vMapUv, 4.0).rgb;
+    vec3 pc = sqrt(max(pcl, vec3(0.0)));
+    float pMax = max(pc.r, max(pc.g, pc.b));
+    float pL = (pc.r + pc.g + pc.b) / 3.0;
+    float pG = pc.g - max(pc.r, pc.b) * 0.93;
+    float pS = (pMax - min(pc.r, min(pc.g, pc.b))) / max(pMax, 1e-3);
+    // hedges and copses OSM doesn't map are dark and rough in the photo: they stay as photographed
+    float rough = abs(dot(img - imgB, vec3(0.333)));
+    float treeish = smoothstep(0.03, 0.07, rough) * smoothstep(0.36, 0.26, L);
+    float green = smoothstep(0.03, 0.07, pG) * smoothstep(0.12, 0.2, pS);
+    float bare = (1.0 - green) * smoothstep(0.48, 0.6, pL) * smoothstep(0.16, 0.09, pS);
+    // smooth inside a parcel, different from its neighbours
+    float pick = fract(pL * 5.3 + pG * 23.0 + pS * 3.1);
+    // harvested: pale to golden stubble, some with green regrowth, some already disced to chalk
+    vec3 stubble = mix(vec3(0.62, 0.53, 0.33), vec3(0.52, 0.4, 0.21), smoothstep(0.2, 0.7, pick));
+    stubble = mix(stubble, vec3(0.32, 0.34, 0.15), smoothstep(0.78, 0.84, pick) * (1.0 - smoothstep(0.88, 0.92, pick)));
+    stubble = mix(stubble, vec3(0.55, 0.52, 0.45), smoothstep(0.9, 0.95, pick));
+    // spring-sown: beet dark green, maize mid green, potatoes yellowing, a few still bare
+    vec3 crop = mix(vec3(0.12, 0.2, 0.06), vec3(0.18, 0.27, 0.08), smoothstep(0.42, 0.5, pick));
+    crop = mix(crop, vec3(0.3, 0.3, 0.12), smoothstep(0.7, 0.76, pick));
+    crop = mix(crop, vec3(0.55, 0.52, 0.45), smoothstep(0.86, 0.92, pick));
+    // keep the photo's furrows, tram lines and soil patches inside the parcel
+    float det = clamp(dot(img, vec3(0.3, 0.55, 0.15)) / max(dot(pcl, vec3(0.3, 0.55, 0.15)), 1e-3), 0.7, 1.3);
+    float wobble = 0.92 + 0.16 * tNoise(p * 0.02);
+    vec3 field = mix(stubble, crop, bare / max(bare + green, 1e-3)) * mix(1.0, det, 0.45) * wobble;
+    float fieldW = open * (1.0 - meadowTrue) * (1.0 - vines) * (1.0 - treeish) * clamp(green + bare, 0.0, 1.0);
+    base = mix(base, field, fieldW);
+    // August meadows are drier than the spring photo; vines are in full leaf over the chalk
+    vec3 hay = mix(vec3(0.3, 0.33, 0.14), vec3(0.46, 0.41, 0.21), tNoise(p * 0.04));
+    base = mix(base, hay * mix(1.0, det, 0.4), open * meadowTrue * 0.6);
+    vec3 vineCol = mix(vec3(0.2, 0.28, 0.1), vec3(0.5, 0.48, 0.4), 0.25 + 0.2 * tNoise(p * 0.5));
+    base = mix(base, vineCol, open * vines * 0.7);
+    // verges: the photo's spring-green grass is olive and straw by now (its grey asphalt pixels become
+    // verge grass further down)
+    float lushVerge = smoothstep(0.015, 0.05, img.g - max(img.r, img.b) * 0.95);
+    vec3 august = mix(vec3(0.17, 0.2, 0.08), vec3(0.3, 0.29, 0.14), tNoise(p * 0.3));
+    base = mix(base, august * mix(1.0, det, 0.5), verge * (1.0 - steep) * lushVerge * 0.7);
+  }
   // meadows: pull bleached summer-photo grass back to a living green-gold
   float bl = dot(base, vec3(0.3, 0.55, 0.15));
   float grassy = max(meadow, wGrass * 0.6 * uMeadowPush) * (1.0 - steep) * (1.0 - canopy);
@@ -291,7 +360,7 @@ float tBump = 0.0;
   // the orthophoto's real road is often wider than or offset from our asphalt ribbon: grey,
   // unsaturated photo pixels in the road corridor become verge (grass in the Alps)
   float photoRoad = verge * smoothstep(0.14, 0.06, sat) * (1.0 - uKarst) * (1.0 - steep);
-  vec3 vergeGrass = vec3(0.13, 0.18, 0.08) * (0.85 + 0.3 * tNoise(p * 0.8)) * (0.9 + 0.2 * gd);
+  vec3 vergeGrass = uVergeCol * (0.85 + 0.3 * tNoise(p * 0.8)) * (0.9 + 0.2 * gd);
   base = mix(base, vergeGrass, photoRoad * 0.9);
   // road verges: grey-brown dirt with pale rubble (not the orthophoto's grey asphalt)
   float rubble = smoothstep(0.72, 0.8, tNoise(p * 2.3)) * 0.5 + smoothstep(0.78, 0.86, tNoise(p * 6.1 + 3.0)) * 0.5;

@@ -11,6 +11,9 @@ import { terrainMaterial } from './terrainMaterial.ts';
 import { UNDERPASS_HALF, UNDERPASS_SIDE } from './Tunnel.ts';
 
 const SEG = 64;
+// side of the per-tile photo sample photoAt reads: 512 px at mip level 4, the blur the terrain shader
+// takes a parcel's tone at
+const PHOTO = 32;
 const VERTS = (SEG + 1) * (SEG + 1);
 const SKIRT = 4 * SEG;
 const MAX_Z = 18;
@@ -68,6 +71,14 @@ function getShared() {
   return { index: sharedIndex, uv: sharedUv! };
 }
 
+/** A CPU canvas for the photo sample: drawn from the decoded tiles, never read back from the GPU (a readback
+ *  waits for the renderer, and on ANGLE/Metal washes out the WebGL frame). */
+function photoCanvas(): OffscreenCanvasRenderingContext2D {
+  const ctx = new OffscreenCanvas(PHOTO, PHOTO).getContext('2d', { willReadFrequently: true })!;
+  ctx.imageSmoothingQuality = 'high';
+  return ctx;
+}
+
 class Node {
   z: number;
   x: number;
@@ -76,6 +87,8 @@ class Node {
   children: Node[] | null = null;
   state = EMPTY;
   mesh: THREE.Mesh | null = null;
+  /** The tile photo at PHOTO × PHOTO, north up (sRGB RGBA). */
+  photo: Uint8ClampedArray | null = null;
   abort: AbortController | null = null;
   // world bounds
   minX: number;
@@ -216,7 +229,10 @@ export class Terrain extends THREE.Group {
       }
       for (const c of node.children) {
         if (c.state === EMPTY) this.queue.push({ node: c, d: c.distanceTo(cam) });
-        if (c.state !== READY && c.distanceTo(cam) < 3000) this.pendingNear++;
+        // the parent stays drawn until all four have loaded, so a child kilometres away still holds back
+        // the detail (and the flattened road) under the camera: on the open Champagne plain a 25 km tile
+        // covered the road 50 m ahead while the counter read 0
+        if (c.state !== READY && c.state !== FAILED && (d < 3000 || c.distanceTo(cam) < 3000)) this.pendingNear++;
       }
     } else if (node.children) {
       for (const c of node.children) this.disposeNode(c);
@@ -231,6 +247,7 @@ export class Terrain extends THREE.Group {
   private disposeNode(node: Node) {
     if (node.children) for (const c of node.children) this.disposeNode(c);
     node.children = null;
+    node.photo = null;
     node.abort?.abort();
     if (node.mesh) {
       this.remove(node.mesh);
@@ -279,15 +296,21 @@ export class Terrain extends THREE.Group {
       );
       const canvas = new OffscreenCanvas(512, 512);
       const ctx = canvas.getContext('2d')!;
+      const sample = photoCanvas();
       tiles.forEach((t, q) => {
         ctx.drawImage(t, (q & 1) * 256, (q >> 1) * 256, 256, 256);
+        sample.drawImage(t, ((q & 1) * PHOTO) / 2, ((q >> 1) * PHOTO) / 2, PHOTO / 2, PHOTO / 2);
         t.close();
       });
+      node.photo = sample.getImageData(0, 0, PHOTO, PHOTO).data;
       bmp = await createImageBitmap(canvas, { imageOrientation: 'flipY' });
     } catch {
       if (signal.aborted) return null;
       try {
         const t = await loadImageryTile(src, node.z, node.x, node.y, signal);
+        const sample = photoCanvas();
+        sample.drawImage(t, 0, 0, PHOTO, PHOTO);
+        node.photo = sample.getImageData(0, 0, PHOTO, PHOTO).data;
         bmp = await createImageBitmap(t, { imageOrientation: 'flipY' });
         t.close();
       } catch {
@@ -427,6 +450,28 @@ export class Terrain extends THREE.Group {
     const width = cut ? Math.max(this.opts.cutWidth, (h - road) * 0.6) : 14;
     const w = 1 - smooth01((near.dist - roadHalfWidth - (cut ? 0.6 : 2.5)) / width);
     return h + (verge - h) * w;
+  }
+
+  /** The orthophoto's colour around a world point at parcel scale (sRGB 0..255 into `out`), from the finest
+   *  loaded tile; false while none covers it. */
+  photoAt(x: number, z: number, out: number[]): boolean {
+    let best: Node | null = null;
+    for (const root of this.roots) {
+      let n: Node | null = root;
+      while (n && x >= n.minX && x <= n.maxX && z >= n.minZ && z <= n.maxZ) {
+        if (n.photo) best = n;
+        n = n.children?.find((c) => x >= c.minX && x <= c.maxX && z >= c.minZ && z <= c.maxZ) ?? null;
+      }
+      if (best) break;
+    }
+    if (!best?.photo) return false;
+    const i = Math.min(PHOTO - 1, Math.floor(((x - best.minX) / best.size) * PHOTO));
+    const j = Math.min(PHOTO - 1, Math.floor(((z - best.minZ) / best.size) * PHOTO));
+    const k = (j * PHOTO + i) * 4;
+    out[0] = best.photo[k];
+    out[1] = best.photo[k + 1];
+    out[2] = best.photo[k + 2];
+    return true;
   }
 
   /** Terrain height (no road flattening) at a world position, NaN when not loaded. */

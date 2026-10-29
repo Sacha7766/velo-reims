@@ -1,7 +1,9 @@
-# Champagne plain north-east of Reims: visual reference for the four Reims loops
+# Champagne around Reims: visual reference for the Reims loops
 
 Scope: `reims-grand-tour`, `mont-de-berru`, `vallee-de-la-suippe` and `plaine-de-betheny` (public/routes), 17 villages
-between Bétheny, the Suippe valley and the Mont de Berru (Marne). Anything no source shows is **unknown**; estimates
+between Bétheny, the Suippe valley and the Mont de Berru (Marne); and two loops added on 2026-10-29,
+`massif-de-saint-thierry` (the vineyard hills north-west of Reims, from Courcy) and `suippe-amont` (the plateau and
+the upper Suippe from Warmeriville to Bétheniville), whose landmarks are in their briefs. Anything no source shows is **unknown**; estimates
 are **est.**. Route km are along each route file.
 
 ## Source key

@@ -32,11 +32,13 @@ export interface Building {
 }
 
 /** Open land cover that changes ground shading and ground cover. */
-export type CoverClass = 'meadow' | 'built' | 'scrub' | 'rock';
+export type CoverClass = 'meadow' | 'built' | 'scrub' | 'rock' | 'vineyard';
 
 export interface Cover {
   poly: Polygon;
   cls: CoverClass;
+  /** The OSM landuse / natural value (farmland and grass are both 'meadow'). */
+  kind?: string;
 }
 
 /** Linear features beside roads: guard rails, fences, walls, hedges, power lines. */
@@ -46,6 +48,14 @@ export interface Barrier {
 }
 
 /** Communication towers, masts and bell towers (OSM man_made tower/mast): landmarks seen from far. */
+/** A named village, town or hamlet (OSM place node, usually at the church). */
+export interface Place {
+  x: number;
+  z: number;
+  name: string;
+  kind: string;
+}
+
 export interface Tower {
   x: number;
   z: number;
@@ -57,6 +67,10 @@ export interface Tower {
   concrete: boolean;
   /** A church's bell tower (mapped apart from the church): white shaft and spire. */
   bell: boolean;
+  /** A water tower: a shaft under a wide tank, the landmark of each village on the Champagne plain. */
+  water?: boolean;
+  /** A wind turbine. */
+  turbine?: boolean;
   name?: string;
 }
 
@@ -84,6 +98,7 @@ export interface OsmWorld {
   barriers: Barrier[];
   pois: Poi[];
   towers: Tower[];
+  places: Place[];
 }
 
 type LatLon = { lat: number; lon: number };
@@ -106,12 +121,13 @@ const ENDPOINTS = [
 const KEEP_TAGS = [
   'landuse', 'natural', 'building', 'building:levels', 'height', 'roof:shape', 'roof:colour', 'building:colour', 'highway',
   'leaf_type', 'man_made', 'barrier', 'power', 'amenity', 'tourism', 'historic', 'information', 'name', 'sport', 'leisure',
+  'tower:type', 'tower:construction', 'generator:source', 'place',
 ];
 
 const COVER: Record<string, CoverClass> = {
   meadow: 'meadow', grass: 'meadow', farmland: 'meadow', village_green: 'meadow', orchard: 'meadow', grassland: 'meadow',
   heath: 'meadow', residential: 'built', farmyard: 'built', industrial: 'built', commercial: 'built', retail: 'built',
-  scrub: 'scrub', bare_rock: 'rock', scree: 'rock', cliff: 'rock',
+  scrub: 'scrub', bare_rock: 'rock', scree: 'rock', cliff: 'rock', vineyard: 'vineyard',
 };
 
 const FLAT_KINDS = new Set(['industrial', 'commercial', 'retail', 'warehouse', 'supermarket', 'garages', 'hangar', 'service', 'parking', 'container']);
@@ -342,9 +358,12 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
   const barriers: Barrier[] = [];
   const pois: Poi[] = [];
   const towers: Tower[] = [];
-  // church and defence towers are buildings or scene models; these are the antennas
+  const places: Place[] = [];
+  // church and defence towers are buildings or scene models; these are the antennas (an untyped tower of 25 m
+  // or more is one too: the 71 m TDF tower on the Mont de Berru)
   const antenna = (t: Record<string, string>) =>
-    t.man_made === 'mast' || (t.man_made === 'tower' && (t['tower:type'] === 'communication' || t['tower:type'] === 'bell_tower'));
+    t.man_made === 'mast' || (t.man_made === 'tower' && (t['tower:type'] === 'communication' || t['tower:type'] === 'bell_tower' ||
+      (!t['tower:type'] && parseFloat(t.height ?? '') >= 25)));
   const towerHeight = (t: Record<string, string>) => {
     const h = parseFloat(t.height ?? '');
     if (Number.isFinite(h) && h > 1) return h;
@@ -359,6 +378,16 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
         const [x, z] = lonLatToWorld(route.frame, el.lon, el.lat);
         towers.push({ x, z, r: 0, height: towerHeight(t), concrete: t['tower:construction'] === 'concrete', bell: t['tower:type'] === 'bell_tower', name: t.name });
       }
+      if (t.man_made === 'water_tower' || t['generator:source'] === 'wind') {
+        const [x, z] = lonLatToWorld(route.frame, el.lon, el.lat);
+        const water = t.man_made === 'water_tower';
+        towers.push({ x, z, r: 0, height: towerHeight(t), concrete: water, bell: false, water, turbine: !water, name: t.name });
+        continue;
+      }
+      if (t.name && /^(village|town|hamlet|city)$/.test(t.place ?? '')) {
+        const [x, z] = lonLatToWorld(route.frame, el.lon, el.lat);
+        places.push({ x, z, name: t.name, kind: t.place });
+      }
       if (t.natural === 'tree') {
         trees.push(...lonLatToWorld(route.frame, el.lon, el.lat));
         continue;
@@ -371,6 +400,12 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
       continue;
     }
     // towers and masts are landmarks (Props.towers, or a scene model), not houses
+    if (t.man_made === 'water_tower' && el.type === 'way' && el.geometry) {
+      const ring = toRing(route, el.geometry);
+      const [a, b, c, d] = ringBbox(ring);
+      towers.push({ x: (a + c) / 2, z: (b + d) / 2, r: Math.min(c - a, d - b) / 2, height: towerHeight(t), concrete: true, bell: false, water: true, name: t.name });
+      continue;
+    }
     if (t.man_made === 'tower' || t.man_made === 'mast') {
       if (antenna(t) && el.type === 'way' && el.geometry) {
         const ring = toRing(route, el.geometry);
@@ -401,12 +436,16 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
                   // the curved Stelvio hotel); sheds and shops stay flat
                   : (area < 900 || ringArea(ring) < 2500) && !FLAT_KINDS.has(t.building) ? 'gabled' : 'flat';
       const levels = parseFloat(t['building:levels'] ?? '');
+      // grain silos stand over the plain (cadastre outlines, rarely a height): steel bins ~15 m, cell blocks
+      // 30 m and more, flat-topped
+      const silo = t.man_made === 'silo' || t.building === 'silo' || t.building === 'grain_silo';
+      const siloH = !t.height && !Number.isFinite(levels) ? (ringArea(ring) < 150 ? 15 : ringArea(ring) < 600 ? 28 : 36) : 0;
       // tiny footprints are one storey (a 9 m² substation stood as a 7 m tower); untagged ones out in
       // the meadows are hay barns and sheds, not two-storey houses
-      const tiny = !t.height && !Number.isFinite(levels) && ringArea(ring) < 40;
+      const tiny = !silo && !t.height && !Number.isFinite(levels) && ringArea(ring) < 40;
       const shed = tiny && t.building === 'yes' && !t.name;
       buildings.push({
-        ring, height: tiny ? 3.2 : buildingHeight(t), roof, kind: shed ? 'shed' : t.building,
+        ring, height: tiny ? 3.2 : siloH && silo ? siloH : buildingHeight(t), roof: silo && !roofTag ? 'flat' : roof, kind: silo ? 'silo' : shed ? 'shed' : t.building,
         levels: Number.isFinite(levels) ? levels : undefined,
         wallColour: t['building:colour'], roofColour: t['roof:colour'], name: t.name, explicitRoof: !!roofTag,
         woodTop: t['serpentine:wood_top'] === undefined ? undefined : t['serpentine:wood_top'] === 'yes',
@@ -416,7 +455,7 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
     } else if (t.power === 'line' || t.power === 'minor_line') {
       if (el.geometry) barriers.push({ pts: toLine(route, el.geometry), kind: `power:${t.power}` });
     } else if (coverCls && (el.type === 'way' || el.type === 'relation') && t.natural !== 'cliff') {
-      for (const poly of polygonsFrom(route, el)) cover.push({ poly, cls: coverCls });
+      for (const poly of polygonsFrom(route, el)) cover.push({ poly, cls: coverCls, kind: t.landuse ?? t.natural });
     } else if (t.highway && el.type === 'way' && el.geometry) {
       const pts = new Float32Array(el.geometry.length * 2);
       el.geometry.forEach((p, i) => {
@@ -427,7 +466,7 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
       roads.push({ pts, kind: t.highway, width: ROAD_WIDTH[t.highway] ?? 4 });
     }
   }
-  return { forests, water, buildings, roads, trees: new Float32Array(trees), cover, barriers, pois, towers };
+  return { forests, water, buildings, roads, trees: new Float32Array(trees), cover, barriers, pois, towers, places };
 }
 
 function toLine(route: Route, g: LatLon[]): Float32Array {

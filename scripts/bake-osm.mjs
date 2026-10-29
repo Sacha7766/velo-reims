@@ -17,19 +17,31 @@ const KEEP = [
   'building:colour', 'building:material', 'roof:orientation', 'highway', 'leaf_type', 'leaf_cycle', 'man_made',
   'tower:type', 'tower:construction', 'barrier', 'power', 'amenity', 'tourism', 'historic', 'information', 'waterway',
   'surface', 'name', 'sport', 'leisure', 'colour', 'aerialway', 'bridge', 'tunnel', 'width', 'lanes', 'denotation',
-  'oneway', 'junction',
+  'oneway', 'junction', 'generator:source', 'operator', 'place',
 ];
 // land cover and roadside features the renderer uses beyond forests/buildings
 const EXTRA = [
   'way["landuse"~"^(meadow|grass|farmland|orchard|residential|village_green|vineyard|allotments)$"]',
   'way["natural"~"^(grassland|scrub|heath|bare_rock|scree|cliff|tree_row|wetland)$"]',
   'way["barrier"~"^(guard_rail|fence|wall|hedge|retaining_wall)$"]', 'way["power"="line"]', 'way["waterway"]',
-  'way["man_made"~"^(tower|mast)$"]', 'node["man_made"~"^(tower|mast|cross)$"]', 'node["power"~"^(pole|tower)$"]',
+  'way["man_made"~"^(tower|mast|water_tower|silo|chimney)$"]', 'node["man_made"~"^(tower|mast|cross|water_tower|chimney)$"]',
+  'node["power"~"^(pole|tower)$"]',
   'node["highway"~"^(bus_stop|street_lamp)$"]', 'node["amenity"~"^(bench|shelter)$"]',
   'node["tourism"~"^(information|viewpoint)$"]', 'node["historic"~"^(wayside_cross|wayside_shrine|memorial)$"]',
   'node["natural"~"^(peak|tree)$"]', 'node["sport"="free_flying"]', 'way["sport"="free_flying"]',
   'node["highway"="turning_circle"]',
 ];
+
+// what stands out over open country from kilometres away (the Champagne plain): water towers, silos,
+// transmitters, chimneys and wind turbines, baked from a wider corridor than the rest; and the villages'
+// names (place nodes sit at the church, often off the road), for the signs at each village entry
+const FAR = 4000;
+const LANDMARKS = [
+  'way["man_made"~"^(tower|mast|water_tower|silo|chimney)$"]', 'node["man_made"~"^(tower|mast|water_tower|chimney)$"]',
+  'node["generator:source"="wind"]', 'node["place"~"^(village|town|hamlet|city)$"]',
+];
+const landmark = (t) => /^(tower|mast|water_tower|silo|chimney)$/.test(t.man_made ?? '') || t['generator:source'] === 'wind' ||
+  /^(village|town|hamlet|city)$/.test(t.place ?? '');
 
 function boxes(coords, corridor) {
   const out = [];
@@ -65,7 +77,7 @@ function fromDump(file, bs) {
   const hit = (lat, lon) => rects.some(([s, w, n, e]) => lat >= s && lat <= n && lon >= w && lon <= e);
   const wanted = (t) =>
     t.landuse || t.natural || t.building || t.highway || t.barrier || t.power || t.waterway || t.man_made ||
-    t.amenity === 'bench' || t.amenity === 'shelter' || t.tourism || t.historic || t.sport === 'free_flying';
+    t.amenity === 'bench' || t.amenity === 'shelter' || t.tourism || t.historic || t.sport === 'free_flying' || t.place;
   return els.filter((el) => {
     if (!el.tags || !wanted(el.tags)) return false;
     if (el.lat !== undefined) return hit(el.lat, el.lon);
@@ -122,6 +134,16 @@ for (const { id } of index) {
     const els = await overpass(query(bs.slice(i, i + 3)));
     for (const el of els) seen.set(el.type + el.id, el);
     process.stdout.write('.');
+  }
+  if (route.category !== 'city' && !leadInOnly) {
+    const far = boxes(line, FAR);
+    let n = 0;
+    if (dump) for (const el of fromDump(dump, far)) if (landmark(el.tags) && !seen.has(el.type + el.id)) { seen.set(el.type + el.id, el); n++; }
+    for (let i = 0; !dump && i < far.length; i += 6) {
+      const q = `[out:json][timeout:120];(${far.slice(i, i + 6).map((b) => LANDMARKS.map((l) => `${l}(${b});`).join('')).join('')});out geom qt;`;
+      for (const el of await overpass(q)) if (!seen.has(el.type + el.id)) { seen.set(el.type + el.id, el); n++; }
+    }
+    process.stdout.write(` +${n} landmarks`);
   }
   // city skylines: tall buildings well beyond the corridor
   if (route.category === 'city' && !leadInOnly) {

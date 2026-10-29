@@ -1,5 +1,6 @@
-// Close-range 3D ground cover along the road: grass tufts, alpine flowers and boulders,
-// generated in route chunks around the rider and recycled as they ride on.
+// Close-range 3D ground cover along the road: grass tufts, alpine flowers and boulders, and on the
+// Champagne plain at the end of August the fields' crops, round bales and vine rows, generated in route
+// chunks around the rider and recycled as they ride on.
 
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -78,6 +79,73 @@ function cushionGeometry(): THREE.BufferGeometry {
   return g;
 }
 
+/** Card quads sharing one atlas region each, into a geometry (normals up: the cards light like the ground). */
+function cards(list: { reg: { u0: number; v0: number; u1: number; v1: number }; p: number[][] }[]): THREE.BufferGeometry {
+  const pos: number[] = [];
+  const uv: number[] = [];
+  const nor: number[] = [];
+  const idx: number[] = [];
+  for (const { reg, p } of list) {
+    const base = pos.length / 3;
+    for (const v of p) pos.push(v[0], v[1], v[2]);
+    uv.push(reg.u0, reg.v0, reg.u1, reg.v0, reg.u1, reg.v1, reg.u0, reg.v1);
+    for (let i = 0; i < 4; i++) nor.push(0, 1, 0);
+    idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setIndex(idx);
+  return g;
+}
+
+/** Low leafy mound (sugar beet, potato haulm): crossed leaf-cluster cards under a flat one. */
+function moundGeometry(): THREE.BufferGeometry {
+  const w = 0.36, h = 0.5;
+  const list = [0, 1, 2].map((k) => {
+    const a = (k / 3) * Math.PI, cx = Math.cos(a) * w, cz = Math.sin(a) * w;
+    return { reg: REGIONS.leaves, p: [[-cx, -0.05, -cz], [cx, -0.05, cz], [cx, h, cz], [-cx, h, -cz]] };
+  });
+  list.push({ reg: REGIONS.leaves, p: [[-w, 0.32, -w], [w, 0.32, -w], [w, 0.32, w], [-w, 0.32, w]] });
+  return cards(list);
+}
+
+/** Two metres of trellised vine row along +X: leaf walls either side of the wires over a top, trunks below. */
+function vineGeometry(): THREE.BufferGeometry {
+  const list: { reg: typeof REGIONS.leaves; p: number[][] }[] = [];
+  for (const x0 of [-1, 0]) {
+    for (const z of [-0.17, 0.17]) list.push({ reg: REGIONS.leaves, p: [[x0, 0.42, z], [x0 + 1, 0.42, z], [x0 + 1, 1.38, z], [x0, 1.38, z]] });
+    list.push({ reg: REGIONS.leaves, p: [[x0, 1.3, -0.19], [x0 + 1, 1.3, -0.19], [x0 + 1, 1.34, 0.19], [x0, 1.34, 0.19]] });
+  }
+  for (const x of [-0.5, 0.5]) {
+    list.push({ reg: REGIONS.barkDark, p: [[x - 0.035, -0.05, 0], [x + 0.035, -0.05, 0], [x + 0.035, 0.5, 0], [x - 0.035, 0.5, 0]] });
+    list.push({ reg: REGIONS.barkDark, p: [[x, -0.05, -0.035], [x, -0.05, 0.035], [x, 0.5, 0.035], [x, 0.5, -0.035]] });
+  }
+  return cards(list);
+}
+
+// what a field holds at the end of August, read from its spring photo exactly as terrainMaterial's field
+// season reads it: green then (winter cereals) is stubble now, bare chalk then is beet, maize or potatoes
+const STUBBLE = 1, BEET = 2, MAIZE = 3, POTATO = 4, BARE = 5;
+const smooth = (a: number, b: number, x: number) => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+/** The field state (0: not a field) and the parcel's tone hash from an sRGB photo colour. */
+function fieldState(rgb: number[]): { state: number; pick: number } {
+  // the shader takes the square root of the linear texel: about the sRGB value to the power 1.1
+  const [r, g, b] = [rgb[0], rgb[1], rgb[2]].map((v) => Math.pow(v / 255, 1.1));
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+  const L = (r + g + b) / 3, G = g - Math.max(r, b) * 0.93, S = (mx - mn) / Math.max(mx, 1e-3);
+  const green = smooth(0.03, 0.07, G) * smooth(0.12, 0.2, S);
+  const bare = (1 - green) * smooth(0.48, 0.6, L) * smooth(0.16, 0.09, S);
+  const pick = (((L * 5.3 + G * 23 + S * 3.1) % 1) + 1) % 1;
+  if (green + bare < 0.5) return { state: 0, pick };
+  if (green >= bare) return { state: STUBBLE, pick };
+  return { state: pick < 0.46 ? BEET : pick < 0.73 ? MAIZE : pick < 0.89 ? POTATO : BARE, pick };
+}
+
 function rockGeometry(): THREE.BufferGeometry {
   const g = new THREE.IcosahedronGeometry(0.5, 1);
   const p = g.getAttribute('position');
@@ -109,6 +177,10 @@ export interface GroundCoverOptions {
   canopyAt?: (x: number, z: number) => number;
   /** OSM scree / bare rock 0..1 at a point: no grass there, only the odd boulder. */
   screeAt?: (x: number, z: number) => number;
+  /** OSM field use at a point: 0 none, 1 arable, 2 meadow, 3 vineyard (biomes with a field season). */
+  fieldAt?: (x: number, z: number) => number;
+  /** The orthophoto's sRGB colour at parcel scale (Terrain.photoAt); false while no tile covers the point. */
+  photoAt?: (x: number, z: number, out: number[]) => boolean;
   biome?: Biome;
 }
 
@@ -129,6 +201,10 @@ export class GroundCover extends THREE.Group {
   private fernMat: THREE.Material | null = null;
   private palm: THREE.BufferGeometry | null = null;
   private palmMats: THREE.Material | THREE.Material[] | null = null;
+  private mound = moundGeometry();
+  private vine = vineGeometry();
+  private bale = new THREE.CylinderGeometry(0.72, 0.72, 1.2, 18, 1).rotateZ(Math.PI / 2).translate(0, 0.66, 0);
+  private baleMat = patchMaterial(new THREE.MeshLambertMaterial({ color: 0xffffff }), { key: 'bale' });
   private biome: Biome;
   private roadGrid = new Map<number, number[]>();
   private roadSegs: number[] = [];
@@ -309,6 +385,14 @@ export class GroundCover extends THREE.Group {
     const ferns: number[] = [];
     const palms: number[] = [];
     const cushions: number[] = [];
+    const beets: number[] = [];
+    const maize: number[] = [];
+    const potatoes: number[] = [];
+    const bales: number[] = [];
+    const vines: number[] = [];
+    const vineKeys = new Set<string>();
+    const rowDir = new Map<number, [number, number]>();
+    const rgb = [0, 0, 0];
     const B = this.biome;
     const i0 = Math.floor((ci * CHUNK) / route.step);
     const i1 = Math.min(route.n - 1, Math.floor(((ci + 1) * CHUNK) / route.step));
@@ -359,6 +443,23 @@ export class GroundCover extends THREE.Group {
           if (slope > 0.75 || (slope > 0.45 && r() < 0.6)) {
             if (r() < 0.03 * (B.steepRocks ?? B.rockDensity)) rocks.push(x, y - 0.15, z, 0.4 + r() * (B.tussocks ? 0.6 : 1.3), r() * 6.28, 0);
             continue;
+          }
+          // beyond the verge, what each field holds now; true meadows and gardens keep their grass
+          if (B.fieldSeason && d > halfWidth + 3) {
+            const field = this.o.fieldAt?.(x, z) ?? 0;
+            if (field === 3) {
+              this.vineRow(x, z, i0, i1, vines, vineKeys, rowDir);
+              continue;
+            }
+            const f = field !== 2 && cover !== 2 && this.o.photoAt?.(x, z, rgb) ? fieldState(rgb) : null;
+            if (f?.state) {
+              if (f.state === BEET && r() < 0.75) beets.push(x, y - 0.05, z, 0.85 + r() * 0.35, r() * 6.28, 0);
+              else if (f.state === MAIZE && r() < 0.6) maize.push(x, y - 0.05, z, 0.95 + r() * 0.25, r() * 6.28, 0);
+              else if (f.state === POTATO && r() < 0.5) potatoes.push(x, y - 0.05, z, 0.7 + r() * 0.3, r() * 6.28, 0);
+              // round bales left on some straw-coloured stubble, one every few hundred square metres
+              else if (f.state === STUBBLE && f.pick < 0.75 && (f.pick * 7.13) % 1 < 0.45 && r() < 0.003) bales.push(x, y, z, 1, r() * 6.28, 0);
+              continue;
+            }
           }
           if (B.tussocks) {
             // garrigue: limestone boulders, carritx tussocks, rosemary/mastic cushions, fan palms
@@ -414,7 +515,7 @@ export class GroundCover extends THREE.Group {
     // the atlas grass is near-neutral; the biome sets the meadow colour
     const [lush, dry, pale] = this.biome.grass;
     const add = (
-      geo: THREE.BufferGeometry, mat: THREE.Material, arr: number[], tall: number, shadow: boolean, tint: boolean, turf = false,
+      geo: THREE.BufferGeometry, mat: THREE.Material, arr: number[], tall: number, shadow: boolean, tint: boolean | THREE.Color, turf = false,
     ) => {
       const n = arr.length / 6;
       if (!n) return;
@@ -439,7 +540,10 @@ export class GroundCover extends THREE.Group {
         q.setFromAxisAngle(up, rot);
         m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(sc, sc * tall, sc));
         mesh.setMatrixAt(k, m);
-        if (tint && alpine === 1 && this.biome.shrubTint) {
+        if (tint instanceof THREE.Color) {
+          // crops and bales: their own colour, each plant a little different
+          mesh.setColorAt(k, col.copy(tint).multiplyScalar(0.86 + 0.28 * ((rot * 13.7) % 1)));
+        } else if (tint && alpine === 1 && this.biome.shrubTint) {
           // shrub cushions (flag 1): their own green
           mesh.setColorAt(k, col.copy(this.biome.shrubTint).multiplyScalar(0.8 + 0.3 * ((rot * 7.3) % 1)));
         } else if (tint) {
@@ -461,7 +565,47 @@ export class GroundCover extends THREE.Group {
     add(this.flowerTuft, this.flowerMat, flowers, 1.0, false, true, true);
     add(this.rock, this.rockMat, rocks, 1, true, false);
     if (this.fern && this.fernMat) add(this.fern, this.fernMat, ferns, 1, false, false);
+    // the atlas leaves are a pale blue-green, its grass near neutral: the crops' own greens
+    add(this.mound, this.grassMat, beets, 1, false, new THREE.Color(0.5, 0.8, 0.36), true);
+    add(this.mound, this.grassMat, potatoes, 0.8, false, new THREE.Color(0.72, 0.66, 0.3), true);
+    add(this.tuft, this.grassMat, maize, 5.6, true, new THREE.Color(0.78, 1.0, 0.46), true);
+    add(this.vine, this.grassMat, vines, 1, true, new THREE.Color(0.6, 0.86, 0.44), true);
+    add(this.bale, this.baleMat, bales, 1, true, new THREE.Color().setRGB(0.8, 0.67, 0.42, THREE.SRGBColorSpace));
     this.chunks.set(ci, { index: ci, meshes });
+  }
+
+  /**
+   * One 2 m vine-row segment on the row nearest (x, z). Champagne rows are about 1.15 m apart and run down
+   * the slope of their 60 m cell (a parcel-sized patch of straight rows); a segment belongs to the chunk whose
+   * stretch of road is nearest, so neighbouring chunks never draw it twice.
+   */
+  private vineRow(x: number, z: number, i0: number, i1: number, out: number[], keys: Set<string>, dirs: Map<number, [number, number]>) {
+    const { groundHeight, index } = this.o;
+    const gx = Math.floor(x / 60), gz = Math.floor(z / 60);
+    const cell = gx * 100003 + gz;
+    let dir = dirs.get(cell);
+    if (!dir) {
+      const cx = (gx + 0.5) * 60, cz = (gz + 0.5) * 60;
+      const sx = groundHeight(cx + 15, cz) - groundHeight(cx - 15, cz);
+      const sz = groundHeight(cx, cz + 15) - groundHeight(cx, cz - 15);
+      const l = Math.hypot(sx, sz);
+      // on the flat the rows keep a direction of their own per cell
+      const a = Math.abs(Math.sin(cx * 0.013 + cz * 0.029) * 4375.85) % Math.PI;
+      dir = l > 0.6 ? [sx / l, sz / l] : [Math.cos(a), Math.sin(a)];
+      dirs.set(cell, dir);
+    }
+    const [ax, az] = dir;
+    const ri = Math.round((z * ax - x * az) / 1.15), si = Math.floor((x * ax + z * az) / 2);
+    const key = `${cell},${ri},${si}`;
+    if (keys.has(key)) return;
+    keys.add(key);
+    const across = ri * 1.15, along = (si + 0.5) * 2;
+    const px = along * ax - across * az, pz = along * az + across * ax;
+    if (Math.floor(px / 60) !== gx || Math.floor(pz / 60) !== gz || (this.o.fieldAt?.(px, pz) ?? 0) !== 3) return;
+    const near = index.nearest(px, pz, REACH + 8);
+    if (near.index < i0 || near.index >= i1) return;
+    const py = groundHeight(px, pz);
+    if (Number.isFinite(py)) out.push(px, py - 0.03, pz, 1, Math.atan2(-az, ax), 0);
   }
 
   dispose() {
@@ -478,6 +622,10 @@ export class GroundCover extends THREE.Group {
     this.shrub?.dispose();
     this.shrubMat?.dispose();
     this.rock.dispose();
+    this.mound.dispose();
+    this.vine.dispose();
+    this.bale.dispose();
+    this.baleMat.dispose();
     this.grassMat.dispose();
     if (!this.sharedRockMat) this.rockMat.dispose();
   }

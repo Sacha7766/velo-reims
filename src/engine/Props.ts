@@ -73,8 +73,8 @@ export class Props extends THREE.Group {
       if (p.kind === 'peak') yaw = 0.3;
       jobs.push(place(model, x, z, yaw, p.kind === 'peak' ? -0.3 : 0));
     }
-    // firewood stacks against farmhouse walls near the road
-    osm.buildings.forEach((b, i) => {
+    // firewood stacks against farmhouse walls near the road (an Alpine habit, not a Champagne one)
+    if (biome?.firewood !== false) osm.buildings.forEach((b, i) => {
       if (!['house', 'farm', 'farm_auxiliary', 'barn', 'yes', 'detached'].includes(b.kind)) return;
       if (hash(i * 7) > 0.32) return;
       const spot = besideWall(b, i);
@@ -92,7 +92,8 @@ export class Props extends THREE.Group {
   /**
    * OSM communication towers, masts and bell towers: a concrete transmitter (Mont Ventoux, Kitzbüheler Horn) is a
    * shaft with an equipment drum under a banded antenna; small antennas are slim steel masts. Tall
-   * ones carry red and white aviation bands.
+   * ones carry red and white aviation bands. Water towers (a shaft flaring into a wide tank) and wind
+   * turbines mark the open plain from kilometres away.
    */
   private towers(osm: OsmWorld, groundAt: (x: number, z: number) => number, models: [number, number][], biome?: Biome): THREE.Object3D {
     const parts: [THREE.BufferGeometry, THREE.Color][] = [];
@@ -107,10 +108,38 @@ export class Props extends THREE.Group {
         parts.push([cyl(r * (1 - (0.3 * k) / n), r * (1 - (0.3 * (k + 1)) / n), a, b, x, z, 8), k % 2 ? white : red]);
       }
     };
+    const tankCol = srgb(0.86, 0.85, 0.8);
     for (const t of osm.towers) {
       if (models.some(([mx, mz]) => Math.hypot(mx - t.x, mz - t.z) < 120)) continue;
       const y = groundAt(t.x, t.z);
       if (!Number.isFinite(y)) continue;
+      if (t.water) {
+        // the mapped outline is the tank; a point gets a typical 1960s-70s one (~30 m, tank ~14 m across)
+        const H = t.height || 30;
+        const tankR = Math.min(9, Math.max(4.5, t.r || 7));
+        const R = tankR * 0.32;
+        const neck = y + H * 0.64;
+        parts.push([cyl(R, R * 0.92, y - 1.5, neck, t.x, t.z, 18), concreteCol]);
+        parts.push([cyl(R * 0.92, tankR, neck, neck + H * 0.13, t.x, t.z, 24), concreteCol]);
+        parts.push([cyl(tankR, tankR, neck + H * 0.13, y + H - 1.4, t.x, t.z, 24), tankCol]);
+        parts.push([cyl(tankR * 1.03, tankR * 0.3, y + H - 1.4, y + H, t.x, t.z, 24), concreteCol]);
+        continue;
+      }
+      if (t.turbine) {
+        // a 3-blade turbine, hub ~95 m, rotor ~110 m; the rotor faces the prevailing south-west wind
+        const H = t.height > 60 ? t.height * 0.7 : 95;
+        const B = H * 0.58;
+        parts.push([cyl(2.1, 1.25, y - 1.5, y + H, t.x, t.z, 16), white]);
+        const face = new THREE.Vector3(-0.71, 0, 0.71);
+        const hub = new THREE.Vector3(t.x, y + H, t.z).addScaledVector(face, 3.2);
+        parts.push([new THREE.BoxGeometry(3.6, 3.6, 10).lookAt(face).translate(t.x - face.x * 1.6, y + H + 0.6, t.z - face.z * 1.6), white]);
+        for (let k = 0; k < 3; k++) {
+          const a = (k / 3) * Math.PI * 2 + 0.4;
+          const blade = new THREE.BoxGeometry(B, 2.4, 0.5).translate(B / 2, 0, 0).rotateZ(a).rotateY(Math.atan2(face.x, face.z));
+          parts.push([blade.translate(hub.x, hub.y, hub.z), white]);
+        }
+        continue;
+      }
       if (t.bell) {
         // Mallorcan bell towers are stone with tile caps: left out rather than drawn Alpine
         if (biome?.id === 'mediterranean') continue;
@@ -194,7 +223,9 @@ export class Props extends THREE.Group {
     const med = biome?.id === 'mediterranean';
     const mesh = med ? new MedFences() : null;
     const wood = patchMaterial(new THREE.MeshLambertMaterial({ color: 0x5a412b }), { key: 'fence' });
-    const stone = patchMaterial(new THREE.MeshLambertMaterial({ color: 0x8e8a82 }), { key: 'wall' });
+    // Champagne villages: farmyards and gardens behind 2 m walls of chalk (rendered or bare) along the street
+    const tallWalls = biome?.id === 'champagne';
+    const stone = patchMaterial(new THREE.MeshLambertMaterial({ color: tallWalls ? 0xd2cbbb : 0x8e8a82 }), { key: tallWalls ? 'wall-chalk' : 'wall' });
     const post = new THREE.BoxGeometry(0.1, 1.2, 0.1).translate(0, 0.5, 0);
     const postMats: THREE.Matrix4[] = [];
     const railPos: number[] = [];
@@ -245,7 +276,7 @@ export class Props extends THREE.Group {
             const nx = -(z1 - z0), nz = x1 - x0;
             const nl = Math.hypot(nx, nz) || 1;
             const ox = (nx / nl) * 0.25, oz = (nz / nl) * 0.25;
-            const top = 0.9;
+            const top = tallWalls ? 1.9 : 0.9;
             quad(wallPos, [x0 + ox, y0 - 0.2, z0 + oz], [x1 + ox, y1 - 0.2, z1 + oz], [x1 + ox, y1 + top, z1 + oz], [x0 + ox, y0 + top, z0 + oz]);
             quad(wallPos, [x0 - ox, y0 - 0.2, z0 - oz], [x1 - ox, y1 - 0.2, z1 - oz], [x1 - ox, y1 + top, z1 - oz], [x0 - ox, y0 + top, z0 - oz]);
             quad(wallPos, [x0 + ox, y0 + top, z0 + oz], [x1 + ox, y1 + top, z1 + oz], [x1 - ox, y1 + top, z1 - oz], [x0 - ox, y0 + top, z0 - oz]);

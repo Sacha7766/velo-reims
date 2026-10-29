@@ -157,10 +157,10 @@ export class Life extends THREE.Group {
       }
     }
     if (biome?.id === 'mediterranean') await this.buildMediterranean(route, index, groundAt, coverAt, r);
-    // --- cattle: herds on meadows near the road
+    // --- cattle: herds on meadows near the road (none on the Champagne plain: its "meadows" are arable)
     const cow = await loadModel('cow.glb');
     let herds = 0;
-    for (let tries = 0; tries < 400 && herds < 6; tries++) {
+    for (let tries = 0; biome?.cattle !== false && tries < 400 && herds < 6; tries++) {
       const i = Math.floor(r() * route.n);
       const h = route.heading[i];
       const side = r() < 0.5 ? -1 : 1;

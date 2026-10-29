@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import type { Route } from '../geo/route.ts';
 
-export type BiomeId = 'alpine' | 'mediterranean';
+export type BiomeId = 'alpine' | 'mediterranean' | 'champagne';
 
 export interface Biome {
   id: BiomeId;
@@ -40,15 +40,27 @@ export interface Biome {
   rockOchre?: number;
   /** Above this height (m) the ground is bare stone with sparse plants (Mont Ventoux's white top). */
   bareAbove?: number;
-  /** Delineator posts and the barrier on drop-offs. */
-  posts: 'at' | 'es';
+  /** Delineator posts (Austrian Leitpflock, none in Spain, French J6) and the barrier on drop-offs. */
+  posts: 'at' | 'es' | 'fr';
   barrier: 'wbeam' | 'stonewall';
   /** Centre line dash and gap (m). */
   dash: [number, number];
   /** false: no centre line at all (narrow mountain roads painted only at the edges). */
   centreLine?: boolean;
-  /** House style (Buildings.ts): Salzburg Flachgau, Mallorca, French ski resort, Provence. */
-  buildings: 'flachgau' | 'mallorca' | 'savoie' | 'provence';
+  /** false: no edge lines (French country roads are painted down the middle only). */
+  edgeLines?: boolean;
+  /** House style (Buildings.ts): Salzburg Flachgau, Mallorca, French ski resort, Provence, Champagne. */
+  buildings: 'flachgau' | 'mallorca' | 'savoie' | 'provence' | 'champagne';
+  /** Day of the year the foliage is drawn for, instead of today's date. */
+  day?: number;
+  /** Orthophoto grading: gain, saturation and gamma (basemap.at needs lifting; IGN plains do not). */
+  photoGrade?: [number, number, number];
+  /** 1: arable fields photographed in spring are drawn harvested (late summer); see terrainMaterial. */
+  fieldSeason?: number;
+  /** Herds of cattle on the meadows near the road. */
+  cattle?: boolean;
+  /** Firewood stacked against farmhouse walls. */
+  firewood?: boolean;
 }
 
 export const ALPINE: Biome = {
@@ -95,9 +107,40 @@ export const MEDITERRANEAN: Biome = {
   buildings: 'mallorca',
 };
 
-const BIOMES: Record<BiomeId, Biome> = { alpine: ALPINE, mediterranean: MEDITERRANEAN };
+// The chalk plain of Champagne (research/champagne/visual-reference.md), drawn at the end of August:
+// cereals harvested to pale stubble, sugar beet and maize green, verges dry. Woods of oak, ash and
+// hornbeam with plantations of black pine; villages of render, chalk and brick under red-brown tiles.
+export const CHAMPAGNE: Biome = {
+  id: 'champagne',
+  atlas: '/textures/foliage.png',
+  conifer: 'pine',
+  evergreen: false,
+  // late-August verges: green at the foot, straw on top, bleached where the chalk shows
+  grass: [new THREE.Color(1.0, 1.1, 0.56), new THREE.Color(1.34, 1.18, 0.66), new THREE.Color(1.26, 1.18, 0.84)],
+  tussocks: false,
+  shrubs: 0,
+  palms: 0,
+  ferns: true,
+  rock: new THREE.Color(0.93, 0.91, 0.86),
+  rockDensity: 0.15,
+  meadowPush: 0,
+  karst: 0,
+  posts: 'fr',
+  barrier: 'wbeam',
+  // French rural centre line (T1): 3 m dashes, 10 m gaps, no edge lines
+  dash: [3, 10],
+  edgeLines: false,
+  buildings: 'champagne',
+  day: 238,
+  photoGrade: [1.0, 1.1, 1.08],
+  fieldSeason: 1,
+  cattle: false,
+  firewood: false,
+};
 
-/** Mediterranean climate south of ~43.5° N in Europe and around the basin; Alpine otherwise. */
+const BIOMES: Record<BiomeId, Biome> = { alpine: ALPINE, mediterranean: MEDITERRANEAN, champagne: CHAMPAGNE };
+
+/** Mediterranean climate south of ~43.5° N in Europe and around the basin; the Champagne plain; Alpine otherwise. */
 export function biomeFor(route: Route, override?: string, tweaks?: Partial<Biome>): Biome {
   const base = pickBiome(route, override);
   return tweaks ? { ...base, ...tweaks } : base;
@@ -108,5 +151,7 @@ function pickBiome(route: Route, override?: string): Biome {
   const lat = route.lat[0];
   const lon = route.lon[0];
   const med = lat > 30 && lat < 43.5 && lon > -10 && lon < 37;
-  return med ? MEDITERRANEAN : ALPINE;
+  // Champagne crayeuse and its edges (Reims, Épernay, Châlons, the Suippe and Aisne valleys)
+  const champagne = lat > 48.4 && lat < 49.9 && lon > 3.3 && lon < 5.3;
+  return med ? MEDITERRANEAN : champagne ? CHAMPAGNE : ALPINE;
 }

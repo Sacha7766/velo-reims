@@ -22,7 +22,7 @@ import { Road } from './Road.ts';
 import { Sky } from './Sky.ts';
 import { Terrain } from './Terrain.ts';
 import { TerrainShadow } from './TerrainShadow.ts';
-import { clearWaterMask, setTerrainBiome, setWaterMask } from './terrainMaterial.ts';
+import { clearWaterMask, setFieldMask, setTerrainBiome, setWaterMask } from './terrainMaterial.ts';
 import { Vegetation } from './Vegetation.ts';
 import { GroundCover } from './GroundCover.ts';
 import { Landmarks, loadRouteScene, type Placement } from './Landmarks.ts';
@@ -407,7 +407,7 @@ export class Engine {
           (sceneDef?.cutWalls as [number, number][] | undefined) ?? [],
         );
         this.scene.add(world.roadside);
-        world.signs = new Signs(route, halfWidth, (x, z) => terrain.groundHeight(x, z), biome);
+        world.signs = new Signs(route, halfWidth, (x, z) => terrain.groundHeight(x, z), biome, osm);
         this.scene.add(world.signs);
       }
       this.buildWaterMask(route, osm, baked);
@@ -417,7 +417,7 @@ export class Engine {
       await new Promise((r) => setTimeout(r, 0));
       const trees = new Vegetation(route, index, osm, {
         corridor: baked ? 550 : CORRIDOR, spacing: 6.5, roadHalfWidth: halfWidth, heightAt, baked, renderer: this.renderer, biome,
-        rawHeightAt: (x, z) => terrain.heightAt(x, z),
+        rawHeightAt: (x, z) => terrain.heightAt(x, z), day: biome.day,
       });
       if (this.world !== world) return;
       world.trees = trees;
@@ -489,6 +489,8 @@ export class Engine {
       coverAt: (x, z) => this.coverAt(x, z),
       canopyAt: (x, z) => this.canopyAt(x, z),
       screeAt: (x, z) => this.screeAt(x, z),
+      fieldAt: this.biome.fieldSeason ? (x, z) => this.fieldAt(x, z) : undefined,
+      photoAt: this.biome.fieldSeason ? (x, z, out) => world.terrain.photoAt(x, z, out) : undefined,
     });
     world.cover = cover;
     this.scene.add(cover);
@@ -498,6 +500,7 @@ export class Engine {
   private buildWaterMask(route: Route, osm: OsmWorld, baked: BakedTrees | null) {
     this.waterMask = null;
     this.canopyMask = null;
+    this.fieldMask = null;
     if (!osm.water.length && !osm.cover.length && !osm.forests.length && !baked) return;
     const [bx0, bz0, bx1, bz1] = route.bounds;
     const m = CORRIDOR + 600;
@@ -586,9 +589,50 @@ export class Engine {
     ctex.minFilter = THREE.LinearFilter;
     ctex.generateMipmaps = false;
     setWaterMask(tex, x0, z0, cw * res, ch * res, ctex);
+
+    // late-summer fields (Champagne): R arable land, G meadows and grass, B vineyards, at half the
+    // land mask's resolution over the same area (parcels are tens of metres wide)
+    if (!this.biome.fieldSeason) {
+      setFieldMask(null);
+      return;
+    }
+    const fc = document.createElement('canvas');
+    fc.width = Math.ceil(cw / 2);
+    fc.height = Math.ceil(ch / 2);
+    const fx = fc.getContext('2d', { willReadFrequently: true })!;
+    fx.fillStyle = '#000';
+    fx.fillRect(0, 0, fc.width, fc.height);
+    fx.scale(0.5, 0.5);
+    fx.globalCompositeOperation = 'lighter';
+    const fill = (colour: string, keep: (c: OsmWorld['cover'][number]) => boolean) => {
+      fx.fillStyle = colour;
+      fx.fill(pathOf(osm.cover.filter(keep).map((c) => c.poly)), 'evenodd');
+    };
+    fill('#ff0000', (c) => c.kind === 'farmland');
+    fill('#00ff00', (c) => c.cls === 'meadow' && c.kind !== 'farmland');
+    fill('#0000ff', (c) => c.cls === 'vineyard');
+    this.fieldMask = { data: fx.getImageData(0, 0, fc.width, fc.height).data, x0, z0, res: res * 2, w: fc.width, h: fc.height };
+    const ftex = new THREE.CanvasTexture(fc);
+    ftex.flipY = false;
+    ftex.wrapS = ftex.wrapT = THREE.ClampToEdgeWrapping;
+    ftex.minFilter = THREE.LinearFilter;
+    ftex.generateMipmaps = false;
+    setFieldMask(ftex);
   }
 
   private canopyMask: { data: Uint8ClampedArray; x0: number; z0: number; res: number; w: number; h: number } | null = null;
+  private fieldMask: { data: Uint8ClampedArray; x0: number; z0: number; res: number; w: number; h: number } | null = null;
+
+  /** OSM field use at a world point: 0 none, 1 arable, 2 meadow, 3 vineyard. */
+  fieldAt(x: number, z: number): number {
+    const m = this.fieldMask;
+    if (!m) return 0;
+    const px = Math.floor((x - m.x0) / m.res);
+    const pz = Math.floor((z - m.z0) / m.res);
+    if (px < 0 || pz < 0 || px >= m.w || pz >= m.h) return 0;
+    const i = (pz * m.w + px) * 4;
+    return m.data[i + 2] > 128 ? 3 : m.data[i + 1] > 128 ? 2 : m.data[i] > 128 ? 1 : 0;
+  }
 
   /** Tree canopy cover 0..1 at a world point. */
   /** OSM scree or bare rock at a world point (0..1). */
@@ -626,6 +670,8 @@ export class Engine {
 
   unloadWorld() {
     clearWaterMask();
+    setFieldMask(null);
+    this.fieldMask = null;
     this.setBots([]);
     this.bots = [];
     const w = this.world;

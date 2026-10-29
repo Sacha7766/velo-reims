@@ -40,6 +40,12 @@ const PRESETS = [
   { id: 'vallee-de-la-suippe', name: 'Boucle de la Suippe', region: 'Marne, FR', category: 'flat', loop: true, from: [4.14645, 49.33512], via: [[4.15255, 49.30368], [4.25726, 49.32455], [4.10121, 49.33922]] },
   // Bétheny → Fresne-lès-Reims → Pomacle → Caurel → Witry
   { id: 'plaine-de-betheny', name: 'Boucle de Bétheny et Fresne', region: 'Marne, FR', category: 'flat', loop: true, from: [4.06278, 49.28558], via: [[4.14645, 49.33512], [4.15273, 49.30333]] },
+  // Courcy → Saint-Thierry → Merfy → over the vineyards to Pouillon → Thil → Villers-Franqueux → Hermonville →
+  // Cauroy-lès-Hermonville → D 944 (no paved minor road between Cauroy and Loivre) → past Loivre back to Courcy
+  { id: 'massif-de-saint-thierry', name: 'Boucle du Massif de Saint-Thierry', region: 'Marne, FR', category: 'rolling', loop: true, from: [4.00201, 49.32326], via: [[3.94846, 49.29592], [3.9496, 49.31388], [3.96345, 49.3153], [3.9231, 49.34851]] },
+  // Warmeriville → over the plateau to Ménil-Lépinois → Aussonce → La Neuville-en-Tourne-à-Fuy → Bétheniville →
+  // down the Suippe through Pontfaverger, Selles, Saint-Masmes and Heutrégiville
+  { id: 'suippe-amont', name: 'Boucle de la Haute Suippe', region: 'Marne, FR', category: 'rolling', loop: true, from: [4.22124, 49.34998], via: [[4.28485, 49.37826], [4.36786, 49.2933]] },
 ];
 
 const args = process.argv.slice(2);

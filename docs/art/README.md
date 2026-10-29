@@ -38,6 +38,8 @@ One brief per route, written before visual work starts (`_template.md`):
 | Mont Ventoux | [ventoux.md](ventoux.md) | `research/ventoux/board.jpg` |
 | Wolfgangsee | [wolfgangsee.md](wolfgangsee.md) | `research/wolfgangsee/board.jpg` |
 | Mont de Berru (Reims) | [mont-de-berru.md](mont-de-berru.md) | `research/champagne/board-*.jpg` (regional) |
+| Massif de Saint-Thierry (Reims) | [massif-de-saint-thierry.md](massif-de-saint-thierry.md) | `research/champagne/board-*.jpg` (regional) |
+| Haute Suippe (Reims) | [suippe-amont.md](suippe-amont.md) | `research/champagne/board-*.jpg` (regional) |
 
 The other presets have no brief yet: Wachau, Neusiedler See, Central Park, Sydney and the Vienna Ring. Their QA findings are in `research/qa-presets.md` (2026-10-11; the white ground at
 Stelvio, the turnarounds, houses on the road and Ventoux's summit tower were fixed on 2026-10-12).

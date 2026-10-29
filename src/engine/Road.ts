@@ -40,6 +40,7 @@ function roadMaterial(halfWidth: number, biome: Biome, turn = false) {
     shader.uniforms.uDash = { value: new THREE.Vector2(dash, biome.dash[0] + biome.dash[1]) };
     // Mallorca: sun-bleached lighter asphalt, mostly no edge lines, asphalt up to the wall
     shader.uniforms.uMed = { value: biome.id === 'mediterranean' ? 1 : 0 };
+    shader.uniforms.uEdge = { value: biome.id === 'mediterranean' || biome.edgeLines === false ? 0 : 1 };
     shader.uniforms.uAsphalt = { value: tex.color };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec2 roadUv;\nvarying vec2 vRoad;')
@@ -51,6 +52,7 @@ function roadMaterial(halfWidth: number, biome: Biome, turn = false) {
 uniform float uHalf;
 uniform vec2 uDash;
 uniform float uMed;
+uniform float uEdge;
 uniform sampler2D uAsphalt;
 varying vec2 vRoad;
 float gPaint;
@@ -84,8 +86,8 @@ float rn(vec2 p) {
   asphalt *= 1.0 - 0.12 * track;
   vec3 paint = vec3(0.86, 0.86, 0.82);
   float wear = 0.75 + 0.25 * rn(p * vec2(4.0, 0.6));
-  float edge = step(abs(a - (uHalf - 0.28)), 0.07) * (1.0 - uMed);
-  // centre dashes: Austria 6 m / 12 m, Spain (M-1.3) 3.5 m / 9 m
+  float edge = step(abs(a - (uHalf - 0.28)), 0.07) * uEdge;
+  // centre dashes: Austria 6 m / 12 m, Spain (M-1.3) 3.5 m / 9 m, France (T1) 3 m / 10 m
   float dash = step(fract(along / uDash.y), uDash.x / uDash.y);
   float centre = step(a, 0.06) * dash * step(2.6, uHalf) * step(0.01, uDash.x);
   gPaint = max(edge, centre) * wear;

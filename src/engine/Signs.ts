@@ -1,10 +1,13 @@
 // Spanish road signs for Mediterranean routes, built procedurally (canvas textures on instanced
 // planes): "curva peligrosa" triangles ~80 m before tight bends, R-301 "40" speed limits, the
 // blue tunnel sign with a length plate before each portal, and yellow km posts (Ma-2210 style).
+// French routes (Champagne) get the village entry and exit signs (EB10 / EB20) where the road enters
+// and leaves each built-up stretch, named after the nearest OSM village.
 // Everything stands on the right of the direction of travel (+s) and faces the oncoming rider.
 // Canvases use willReadFrequently (CPU canvas): GPU canvases corrupt WebGL on some machines.
 
 import * as THREE from 'three';
+import type { OsmWorld } from '../geo/osm.ts';
 import type { Route } from '../geo/route.ts';
 import { patchMaterial } from './atmosphere.ts';
 import type { Biome } from './biome.ts';
@@ -242,14 +245,146 @@ function plateMesh(plates: Plate[]): THREE.Mesh | null {
   return m;
 }
 
+/** EB10 (entry: black name on white, red border) or EB20 (exit: the same, struck through in red). */
+function villageTexture(name: string, exit: boolean): { tex: THREE.CanvasTexture; w: number } {
+  const H = 200;
+  const text = name.toUpperCase();
+  const probe = canvas(8, 8).ctx;
+  probe.font = 'bold 96px "Arial Narrow", Arial, Helvetica, sans-serif';
+  // long names (La Neuville-en-Tourne-à-Fuy) go on two lines at the hyphen nearest the middle
+  let lines = [text];
+  if (probe.measureText(text).width > 1100) {
+    const cut = [...text.matchAll(/-/g)].map((m) => m.index ?? 0).sort((a, b) => Math.abs(a - text.length / 2) - Math.abs(b - text.length / 2))[0];
+    if (cut) lines = [text.slice(0, cut + 1), text.slice(cut + 1)];
+  }
+  const size = lines.length > 1 ? 70 : 96;
+  probe.font = `bold ${size}px "Arial Narrow", Arial, Helvetica, sans-serif`;
+  const W = Math.max(420, Math.min(1400, Math.ceil(Math.max(...lines.map((l) => probe.measureText(l).width)) + 110)));
+  const { c, ctx } = canvas(W, H);
+  ctx.fillStyle = '#d0121b';
+  ctx.beginPath();
+  ctx.roundRect(0, 0, W, H, 26);
+  ctx.fill();
+  ctx.fillStyle = '#f7f7f2';
+  ctx.beginPath();
+  ctx.roundRect(16, 16, W - 32, H - 32, 14);
+  ctx.fill();
+  ctx.fillStyle = '#121212';
+  ctx.font = `bold ${size}px "Arial Narrow", Arial, Helvetica, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, H / 2 + (i - (lines.length - 1) / 2) * size * 0.98 + 4));
+  if (exit) {
+    ctx.strokeStyle = '#d0121b';
+    ctx.lineWidth = 22;
+    ctx.beginPath();
+    ctx.moveTo(30, H - 24);
+    ctx.lineTo(W - 30, 24);
+    ctx.stroke();
+  }
+  return { tex: texture(c), w: (W / H) * 0.5 };
+}
+
+/**
+ * Entry and exit signs of each village the route crosses. A built-up stretch is where 3+ OSM buildings stand
+ * within 50 m of the road, gaps under 150 m bridged, at least 150 m long; it takes the name of the nearest
+ * village place within 2.5 km (hamlets only when nothing larger is that close).
+ */
+function villageSigns(route: Route, halfWidth: number, groundAt: (x: number, z: number) => number, osm: OsmWorld): THREE.Group {
+  const g = new THREE.Group();
+  const step = route.step;
+  const cell = (x: number, z: number) => Math.floor(x / 50) * 100003 + Math.floor(z / 50);
+  const grid = new Map<number, number[]>();
+  for (const b of osm.buildings) {
+    const k = cell(b.ring[0], b.ring[1]);
+    let l = grid.get(k);
+    if (!l) grid.set(k, (l = []));
+    l.push(b.ring[0], b.ring[1]);
+  }
+  const every = Math.max(1, Math.round(10 / step));
+  const built: boolean[] = [];
+  for (let i = 0; i < route.n; i += every) {
+    const x = route.x[i], z = route.z[i];
+    let n = 0;
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const l = grid.get(cell(x + dx * 50, z + dz * 50));
+        if (l) for (let k = 0; k < l.length; k += 2) if (Math.hypot(l[k] - x, l[k + 1] - z) < 50) n++;
+      }
+    }
+    built.push(n >= 3);
+  }
+  const runs: [number, number][] = [];
+  for (let k = 0; k < built.length; k++) {
+    if (!built[k]) continue;
+    let e = k;
+    while (e + 1 < built.length && built[e + 1]) e++;
+    const a = k * every * step, b = e * every * step;
+    const last = runs.at(-1);
+    if (last && a - last[1] < 150) last[1] = b;
+    else runs.push([a, b]);
+    k = e;
+  }
+  const rank = (kind: string) => (kind === 'hamlet' ? 1 : 0);
+  const spot = (s: number) => {
+    const i = Math.min(route.n - 1, Math.max(0, Math.round(s / step)));
+    const h = route.heading[i];
+    const off = halfWidth + 1.4;
+    const x = route.x[i] + Math.cos(h) * off, z = route.z[i] + Math.sin(h) * off;
+    const gy = groundAt(x, z);
+    return { x, y: Number.isFinite(gy) ? Math.min(gy, route.ele[i]) : route.ele[i], z, yaw: -h + 0.12 };
+  };
+  const poles: THREE.Matrix4[] = [];
+  const up = new THREE.Vector3(0, 1, 0);
+  for (const [a, b] of runs) {
+    if (b - a < 150 || a < 20 || b > route.length - 20) continue;
+    const mid = Math.min(route.n - 1, Math.round((a + b) / 2 / step));
+    const mx = route.x[mid], mz = route.z[mid];
+    const named = osm.places
+      .map((p) => ({ p, d: Math.hypot(p.x - mx, p.z - mz) + rank(p.kind) * 1500 }))
+      .filter((c) => c.d < 2500 + rank(c.p.kind) * 1500)
+      .sort((u, v) => u.d - v.d)[0]?.p;
+    if (!named) continue;
+    for (const [s, exit] of [[a - 15, false], [b + 15, true]] as const) {
+      const p = spot(s);
+      const { tex, w } = villageTexture(named.name, exit);
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, 0.5), faceMaterial(tex, 'sign-village'));
+      mesh.position.set(p.x, p.y + 1.75, p.z);
+      mesh.quaternion.setFromAxisAngle(up, p.yaw);
+      mesh.castShadow = true;
+      g.add(mesh);
+      // two posts at the panel's thirds
+      for (const t of [-w / 3, w / 3]) {
+        poles.push(new THREE.Matrix4().compose(
+          new THREE.Vector3(p.x + Math.cos(p.yaw) * t, p.y - 0.15, p.z - Math.sin(p.yaw) * t), new THREE.Quaternion(), new THREE.Vector3(1, 1.85, 1),
+        ));
+      }
+    }
+  }
+  if (poles.length) {
+    const geo = new THREE.CylinderGeometry(0.035, 0.035, 1, 6).translate(0, 0.5, 0);
+    const pm = new THREE.InstancedMesh(geo, patchMaterial(new THREE.MeshLambertMaterial({ color: 0x9a9da0 }), { key: 'signpole' }), poles.length);
+    poles.forEach((m, i) => pm.setMatrixAt(i, m));
+    pm.castShadow = true;
+    pm.computeBoundingSphere();
+    g.add(pm);
+  }
+  return g;
+}
+
 export class Signs extends THREE.Group {
   constructor(
     route: Route,
     halfWidth: number,
     groundAt: (x: number, z: number) => number,
     biome: Biome,
+    osm?: OsmWorld,
   ) {
     super();
+    if (biome.posts === 'fr' && osm) {
+      this.add(villageSigns(route, halfWidth, groundAt, osm));
+      return;
+    }
     if (biome.id !== 'mediterranean') return;
     const step = route.step;
     const at = (s: number) => Math.min(route.n - 1, Math.max(0, Math.round(s / step)));
