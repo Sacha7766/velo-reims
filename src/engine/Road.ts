@@ -213,27 +213,43 @@ export const PAVEMENT = 0.12;
  * Village kerbs and pavements from sign to sign: a kerb stone 13 cm high and a 1.5 m pavement behind it on both
  * sides, broken for 12 m where a side road or driveway joins. One mesh for the route.
  */
-export function pavements(route: Route, halfWidth: number, towns: [number, number][], gaps: number[]): THREE.Mesh {
+export function pavements(
+  route: Route, halfWidth: number, towns: [number, number][], gaps: number[], groundAt: (x: number, z: number) => number,
+): THREE.Mesh {
   const pos: number[] = [];
   const col: number[] = [];
   const kerb = new THREE.Color().setRGB(0.66, 0.65, 0.62, THREE.SRGBColorSpace);
   const walk = new THREE.Color().setRGB(0.44, 0.43, 0.41, THREE.SRGBColorSpace);
   // across from the asphalt's edge and up from its surface: kerb face, kerb top, pavement, its back face into the ground
   const prof: [number, number, THREE.Color][] = [
-    [0.02, 0, kerb], [0.02, 0.13, kerb], [0.17, 0.13, kerb], [0.17, PAVEMENT, walk], [1.7, PAVEMENT - 0.01, walk], [1.7, -0.5, walk],
+    [0.02, 0, kerb], [0.02, 0.13, kerb], [0.17, 0.13, kerb], [0.17, PAVEMENT, walk], [1.7, PAVEMENT - 0.01, walk], [1.7, -1.2, walk],
   ];
+  // a cross-section's end face where a stretch stops (junctions, banks): from the kerb down to the back face
+  const cap = (sec: number[][]) => {
+    const c = walk;
+    for (const [a, b, d] of [[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 5]]) {
+      for (const p of [sec[a], sec[b], sec[d]]) {
+        pos.push(p[0], p[1], p[2]);
+        col.push(c.r, c.g, c.b);
+      }
+    }
+  };
   for (const [a, b] of towns) {
     for (const side of [-1, 1]) {
       let prev: number[][] | null = null;
       for (let i = Math.ceil(a / route.step); i <= Math.min(route.n - 1, Math.floor(b / route.step)); i++) {
-        if (gaps.some((g) => Math.abs(g - i * route.step) < 6)) {
-          prev = null;
-          continue;
-        }
         const h = route.heading[i], rx = Math.cos(h) * side, rz = Math.sin(h) * side;
         // the asphalt's surface (Road lays it 6 cm above the route)
         const y = route.ele[i] + 0.06;
+        // none across a side road or driveway, nor where the ground falls away beside the road (it would float)
+        const g = groundAt(route.x[i] + rx * (halfWidth + 1.8), route.z[i] + rz * (halfWidth + 1.8));
+        if (gaps.some((j) => Math.abs(j - i * route.step) < 6) || !(g > y - 1.1)) {
+          if (prev) cap(prev);
+          prev = null;
+          continue;
+        }
         const sec = prof.map(([o, dy]) => [route.x[i] + rx * (halfWidth + o), y + dy, route.z[i] + rz * (halfWidth + o)]);
+        if (!prev) cap(sec);
         if (prev) {
           for (let k = 0; k + 1 < prof.length; k++) {
             for (const p of [prev[k], prev[k + 1], sec[k + 1], prev[k], sec[k + 1], sec[k]]) {

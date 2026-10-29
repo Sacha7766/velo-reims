@@ -110,6 +110,8 @@ export class Life extends THREE.Group {
   private cars: THREE.Group[] = [];
   private nextOncoming = 6;
   private nextOvertake = 40;
+  /** Traffic gaps as a share of the Alpine passes': the roads around Reims carry more. */
+  private gaps = 1;
   private rand = rng(99);
   private route: Route | null = null;
   private tmp: Partial<RoutePoint> = {};
@@ -135,6 +137,10 @@ export class Life extends THREE.Group {
   ) {
     this.route = route;
     this.groundAt = groundAt;
+    if (biome?.fieldSeason) {
+      this.gaps = 0.55;
+      this.nextOncoming = 2;
+    }
     const r = rng(7);
     // --- paragliders over the take-off sites
     const takeoffs = osm.pois.filter((p) => p.kind === 'takeoff');
@@ -580,7 +586,7 @@ export class Life extends THREE.Group {
     const ahead = (d: number) => riderS + d * riderDir;
     const inRoute = (s: number) => route.loop || (s > 0 && s < route.length);
     if (this.nextOncoming < 0) {
-      this.nextOncoming = 20 + this.rand() * 45;
+      this.nextOncoming = (20 + this.rand() * 45) * this.gaps;
       const pool = free();
       const s = ahead(650);
       if (pool.length && inRoute(s)) {

@@ -66,20 +66,21 @@ export function fieldColour(state: number, seed: number): [number, number, numbe
   const t = (seed * 7.31) % 1;
   const mix = (a: number[], b: number[]): [number, number, number] => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
   switch (state) {
-    // pale beige straw to tan (the Panoramax frames of 26 August: stubble around sRGB 150, 135, 118)
-    case STUBBLE: return mix([0.42, 0.38, 0.3], [0.37, 0.32, 0.23]);
-    // disced chalky soil, grey-beige with the straw worked in: pale, never white
-    case DISCED: return mix([0.4, 0.38, 0.33], [0.33, 0.3, 0.25]);
+    // pale beige straw to tan, warm: the Panoramax frames of 26 August show stubble and worked ground around sRGB
+    // 148, 133, 115, 1.4 times the asphalt's brightness
+    case STUBBLE: return mix([0.38, 0.32, 0.23], [0.33, 0.27, 0.18]);
+    // disced chalky soil, beige-grey with the straw worked in: pale, never white or grey
+    case DISCED: return mix([0.34, 0.29, 0.22], [0.28, 0.24, 0.18]);
     // stubble greening with volunteer cereals or rape and the first cover crops
-    case REGROWTH: return mix([0.3, 0.31, 0.19], [0.22, 0.27, 0.12]);
+    case REGROWTH: return mix([0.27, 0.27, 0.16], [0.2, 0.24, 0.11]);
     case BEET: return mix([0.07, 0.13, 0.045], [0.09, 0.155, 0.055]);
     case MAIZE: return mix([0.1, 0.17, 0.05], [0.13, 0.19, 0.06]);
     // haulms dying back, yellow-brown, some still green
     case POTATO: return mix([0.24, 0.21, 0.1], [0.16, 0.19, 0.07]);
     // alfalfa between cuts; a quarter just cut, pale straw-green
-    case ALFALFA: return t < 0.25 ? [0.3, 0.31, 0.17] : mix([0.12, 0.2, 0.06], [0.16, 0.23, 0.08]);
+    case ALFALFA: return t < 0.25 ? [0.28, 0.29, 0.16] : mix([0.1, 0.16, 0.05], [0.13, 0.19, 0.065]);
     // grassland dried by the summer
-    case GRASS: return mix([0.2, 0.23, 0.1], [0.27, 0.27, 0.13]);
+    case GRASS: return mix([0.19, 0.21, 0.1], [0.26, 0.25, 0.13]);
     // the grassed rows between the vines (near the road the vines themselves are 3D rows)
     case VINES: return [0.16, 0.2, 0.09];
     case HEMP: return mix([0.08, 0.14, 0.05], [0.1, 0.16, 0.06]);
@@ -87,7 +88,7 @@ export function fieldColour(state: number, seed: number): [number, number, numbe
     // flax pulled in July, retting grey-brown in swaths
     case FLAX: return [0.3, 0.28, 0.21];
     // fallow and the rest: weedy, half green, half straw
-    default: return mix([0.25, 0.26, 0.12], [0.31, 0.29, 0.16]);
+    default: return mix([0.23, 0.24, 0.11], [0.28, 0.26, 0.15]);
   }
 }
 
@@ -300,8 +301,8 @@ float tBump = 0.0;
     float det = clamp(dot(img, vec3(0.3, 0.55, 0.15)) / max(dot(pcl, vec3(0.3, 0.55, 0.15)), 1e-3), 0.8, 1.2);
     // straw grain close up, tone patches where the swaths lay. Where a pixel spans more ground than the grain it
     // only shimmered as the road went by: there it is its mean
-    float grain = 0.95;
-    if (foot < 0.35) grain = mix(0.9 + 0.2 * tNoise(p * 0.9) * tNoise(p * 2.7 + 7.0), grain, smoothstep(0.12, 0.35, foot));
+    float grain = 0.97;
+    if (foot < 0.35) grain = mix(0.94 + 0.12 * tNoise(p * 0.9) * tNoise(p * 2.7 + 7.0), grain, smoothstep(0.12, 0.35, foot));
     grain *= 0.94 + 0.12 * tNoise(p * 0.11 + 3.0);
     float known = smoothstep(0.2, 0.6, fk.a) * open * (1.0 - treeish);
     if (known > 0.0) {
@@ -315,23 +316,25 @@ float tBump = 0.0;
     // a crop in spring is green, or dark where it is dense (winter wheat reads near black-green); bare soil is
     // chalk-white to light brown, never grey asphalt (sampled on the Mont de Berru loop at 3 m per pixel)
     float green = max(smoothstep(0.005, 0.03, pV), smoothstep(0.32, 0.24, pL) * 0.8) * smoothstep(0.06, 0.12, pS);
-    float bare = (1.0 - green) * smoothstep(0.26, 0.38, pL) * (1.0 - smoothstep(0.35, 0.45, pS)) * smoothstep(0.04, 0.08, pS);
+    // (bright chalk with no colour at all is bare too: wide, it read as a white sheet)
+    float chalk = smoothstep(0.42, 0.5, pL) * smoothstep(0.08, 0.03, pS);
+    float bare = (1.0 - green) * smoothstep(0.26, 0.38, pL) * (1.0 - smoothstep(0.35, 0.45, pS)) * max(smoothstep(0.04, 0.08, pS), chalk);
     float fieldW = open * (1.0 - known) * (1.0 - treeish) * clamp(green + bare, 0.0, 1.0);
     if (fieldW > 0.0) {
       // smooth inside a parcel, different from its neighbours
       float pick = fract(pL * 5.3 + pV * 23.0 + pS * 3.1);
       // harvested: pale beige to tan stubble, some greening again, some already disced to chalky soil (the
       // Panoramax frames of 26 August show stubble around (150, 135, 118)); the colours are fieldColour's
-      vec3 stubble = mix(vec3(0.42, 0.38, 0.3), vec3(0.37, 0.32, 0.23), smoothstep(0.2, 0.7, pick));
-      stubble = mix(stubble, vec3(0.26, 0.28, 0.15), smoothstep(0.78, 0.84, pick) * (1.0 - smoothstep(0.88, 0.92, pick)));
-      stubble = mix(stubble, vec3(0.4, 0.38, 0.33), smoothstep(0.9, 0.95, pick));
+      vec3 stubble = mix(vec3(0.38, 0.32, 0.23), vec3(0.33, 0.27, 0.18), smoothstep(0.2, 0.7, pick));
+      stubble = mix(stubble, vec3(0.24, 0.26, 0.14), smoothstep(0.78, 0.84, pick) * (1.0 - smoothstep(0.88, 0.92, pick)));
+      stubble = mix(stubble, vec3(0.34, 0.29, 0.22), smoothstep(0.9, 0.95, pick));
       stubble *= grain;
       // spring-sown: spring barley and peas are harvested to stubble by now too; beet dark green, maize mid green,
       // potatoes yellowing, a few fields already disced
       vec3 crop = mix(stubble, vec3(0.08, 0.14, 0.05), smoothstep(0.34, 0.38, pick));
       crop = mix(crop, vec3(0.11, 0.18, 0.055), smoothstep(0.58, 0.62, pick));
       crop = mix(crop, vec3(0.24, 0.21, 0.1), smoothstep(0.7, 0.74, pick));
-      crop = mix(crop, vec3(0.38, 0.36, 0.31), smoothstep(0.84, 0.88, pick));
+      crop = mix(crop, vec3(0.34, 0.29, 0.22), max(smoothstep(0.84, 0.88, pick), chalk));
       float wobble = 0.92 + 0.16 * tNoise(p * 0.02);
       vec3 field = mix(stubble, crop, bare / max(bare + green, 1e-3)) * mix(1.0, det, 0.3) * wobble;
       base = mix(base, field, fieldW);
@@ -351,10 +354,11 @@ float tBump = 0.0;
     float builtUp = smoothstep(0.3, 0.8, land.b);
     float ground = (1.0 - canopy) * (1.0 - steep) * (1.0 - verge);
     float pale = smoothstep(0.22, 0.4, imgL) * smoothstep(0.3, 0.15, sat);
-    float coolBright = smoothstep(0.3, 0.5, imgL) * smoothstep(-0.005, 0.02, img.b - img.r);
+    // concrete is neutral to cool and the JPEG's noise magenta; chalk (the white field tracks) is warm and stays
+    float coolBright = smoothstep(0.3, 0.5, imgL) * smoothstep(0.04, 0.01, (img.r + img.g) * 0.5 - img.b);
     float paved = max(builtUp * pale, (1.0 - max(known, fieldW)) * coolBright) * ground;
-    float pvL = min(dot(base, vec3(0.3, 0.55, 0.15)), 0.26);
-    base = mix(base, vec3(pvL) * vec3(1.0, 0.97, 0.92) * mix(1.0, det, 0.5), paved * 0.9);
+    float pvL = min(dot(base, vec3(0.3, 0.55, 0.15)), 0.21);
+    base = mix(base, vec3(pvL) * vec3(1.0, 0.96, 0.9) * mix(1.0, det, 0.3), paved);
     float photoShade = builtUp * smoothstep(0.1, 0.04, imgL) * ground;
     base = mix(base, vec3(max(dot(base, vec3(0.3, 0.55, 0.15)), 0.12)) * vec3(1.0, 0.97, 0.9), photoShade * 0.85);
   }

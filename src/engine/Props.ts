@@ -31,6 +31,9 @@ export class Props extends THREE.Group {
   async build(
     route: Route, index: RouteIndex, osm: OsmWorld, groundAt: (x: number, z: number) => number, halfWidth: number, biome?: Biome,
     models: [number, number][] = [],
+    /** Village stretches (m) and where side roads join: lamps line the villages OSM maps none in. */
+    towns: [number, number][] = [],
+    junctions: number[] = [],
   ) {
     const place = async (model: string, x: number, z: number, yaw: number, lift = 0) => {
       const y = groundAt(x, z);
@@ -85,7 +88,7 @@ export class Props extends THREE.Group {
     });
     await Promise.all(jobs);
     this.add(this.wires(osm, poles, groundAt));
-    this.add(this.lamps(route, index, osm, groundAt, halfWidth));
+    this.add(this.lamps(route, index, osm, groundAt, halfWidth, towns, junctions));
     this.add(this.memorials(route, index, osm, groundAt, halfWidth));
     this.add(this.towers(osm, groundAt, models, biome));
     this.add(this.fences(osm, index, groundAt, halfWidth, biome));
@@ -187,11 +190,25 @@ export class Props extends THREE.Group {
    * Street lamps at the OSM points within 60 m of the route: a grey steel post with an arm reaching over the street
    * and a flat lantern (the Reims villages, research/champagne/streetlevel/reims-grand-tour-km34.00), one mesh for all.
    */
-  private lamps(route: Route, index: RouteIndex, osm: OsmWorld, groundAt: (x: number, z: number) => number, halfWidth: number): THREE.Object3D {
+  private lamps(
+    route: Route, index: RouteIndex, osm: OsmWorld, groundAt: (x: number, z: number) => number, halfWidth: number,
+    towns: [number, number][], junctions: number[],
+  ): THREE.Object3D {
     const parts: [THREE.BufferGeometry, THREE.Color][] = [];
     const srgb = (r: number, g: number, b: number) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
     const steel = srgb(0.52, 0.54, 0.55), head = srgb(0.3, 0.31, 0.32), lens = srgb(0.93, 0.92, 0.86);
-    for (const p of osm.pois) {
+    // a post with its arm reaching along (ax, az)
+    const lamp = (x: number, y: number, z: number, ax: number, az: number) => {
+      const yaw = Math.atan2(-az, ax);
+      const H = 6.4;
+      parts.push([new THREE.CylinderGeometry(0.045, 0.07, H + 0.3, 8).translate(x, y - 0.3 + (H + 0.3) / 2, z), steel]);
+      parts.push([new THREE.BoxGeometry(0.07, 0.4, 0.07).rotateZ(-0.6).rotateY(yaw).translate(x + ax * 0.1, y + H + 0.12, z + az * 0.1), steel]);
+      parts.push([new THREE.BoxGeometry(1.0, 0.06, 0.06).rotateY(yaw).translate(x + ax * 0.68, y + H + 0.3, z + az * 0.68), steel]);
+      parts.push([new THREE.BoxGeometry(0.62, 0.12, 0.3).rotateY(yaw).translate(x + ax * 1.35, y + H + 0.26, z + az * 1.35), head]);
+      parts.push([new THREE.BoxGeometry(0.5, 0.03, 0.22).rotateY(yaw).translate(x + ax * 1.35, y + H + 0.19, z + az * 1.35), lens]);
+    };
+    const mapped = osm.pois.filter((p) => p.kind === 'street_lamp');
+    for (const p of mapped) {
       if (p.kind !== 'street_lamp') continue;
       const near = index.nearest(p.x, p.z, 60);
       if (near.index < 0) continue;
@@ -206,14 +223,22 @@ export class Props extends THREE.Group {
       const y = groundAt(x, z);
       if (!Number.isFinite(y)) continue;
       // the arm reaches across towards the route
-      const ax = -rx * side, az = -rz * side;
-      const yaw = Math.atan2(-az, ax);
-      const H = 6.4;
-      parts.push([new THREE.CylinderGeometry(0.045, 0.07, H + 0.3, 8).translate(x, y - 0.3 + (H + 0.3) / 2, z), steel]);
-      parts.push([new THREE.BoxGeometry(0.07, 0.4, 0.07).rotateZ(-0.6).rotateY(yaw).translate(x + ax * 0.1, y + H + 0.12, z + az * 0.1), steel]);
-      parts.push([new THREE.BoxGeometry(1.0, 0.06, 0.06).rotateY(yaw).translate(x + ax * 0.68, y + H + 0.3, z + az * 0.68), steel]);
-      parts.push([new THREE.BoxGeometry(0.62, 0.12, 0.3).rotateY(yaw).translate(x + ax * 1.35, y + H + 0.26, z + az * 1.35), head]);
-      parts.push([new THREE.BoxGeometry(0.5, 0.03, 0.22).rotateY(yaw).translate(x + ax * 1.35, y + H + 0.19, z + az * 1.35), lens]);
+      lamp(x, y, z, -rx * side, -rz * side);
+    }
+    // the villages OSM maps no lamps in: one every 30 m or so at the back of the pavement, sides alternating
+    for (const [a, b] of towns) {
+      let side = 1;
+      for (let s = a + 15; s < b - 10; s += 26 + hash(s) * 10) {
+        side = -side;
+        if (junctions.some((j) => Math.abs(j - s) < 8)) continue;
+        const i = Math.min(route.n - 1, Math.round(s / route.step));
+        const rx = Math.cos(route.heading[i]) * side, rz = Math.sin(route.heading[i]) * side;
+        const x = route.x[i] + rx * (halfWidth + 1.55), z = route.z[i] + rz * (halfWidth + 1.55);
+        if (mapped.some((l) => Math.hypot(l.x - x, l.z - z) < 45)) continue;
+        const g = groundAt(x, z);
+        if (!Number.isFinite(g)) continue;
+        lamp(x, Math.max(g, route.ele[i] + 0.18), z, -rx, -rz);
+      }
     }
     if (!parts.length) return new THREE.Group();
     const mat = patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.3 }), { key: 'lamp' });

@@ -26,6 +26,7 @@ import { TerrainShadow } from './TerrainShadow.ts';
 import { clearWaterMask, fieldColour, setFieldMask, setTerrainBiome, setWaterMask } from './terrainMaterial.ts';
 import { Vegetation } from './Vegetation.ts';
 import { GroundCover } from './GroundCover.ts';
+import { farWoods } from './FarWoods.ts';
 import { Landmarks, loadRouteScene, type Placement } from './Landmarks.ts';
 import { ALPINE, biomeFor, type Biome } from './biome.ts';
 import { Roadside, type BarrierSpan } from './Roadside.ts';
@@ -421,7 +422,7 @@ export class Engine {
       // roads and driveways join ours
       const towns = route.category !== 'city' && biome.posts === 'fr' ? builtUpRuns(route, osm) : [];
       const junctions = towns.length ? junctionsAlong(route, index, osm) : [];
-      if (towns.length) road.add(pavements(route, halfWidth, towns, junctions));
+      if (towns.length) road.add(pavements(route, halfWidth, towns, junctions, (x, z) => terrain.groundHeight(x, z)));
       if (route.category !== 'city') {
         world.roadside = new Roadside(
           route, halfWidth, (x, z) => terrain.groundHeight(x, z), biome,
@@ -444,10 +445,20 @@ export class Engine {
       if (this.world !== world) return;
       world.trees = trees;
       this.scene.add(trees);
+      if (biome.fieldSeason && osm.forests.length) {
+        // the open plain's copses out to 4 km, dark islands on its horizon, stand on the DEM at about 40 m
+        let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+        for (const f of osm.forests) {
+          x0 = Math.min(x0, f.bbox[0]); z0 = Math.min(z0, f.bbox[1]); x1 = Math.max(x1, f.bbox[2]); z1 = Math.max(z1, f.bbox[3]);
+        }
+        await preloadDemForBox(x0 / frame.k + frame.mx0, -z1 / frame.k + frame.my0, x1 / frame.k + frame.mx0, -z0 / frame.k + frame.my0, 12);
+        if (this.world !== world) return;
+        trees.add(farWoods(osm.forests, index, baked ? 550 : CORRIDOR, heightAt));
+      }
       void world.props
         .build(
           route, index, osm, (x, z) => terrain.groundHeight(x, z), halfWidth, biome,
-          ((sceneDef?.placements ?? []) as Placement[]).map((p) => lonLatToWorld(frame, p.lon, p.lat)),
+          ((sceneDef?.placements ?? []) as Placement[]).map((p) => lonLatToWorld(frame, p.lon, p.lat)), towns, junctions,
         )
         .catch((e) => console.warn('props failed', e));
       void world.life
@@ -455,7 +466,11 @@ export class Engine {
         .catch((e) => console.warn('life failed', e));
       decorStage = 'Building villages';
       await new Promise((r) => setTimeout(r, 0));
-      const buildings = new Buildings(osm, index, heightAt, 320, biome, halfWidth + 0.4);
+      const inVillage = (x: number, z: number) => {
+        const n = index.nearest(x, z, 120);
+        return n.index >= 0 && towns.some(([a, b]) => n.index * route.step >= a - 50 && n.index * route.step <= b + 50);
+      };
+      const buildings = new Buildings(osm, index, heightAt, 320, biome, halfWidth + 0.4, inVillage);
       if (this.world !== world) return;
       world.buildings = buildings;
       this.scene.add(buildings);

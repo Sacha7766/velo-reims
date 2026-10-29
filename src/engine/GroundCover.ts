@@ -455,7 +455,8 @@ export class GroundCover extends THREE.Group {
           const z = route.z[i] + rz * d * side + fz * t;
           const near = index.nearest(x, z, halfWidth + 1.2);
           if (near.index >= 0 && near.dist < halfWidth + 0.5) continue;
-          if (kerbed && d < halfWidth + 1.8) continue;
+          // behind a village pavement: front gardens and mown lawn
+          if (kerbed && (d < halfWidth + 1.8 || r() < 0.85)) continue;
           if (this.onOtherRoad(x, z)) continue;
           if (isWater?.(x, z)) continue;
           const cover = this.o.coverAt?.(x, z) ?? 0;
@@ -478,7 +479,7 @@ export class GroundCover extends THREE.Group {
             if (r() < 0.85) continue;
           }
           // built-up: pavements and lawns rather than long grass
-          if (cover === 2 && (d > halfWidth + 2.2 ? r() < 0.75 : r() < 0.45)) continue;
+          if (cover === 2 && (d > halfWidth + 2.2 ? r() < (B.fieldSeason ? 0.92 : 0.75) : r() < 0.45)) continue;
           const y = groundHeight(x, z);
           if (!Number.isFinite(y)) continue;
           const sx = groundHeight(x + 1.5, z) - y;
@@ -509,7 +510,7 @@ export class GroundCover extends THREE.Group {
             }
             // meadows and fallow keep their grass
             if (state && state !== GRASS && state !== FALLOW) {
-              if (state === BEET && r() < 0.75) beets.push(x, y - 0.05, z, 0.85 + r() * 0.35, r() * 6.28, 0);
+              if (state === BEET && r() < 0.75) beets.push(x, y - 0.05, z, 0.6 + r() * 0.25, r() * 6.28, 0);
               else if ((state === MAIZE || state === HEMP) && r() < 0.6) maize.push(x, y - 0.05, z, (state === HEMP ? 0.75 : 0.95) + r() * 0.25, r() * 6.28, 0);
               else if (state === POTATO && r() < 0.5) potatoes.push(x, y - 0.05, z, 0.7 + r() * 0.3, r() * 6.28, 0);
               // alfalfa grown back since its last cut (fieldColour: a quarter of the fields were just cut)
@@ -552,8 +553,9 @@ export class GroundCover extends THREE.Group {
           // patchy meadow mask
           const patch = Math.sin(x * 0.11 + Math.sin(z * 0.07) * 2.0) * Math.cos(z * 0.09 + x * 0.03);
           if (d > halfWidth + 5 && patch < -0.35 && r() < 0.7) continue;
-          // late-summer verges grow in clumps with bare, mown and trodden gaps, not an even band
-          if (B.fieldSeason && d <= halfWidth + 5 && patch < -0.15 && r() < 0.65) continue;
+          // late-summer verges grow in clumps a few metres long with mown and trodden gaps, not an even band
+          const clump = Math.sin(x * 0.53 + z * 0.29) + Math.sin(z * 0.61 - x * 0.37 + side);
+          if (B.fieldSeason && d <= halfWidth + 5 && (patch < -0.15 || clump < -0.4) && r() < 0.75) continue;
           // open meadows away from the verge are mown short: only scattered tufts
           if (cover === 1 && d > halfWidth + 4 && r() < 0.55) continue;
           if (alpine > 0.75 && r() < alpine * 0.6) continue;
@@ -599,7 +601,9 @@ export class GroundCover extends THREE.Group {
       for (let k = 0; k < n; k++) {
         const [x, y, z, sc, rot, alpine] = arr.slice(k * 6, k * 6 + 6);
         q.setFromAxisAngle(up, rot);
-        m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(sc, sc * tall, sc));
+        // grass of different heights, not one tuft stamped down the verge
+        const lean = tint === true ? 0.7 + 0.6 * ((rot * 7.77) % 1) : 1;
+        m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(sc, sc * tall * lean, sc));
         mesh.setMatrixAt(k, m);
         if (tint instanceof THREE.Color) {
           // crops and bales: their own colour, each plant a little different

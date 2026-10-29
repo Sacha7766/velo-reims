@@ -33,15 +33,17 @@ const EXTRA = [
 ];
 
 // what stands out over open country from kilometres away (the Champagne plain): water towers, silos,
-// transmitters, chimneys and wind turbines, baked from a wider corridor than the rest; and the villages'
-// names (place nodes sit at the church, often off the road), for the signs at each village entry
+// transmitters, chimneys and wind turbines, and the woods (dark islands on the horizon, FarWoods.ts), baked from a
+// wider corridor than the rest; and the villages' names (place nodes sit at the church, often off the road), for the
+// signs at each village entry
 const FAR = 4000;
 const LANDMARKS = [
   'way["man_made"~"^(tower|mast|water_tower|silo|chimney)$"]', 'node["man_made"~"^(tower|mast|water_tower|chimney)$"]',
   'node["generator:source"="wind"]', 'node["place"~"^(village|town|hamlet|city)$"]',
+  'way["landuse"="forest"]', 'relation["landuse"="forest"]', 'way["natural"="wood"]', 'relation["natural"="wood"]',
 ];
 const landmark = (t) => /^(tower|mast|water_tower|silo|chimney)$/.test(t.man_made ?? '') || t['generator:source'] === 'wind' ||
-  /^(village|town|hamlet|city)$/.test(t.place ?? '');
+  /^(village|town|hamlet|city)$/.test(t.place ?? '') || t.landuse === 'forest' || t.natural === 'wood';
 
 function boxes(coords, corridor) {
   const out = [];

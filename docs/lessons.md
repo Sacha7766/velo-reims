@@ -124,6 +124,12 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
 - **Long house shadows at Midday on the Champagne plain (review 2026-10-29, finding 15).** The time presets are
   Salzburg in mid-October, 35° at noon. Fix: `biome.sun`, the region's sun per time of day; over Reims on 26 August
   it stands at 51° at noon, rises in the east and sets west-north-west. Where: `biome.ts`, `Engine.setTime`.
+- **Copses never stood on the plain's horizon (reviews 2026-10-29, hero 2).** Woods beyond the tree corridor were
+  only the orthophoto's flat dark patches, invisible at a grazing angle. Fix: the bake's landmark pass takes woods out
+  to 4 km and `FarWoods.ts` puts low canopy domes along their edges (one in ten inside), instanced. The first pass
+  domed the whole 3,000 ha around the Berru loop: 25,000 domes, 2 M triangles, trees 2 % → 18 % of the probe frame.
+  The edge alone makes the silhouette from the road: 20-triangle domes on it, about a tenth of that. Where:
+  `FarWoods.ts`, `scripts/bake-osm.mjs` `LANDMARKS`.
 - **The adaptive resolution had nothing left on a slow GPU.** At 1× it could not lower the cost further. Fix: at 1×
   and still slow, terrain detail steps down to two thirds of the preset's and back up with headroom at full
   resolution; below 15 fps (loading hitches, the software renderer of the captures) it leaves detail alone. Where:
@@ -204,6 +210,16 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   (`Life.buildVillages`); street lamps at the OSM `street_lamp` points and war memorials at `historic=memorial`
   (not graves or plaques), each merged into one mesh (`Props.lamps`, `Props.memorials`). Where: `Road.pavements`,
   `Life.ts`, `Props.ts`.
+- **A pavement ended in a floating slab (qa2-23850).** Where the ground falls away beside the road the slab's back
+  face (0.5 m) didn't reach it, and a stretch's end was open. Fix: the back face goes 1.2 m down, no pavement where
+  the ground lies lower than that, and each stretch's ends are capped. Where: `Road.pavements`.
+- **Steel halls on the village streets, one hiding the Époye church (qa2, finding 1).** Untagged footprints over
+  380 m² became corrugated sheds anywhere; in the villages these are the farm courtyards' stone and brick barns.
+  Fix: in a village's built-up stretch only footprints over 3,000 m² are halls (700 m² outside). Where:
+  `Buildings.ts` `addBuilding` (`village`).
+- **Every house the same height (qa2, finding 9).** One 2.9 m storey everywhere. Fix: in Champagne a storey step per
+  house (2.72–3.14 m) rides above the building id in the surface attribute, so walls and window rows agree; a
+  quarter of the houses get a hipped roof. Where: `Buildings.ts` `Builder.setBase`, facade shader.
 
 ## Data and bakes
 
@@ -286,6 +302,12 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   next source. Where: `imagery.ts` `loadImageryTile`.
 - **Editing a running bash script broke it.** Bash reads a script as it runs: the batch went on to a syntax error and
   left the dev server running. Write a new file instead. And kill vite itself, not the `npx` that started it.
+- **Frames at km 21.5 and 25.9 stayed invalid (49 and 53 tiles pending).** The DEM download had no timeout: a
+  stalled request held its tile loading for good, and with it the detail near the camera. Fix: a 20 s timeout and
+  three tries per tile before it is given up. Where: `elevation.ts` `fetchDem`, `Terrain.load`.
+- **A software-rendered capture took 15 minutes.** The terrain streams a batch of tiles per rendered frame, and a
+  frame takes seconds in SwiftShader. Fix (headless capture script): hide the scene at a quarter of the resolution
+  while the tiles load, show it all for the frame that is kept: 7 minutes, the same frame.
 
 ## Devices and riding
 

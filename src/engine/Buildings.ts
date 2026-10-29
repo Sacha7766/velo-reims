@@ -43,8 +43,8 @@ const CHAMP_WALLS = [
 const CHALK_WALLS = [srgb(0.9, 0.87, 0.8), srgb(0.86, 0.83, 0.76), srgb(0.92, 0.9, 0.84), srgb(0.88, 0.82, 0.7)];
 const BRICKS = [srgb(0.52, 0.27, 0.2), srgb(0.58, 0.31, 0.23), srgb(0.48, 0.25, 0.19), srgb(0.6, 0.36, 0.27)];
 const CHAMP_ROOFS = [
-  srgb(0.5, 0.3, 0.23), srgb(0.46, 0.27, 0.21), srgb(0.55, 0.34, 0.26), srgb(0.42, 0.28, 0.22),
-  srgb(0.49, 0.31, 0.25), srgb(0.3, 0.31, 0.34), srgb(0.22, 0.22, 0.24), srgb(0.44, 0.25, 0.19),
+  srgb(0.42, 0.27, 0.21), srgb(0.38, 0.24, 0.19), srgb(0.46, 0.3, 0.24), srgb(0.36, 0.25, 0.2),
+  srgb(0.41, 0.28, 0.23), srgb(0.3, 0.31, 0.34), srgb(0.22, 0.22, 0.24), srgb(0.37, 0.23, 0.18),
 ];
 const SHEDS = [
   srgb(0.6, 0.62, 0.6), srgb(0.45, 0.5, 0.45), srgb(0.75, 0.72, 0.64), srgb(0.52, 0.55, 0.58), srgb(0.3, 0.38, 0.32), srgb(0.82, 0.8, 0.74),
@@ -80,6 +80,8 @@ interface Style {
   chimneys?: number;
   /** Farm buildings: timber (Alps) or brick, chalk and corrugated sheds. */
   barns?: 'wood' | 'masonry';
+  /** Share of houses with a hipped roof where OSM gives none. */
+  hips?: number;
 }
 
 const V = (r: number, g: number, b: number) => new THREE.Vector3(r, g, b);
@@ -103,9 +105,9 @@ const STYLES: Record<Biome['buildings'], Style> = {
   },
   // shutters off-white, pale blue-grey, brown and oxblood; steep roofs with short eaves and zinc gutters
   champagne: {
-    med: false, flatTowns: false, walls: CHAMP_WALLS, roofs: CHAMP_ROOFS, woodTop: 0, balcony: 'none', pitch: [26, 36],
+    med: false, flatTowns: false, walls: CHAMP_WALLS, roofs: CHAMP_ROOFS, woodTop: 0, balcony: 'none', pitch: [22, 32],
     shutters: [V(0.72, 0.72, 0.68), V(0.32, 0.38, 0.42)], moreShutters: [V(0.16, 0.1, 0.06), V(0.19, 0.06, 0.045)],
-    eaves: [0.35, 0.12], masonry: [0.25, 0.1], chimneys: 0.6, barns: 'masonry',
+    eaves: [0.35, 0.12], masonry: [0.3, 0.04], chimneys: 0.6, barns: 'masonry', hips: 0.25,
   },
 };
 
@@ -130,10 +132,15 @@ class Builder {
   base: number[] = [];
   private y0 = 0;
   private id = 0;
-  /** The building being added: its base height (storeys count from it) and an id, 0–255, for per-house variety. */
-  setBase(y: number, id = 0) {
+  private storey = 3;
+  /**
+   * The building being added: its base height (storeys count from it), an id, 0–255, for per-house variety, and
+   * its storey height as a step 0–7 (2.72–3.14 m; 3 is the 2.9 m every region but Champagne keeps).
+   */
+  setBase(y: number, id = 0, storey = 3) {
     this.y0 = y;
     this.id = id;
+    this.storey = storey;
   }
   tri(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, color: THREE.Color, s: number, centre: THREE.Vector3) {
     const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a));
@@ -142,8 +149,8 @@ class Builder {
     for (const p of pts) {
       this.pos.push(p.x, p.y, p.z);
       this.col.push(color.r, color.g, color.b);
-      // surface ids stay below 64: the building id goes above them
-      this.surf.push(s + this.id * 64);
+      // surface ids stay below 64: the building id goes above them, the storey step above that
+      this.surf.push(s + this.id * 64 + this.storey * 16384);
       this.base.push(this.y0);
     }
   }
@@ -184,6 +191,8 @@ function simplify(ring: Float32Array): THREE.Vector2[] {
 
 function addBuilding(
   bld: Building, b: Builder, heightAt: (x: number, z: number) => number, seed: number, ox: number, oz: number, style: Style,
+  /** On a village street: big untagged farm buildings there are stone and brick, not steel halls. */
+  village = false,
 ) {
   const med = style.med;
   const ring = simplify(bld.ring);
@@ -197,7 +206,10 @@ function addBuilding(
     gmax = Math.max(gmax, h);
   }
   const base = gmin - 0.6;
-  b.setBase(gmax, Math.floor(rnd(seed + 61) * 256));
+  // Champagne houses vary in storey height (low cottages to tall nineteenth-century fronts); other regions keep 2.9 m
+  const storeyStep = style.masonry ? Math.floor(rnd(seed + 71) * 8) : 3;
+  const storey = 2.9 + 0.06 * (storeyStep - 3);
+  b.setBase(gmax, Math.floor(rnd(seed + 61) * 256), storeyStep);
   // Mallorca: small rural houses have low hipped/gabled tile roofs, town blocks are flat with terraces
   let roofShape = bld.roof;
   if (style.flatTowns && !bld.explicitRoof) {
@@ -212,9 +224,10 @@ function addBuilding(
   const church = ['church', 'chapel', 'cathedral'].includes(bld.kind) ||
     /kirche|church|église|eglise|chiesa|kapelle|chapelle|cappella/i.test(bld.name ?? '');
   if (church && !bld.explicitRoof) roofShape = 'gabled';
+  else if (style.hips && !bld.explicitRoof && roofShape === 'gabled' && rnd(seed + 73) < style.hips) roofShape = 'hipped';
   const pitched = roofShape !== 'flat';
   const levels = bld.levels ?? Math.max(1, Math.round((bld.height - (pitched ? 2.5 : 0)) / 3));
-  const wallTop = gmax + Math.max(2.8, levels * 2.9 + 0.4);
+  const wallTop = gmax + Math.max(2.8, levels * storey + 0.4);
   const local = ring.map((p) => new THREE.Vector2(p.x - ox, p.y - oz));
   const cx = local.reduce((s, p) => s + p.x, 0) / local.length;
   const cz = local.reduce((s, p) => s + p.y, 0) / local.length;
@@ -271,7 +284,8 @@ function addBuilding(
       wallSurf = CHALK;
       wallMode = NAVE;
       if (!bld.wallColour) wall.copy(r < 0.6 ? srgb(0.82, 0.79, 0.72) : srgb(0.7, 0.64, 0.55));
-    } else if ((works && area > 150) || ((barn || bld.kind === 'yes' || bld.kind === 'farm_auxiliary') && area > 380)) {
+    // the farm courtyards in the villages are stone and brick; steel sheds are the big ones on the edges
+    } else if ((works && area > 150) || ((barn || bld.kind === 'yes' || bld.kind === 'farm_auxiliary') && area > (village ? 3000 : 700))) {
       wallSurf = METAL;
       roofSurf = METAL;
       if (!bld.wallColour) wall.copy(pick(SHEDS, 41));
@@ -559,8 +573,11 @@ vec2 fBrick(float u, float hy, float px) {
   float u = abs(n.x) > abs(n.z) ? wp.z : wp.x;
   float hy = wp.y - vBaseY;
   int raw = int(vSurf + 0.5);
+  int sto = raw / 16384;
+  raw -= sto * 16384;
   int hid = raw / 64;
   raw -= hid * 64;
+  float storey = 2.9 + 0.06 * float(sto - 3);
   int mode = raw / 16;
   int sid = raw - mode * 16;
   // a building's id for hashing: its own id (Builder.setBase) and its base height quantised. Hashing the
@@ -607,7 +624,7 @@ vec2 fBrick(float u, float hy, float px) {
     float bay = sid == 5 ? 2.2 : 2.7 + 0.8 * fHash(vec2(bid, 4.0));
     float gx = u / bay + (sid == 5 ? 0.0 : fHash(vec2(bid, 5.0)));
     float fx = fract(gx);
-    float fy = fract((hy - 0.45) / 2.9);
+    float fy = fract((hy - 0.45) / storey);
     float ww = sid == 5 ? 0.42 : (0.95 + 0.3 * fHash(vec2(bid, 6.0))) / (2.0 * bay);
     float open = mode == 0 ? 1.0 : 0.0;
     float rowIn = step(0.3, fy) * step(fy, 0.78) * step(0.4, hy);
@@ -623,7 +640,7 @@ vec2 fBrick(float u, float hy, float px) {
     if (sid == 10) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.62, 0.6, 0.55), sills * k);
     // shutters beside rural windows, one colour per house. In Champagne many houses have roller shutters
     // instead (a box over the window, the blind part way down), and some side shutters are closed
-    float cell = fHash(floor(vec2(gx, (hy - 0.45) / 2.9)) + bid);
+    float cell = fHash(floor(vec2(gx, (hy - 0.45) / storey)) + bid);
     float roller = uShut4 * step(sid == 0 ? 0.5 : 0.82, fHash(vec2(bid * 0.71, 2.0)));
     float closed = uShut4 * (1.0 - roller) * step(0.78, cell);
     float side = step(0.5 - ww - 0.13, fx) * step(fx, 0.5 - ww - 0.01) + step(0.5 + ww + 0.01, fx) * step(fx, 0.5 + ww + 0.13);
@@ -647,7 +664,7 @@ vec2 fBrick(float u, float hy, float px) {
       // a wide door every ~7 m: mostly white (garages), some green, brown or grey, in horizontal panels
       float dxu = fract(u / 7.0 + house * 5.0);
       float door = step(0.32, dxu) * step(dxu, 0.68) * step(hy, 2.4) * wallF;
-      vec3 dc = house < 0.65 ? vec3(0.78, 0.78, 0.76) : house < 0.75 ? vec3(0.1, 0.18, 0.12) : house < 0.88 ? vec3(0.2, 0.12, 0.06) : vec3(0.32, 0.33, 0.34);
+      vec3 dc = house < 0.65 ? vec3(0.78, 0.78, 0.76) : house < 0.75 ? vec3(0.1, 0.18, 0.12) : house < 0.88 ? vec3(0.13, 0.09, 0.06) : vec3(0.32, 0.33, 0.34);
       diffuseColor.rgb = mix(diffuseColor.rgb, dc * (0.86 + 0.14 * step(0.5, fract(hy * 2.0))), door * detail);
     } else if (mode == 3) {
       // round-headed church windows every 3.8 m
@@ -765,7 +782,11 @@ export class Buildings extends THREE.Group {
   }
 
   /** `clear`: half the asphalt width plus a margin; no footprint may reach into it. */
-  constructor(osm: OsmWorld, index: RouteIndex, heightAt: (x: number, z: number) => number, corridor = 320, biome: Biome = ALPINE, clear = 0) {
+  constructor(
+    osm: OsmWorld, index: RouteIndex, heightAt: (x: number, z: number) => number, corridor = 320, biome: Biome = ALPINE, clear = 0,
+    /** Within a village's built-up stretch (Signs.builtUpRuns): farm buildings there are not steel halls. */
+    village?: (x: number, z: number) => boolean,
+  ) {
     super();
     const groups = new Map<string, { builder: Builder; ox: number; oz: number }>();
     const style = STYLES[biome.buildings] ?? STYLES.flachgau;
@@ -784,7 +805,7 @@ export class Buildings extends THREE.Group {
         g = { builder: new Builder(), ox: Math.floor(x / BUCKET) * BUCKET, oz: Math.floor(z / BUCKET) * BUCKET };
         groups.set(key, g);
       }
-      addBuilding(bld, g.builder, heightAt, i + 1, g.ox, g.oz, style);
+      addBuilding(bld, g.builder, heightAt, i + 1, g.ox, g.oz, style, village?.(x, z) ?? false);
       this.centres.push(x, z);
       this.count++;
     });

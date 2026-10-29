@@ -119,4 +119,8 @@ First review 2026-10-29 (`research/mont-de-berru/review-2026-10-29.md`): REJECT,
 at km 11.0: it stands beside the rider there, out of a chase frame). Fixed since: real RPG fields, paved village
 ground and photo shadows, per-house windows and muted brick and roofs, white garage doors, plain shutters, kerbs and
 pavements, parked cars and people, street lamps and war memorials, verge variety, the late-August sun. Second
-capture set qa2 (16 frames, Époye from km 10.88) under review.
+capture set qa2 (16 frames) reviewed 2026-10-29 (`research/mont-de-berru/review-2026-10-29-qa2.md`): REJECT, mean
+2.75 (life 2 → 3), the Époye church still hidden, now behind a steel hall. Since: no steel halls in the villages,
+storey heights and hipped roofs per house, duller roofs at a lower pitch, lamps along every village, chalk sheets
+read as disced ground, pavements capped, woods out to 4 km as dark islands, more traffic. Third set qa3 (Époye
+from km 10.75, vines at 21.1 and 22.85, golden on the open plain) in capture.
