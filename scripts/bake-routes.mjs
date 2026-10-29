@@ -29,15 +29,16 @@ const PRESETS = [
   // Bondi → Bronte → Coogee coast roads, Randwick, through Centennial Park, Oxford St back to Bondi
   { id: 'sydney', name: 'Sydney Coast & Park', region: 'Sydney, AU', category: 'city', loop: true, from: [151.2743, -33.8908], via: [[151.2680, -33.9040], [151.2665, -33.9140], [151.2587, -33.9210], [151.2420, -33.9150], [151.2290, -33.8960], [151.2480, -33.8890]] },
   { id: 'vienna-ring', name: 'Wiener Ringstraße', region: 'Wien, AT', category: 'city', loop: true, from: [16.3823, 48.2090], via: [[16.3786, 48.2057], [16.3762, 48.2033], [16.3742, 48.2016], [16.3698, 48.2023], [16.3677, 48.2028], [16.3628, 48.2043], [16.3615, 48.2124], [16.3637, 48.2145], [16.3671, 48.2158], [16.3737, 48.2149], [16.3766, 48.2123], [16.3790, 48.2116]] },
-  // Villages north-east of Reims; points are the village centres (OSM place nodes)
-  // Bétheny → Fresne → Pomacle → up the Suippe (Boult … Heutrégiville) → Saint-Masmes → Époye → Beine-Nauroy → Nogent → Berru → Lavannes → Caurel → Witry → Cernay
-  { id: 'reims-grand-tour', name: 'Grand tour des 17 villages', region: 'Marne, FR', category: 'rolling', loop: true, from: [4.0535, 49.2845], via: [[4.1024, 49.3397], [4.1467, 49.3353], [4.1478, 49.3708], [4.1720, 49.3624], [4.1992, 49.3549], [4.2202, 49.3500], [4.2631, 49.3260], [4.2639, 49.3132], [4.2380, 49.2905], [4.2161, 49.2492], [4.1572, 49.2544], [4.1492, 49.2706], [4.1711, 49.3138], [4.1530, 49.3034], [4.1156, 49.2903], [4.1041, 49.2642]] },
+  // Villages north-east of Reims. The order and points come from BRouter legs between every pair of
+  // villages: each point sits on the road through its village, so no loop rides in and out on the same street
+  // Bétheny → Cernay → Berru → Nogent-l'Abbesse → Beine-Nauroy → Époye → Saint-Masmes → down the Suippe from Heutrégiville to Boult → Fresne → Pomacle → Lavannes → Caurel → Witry
+  { id: 'reims-grand-tour', name: 'Grand tour des 17 villages', region: 'Marne, FR', category: 'rolling', loop: true, from: [4.06265, 49.28535], via: [[4.10405, 49.26418], [4.14924, 49.27057], [4.15715, 49.25438], [4.21687, 49.24946], [4.23819, 49.29046], [4.26353, 49.31299], [4.25725, 49.32456], [4.22062, 49.3504], [4.1992, 49.35486], [4.16821, 49.36318], [4.14764, 49.36868], [4.10241, 49.33971], [4.1467, 49.33525], [4.16941, 49.31388], [4.15296, 49.30336], [4.11845, 49.29125]] },
   // Witry → Lavannes → Époye → Beine-Nauroy → Nogent-l'Abbesse → Berru → Cernay, around the Mont de Berru
-  { id: 'mont-de-berru', name: 'Boucle du Mont de Berru', region: 'Marne, FR', category: 'rolling', loop: true, from: [4.1156, 49.2903], via: [[4.1711, 49.3138], [4.2380, 49.2905], [4.2161, 49.2492], [4.1572, 49.2544], [4.1492, 49.2706], [4.1041, 49.2642]] },
-  // Pomacle → Boult → along the Suippe to Heutrégiville → Saint-Masmes → Caurel
-  { id: 'vallee-de-la-suippe', name: 'Boucle de la Suippe', region: 'Marne, FR', category: 'flat', loop: true, from: [4.1467, 49.3353], via: [[4.1478, 49.3708], [4.1720, 49.3624], [4.1992, 49.3549], [4.2202, 49.3500], [4.2631, 49.3260], [4.2639, 49.3132], [4.1530, 49.3034]] },
+  { id: 'mont-de-berru', name: 'Boucle du Mont de Berru', region: 'Marne, FR', category: 'rolling', loop: true, from: [4.1201, 49.29013], via: [[4.17105, 49.31376], [4.23803, 49.2905], [4.2161, 49.24921], [4.15715, 49.25438], [4.14924, 49.27057], [4.10405, 49.26418]] },
+  // Pomacle → Caurel → Saint-Masmes → down the Suippe from Heutrégiville to Boult → Fresne (Boult is a dead end without it)
+  { id: 'vallee-de-la-suippe', name: 'Boucle de la Suippe', region: 'Marne, FR', category: 'flat', loop: true, from: [4.14757, 49.33442], via: [[4.15247, 49.30385], [4.26353, 49.31299], [4.25725, 49.32456], [4.22062, 49.3504], [4.1992, 49.35486], [4.16821, 49.36318], [4.14764, 49.36868], [4.10241, 49.33971]] },
   // Bétheny → Fresne-lès-Reims → Pomacle → Caurel → Witry
-  { id: 'plaine-de-betheny', name: 'Boucle de Bétheny et Fresne', region: 'Marne, FR', category: 'flat', loop: true, from: [4.0535, 49.2845], via: [[4.1024, 49.3397], [4.1467, 49.3353], [4.1530, 49.3034], [4.1156, 49.2903]] },
+  { id: 'plaine-de-betheny', name: 'Boucle de Bétheny et Fresne', region: 'Marne, FR', category: 'flat', loop: true, from: [4.06209, 49.28832], via: [[4.09873, 49.33881], [4.14649, 49.3351], [4.15296, 49.30336], [4.11845, 49.29125]] },
 ];
 
 const args = process.argv.slice(2);
