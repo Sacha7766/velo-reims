@@ -1,6 +1,6 @@
 // Aerial imagery tiles. National orthophotos where they exist (basemap.at in Austria, ~30 cm;
-// IGN PNOA in Spain incl. the Balearics, 25 cm; both CC BY 4.0), Esri World Imagery everywhere
-// else and as per-tile fallback.
+// IGN PNOA in Spain incl. the Balearics, 25 cm; both CC BY 4.0; IGN BD ORTHO in France, 20 cm,
+// Licence Ouverte 2.0), Esri World Imagery everywhere else and as per-tile fallback.
 
 export interface ImagerySource {
   id: string;
@@ -31,6 +31,17 @@ export const PNOA: ImagerySource = {
     `https://www.ign.es/wmts/pnoa-ma?request=GetTile&service=WMTS&VERSION=1.0.0&Layer=OI.OrthoimageCoverage&Style=default&Format=image/jpeg&TileMatrixSet=GoogleMapsCompatible&TileMatrix=${z}&TileRow=${y}&TileCol=${x}`,
 };
 
+// Géoplateforme answers 404 outside France and above zoom 19, which loadImageryTile treats as a miss
+export const IGN_FR: ImagerySource = {
+  id: 'ign-fr',
+  name: 'IGN BD ORTHO',
+  maxZoom: 19,
+  attribution: 'Orthophotos © IGN (Licence Ouverte 2.0)',
+  bounds: [-5.2, 41.3, 9.6, 51.1],
+  url: (z, x, y) =>
+    `https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&FORMAT=image/jpeg&TILEMATRIXSET=PM&TILEMATRIX=${z}&TILEROW=${y}&TILECOL=${x}`,
+};
+
 export const ESRI: ImagerySource = {
   id: 'esri',
   name: 'Esri World Imagery',
@@ -40,13 +51,11 @@ export const ESRI: ImagerySource = {
 };
 
 export function sourcesFor(lon: number, lat: number): ImagerySource[] {
-  for (const src of [BASEMAP_AT, PNOA]) {
-    const [w, s, e, n] = src.bounds!;
-    // PNOA's box also covers southern France and Portugal: it answers those with blank tiles,
-    // which loadImageryTile detects and falls back to Esri
-    if (lon > w && lon < e && lat > s && lat < n) return [src, ESRI];
-  }
-  return [ESRI];
+  // the boxes overlap (France and Spain along the Pyrenees, PNOA's box also covers Portugal):
+  // every national source whose box holds the start is asked in turn, and one that has only
+  // missed is skipped for the rest of the world, so a route near a border ends on the right country
+  const national = [BASEMAP_AT, IGN_FR, PNOA].filter(({ bounds: [w, s, e, n] = [0, 0, 0, 0] }) => lon > w && lon < e && lat > s && lat < n);
+  return [...national, ESRI];
 }
 
 // a national source that has only answered blank or missing tiles for this world (a route just
