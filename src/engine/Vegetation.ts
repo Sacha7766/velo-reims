@@ -406,7 +406,7 @@ export class Vegetation extends THREE.Group {
           if (!Number.isFinite(y)) continue;
           const pick = hash2(gx + 101, gz - 33);
           const lowland = route.category === 'city' || route.category === 'flat' ? 0.4 : 1;
-          const coniferShare = kind === 1 ? 1 : kind === 2 ? 0 : (y > 1100 ? 0.85 : y > 700 ? 0.6 : 0.4) * (y > 700 ? 1 : lowland);
+          const coniferShare = kind === 1 ? 1 : kind === 2 ? 0 : (y > 1100 ? 0.85 : y > 700 ? 0.6 : (o.biome?.lowlandConifers ?? 0.4)) * (y > 700 ? 1 : lowland);
           const conifer = pick < coniferShare;
           const altitudeShrink = Math.min(1, Math.max(0.45, 1 - (y - 1500) / 1400));
           const h = (conifer ? 17 + keep * 15 : 11 + keep * 11) * altitudeShrink;

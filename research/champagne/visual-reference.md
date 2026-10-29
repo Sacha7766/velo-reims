@@ -30,6 +30,12 @@ are **est.**. Route km are along each route file.
 | PNX-12 | vallee-de-la-suippe-km25.00-b96752e3-avant.jpg | Suippe loop 25.0 (Boult-sur-Suippe) | b96752e3-087a-42e7-917d-510d999ff2dc |
 | PNX-13 | vallee-de-la-suippe-km26.00-a85e6d8d-avant.jpg | Suippe loop 26.0 | a85e6d8d-73a6-492a-98b3-5a5459cceac1 |
 
+- [CMN-n] Wikimedia Commons photos in `photos/` (manifest.json has page, licence and author of each): Garitan
+  (CC BY-SA 3.0, 2012: the mairies, churches and war memorials of Berru, Caurel, Lavannes and Witry), Lucas
+  Tabary-Maujean (CC BY-SA 4.0, 2024: Berru church and vines), Tournasol7 (CC BY-SA 4.0, 2021: Saint-Rémi at
+  Bazancourt), Florian Pépellin (CC BY-SA 4.0, 2024: Bazancourt station) and an anonymous author (CC BY-SA 4.0, 2024:
+  book boxes in Berru and Witry). The download stopped on the shared address's rate limit after 22 files.
+
 Coverage: Panoramax has 2,573 photos in the area, but on the Mont de Berru loop only 7, all at km 30 (Witry).
 The Suippe valley (Warmeriville to Fresne) and the Bétheny–Fresne road are well covered. Wikimedia Commons photos
 per village go to `photos/` (manifest.json) as the rate limit on the shared build address allows.
@@ -94,4 +100,8 @@ per village go to `photos/` (manifest.json) as the rate limit on the shared buil
 | 28.1 | Cernay-lès-Reims: mairie, war memorial, Église Saint-Martin | 11–41 m |
 | 30.5 | Witry: Carrefour fuel station | 39 m left |
 
-What each church and memorial looks like: **unknown** until the Commons photos are in.
+Churches and public buildings [CMN]: Saint-Martin at Berru is warm grey-beige rubble under slate, a square tower
+with a slate pyramid spire and round-headed windows; Saint-Lambert at Lavannes is pale limestone with two slate spires
+and a brown tile nave roof; the Witry church is pale stone under a slate spire. The mairies are pale dressed or
+rock-faced stone with slate (Berru, Witry: mansards) or dark brown tile roofs (Caurel), white roller shutters, and at
+Lavannes red brick window surrounds on the stone and oxblood shutters.

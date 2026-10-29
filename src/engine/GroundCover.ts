@@ -111,12 +111,17 @@ function moundGeometry(): THREE.BufferGeometry {
   return cards(list);
 }
 
-/** Two metres of trellised vine row along +X: leaf walls either side of the wires over a top, trunks below. */
+/** Two metres of trellised vine row along +X: leaf walls either side of the wires under a flat top (Champagne
+ *  vines are trimmed square in summer), trunks below. The walls take only the dense middle of the atlas leaf
+ *  cluster: its round outline made each metre of row read as a little tree. */
 function vineGeometry(): THREE.BufferGeometry {
+  const L = REGIONS.leaves;
+  const du = (L.u1 - L.u0) * 0.24, dv = (L.v1 - L.v0) * 0.24;
+  const dense = { u0: L.u0 + du, v0: L.v0 + dv, u1: L.u1 - du, v1: L.v1 - dv };
   const list: { reg: typeof REGIONS.leaves; p: number[][] }[] = [];
   for (const x0 of [-1, 0]) {
-    for (const z of [-0.17, 0.17]) list.push({ reg: REGIONS.leaves, p: [[x0, 0.42, z], [x0 + 1, 0.42, z], [x0 + 1, 1.38, z], [x0, 1.38, z]] });
-    list.push({ reg: REGIONS.leaves, p: [[x0, 1.3, -0.19], [x0 + 1, 1.3, -0.19], [x0 + 1, 1.34, 0.19], [x0, 1.34, 0.19]] });
+    for (const z of [-0.17, 0.17]) list.push({ reg: dense, p: [[x0, 0.4, z], [x0 + 1, 0.4, z], [x0 + 1, 1.32, z], [x0, 1.32, z]] });
+    list.push({ reg: dense, p: [[x0, 1.3, -0.18], [x0 + 1, 1.3, -0.18], [x0 + 1, 1.3, 0.18], [x0, 1.3, 0.18]] });
   }
   for (const x of [-0.5, 0.5]) {
     list.push({ reg: REGIONS.barkDark, p: [[x - 0.035, -0.05, 0], [x + 0.035, -0.05, 0], [x + 0.035, 0.5, 0], [x - 0.035, 0.5, 0]] });
@@ -137,13 +142,14 @@ function fieldState(rgb: number[]): { state: number; pick: number } {
   // the shader takes the square root of the linear texel: about the sRGB value to the power 1.1
   const [r, g, b] = [rgb[0], rgb[1], rgb[2]].map((v) => Math.pow(v / 255, 1.1));
   const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
-  const L = (r + g + b) / 3, G = g - Math.max(r, b) * 0.93, S = (mx - mn) / Math.max(mx, 1e-3);
-  const green = smooth(0.03, 0.07, G) * smooth(0.12, 0.2, S);
-  const bare = (1 - green) * smooth(0.48, 0.6, L) * smooth(0.16, 0.09, S);
-  const pick = (((L * 5.3 + G * 23 + S * 3.1) % 1) + 1) % 1;
+  const L = (r + g + b) / 3, V = g - Math.max(r, b), S = (mx - mn) / Math.max(mx, 1e-3);
+  const green = Math.max(smooth(0.005, 0.03, V), smooth(0.32, 0.24, L) * 0.8) * smooth(0.06, 0.12, S);
+  const bare = (1 - green) * smooth(0.26, 0.38, L) * (1 - smooth(0.35, 0.45, S)) * smooth(0.04, 0.08, S);
+  const pick = (((L * 5.3 + V * 23 + S * 3.1) % 1) + 1) % 1;
   if (green + bare < 0.5) return { state: 0, pick };
   if (green >= bare) return { state: STUBBLE, pick };
-  return { state: pick < 0.46 ? BEET : pick < 0.73 ? MAIZE : pick < 0.89 ? POTATO : BARE, pick };
+  // spring-bare fields: spring barley and peas (stubble by now), beet, maize, potatoes, or disced bare
+  return { state: pick < 0.36 ? STUBBLE : pick < 0.6 ? BEET : pick < 0.72 ? MAIZE : pick < 0.86 ? POTATO : BARE, pick };
 }
 
 function rockGeometry(): THREE.BufferGeometry {
@@ -161,7 +167,13 @@ function rockGeometry(): THREE.BufferGeometry {
 interface Chunk {
   index: number;
   meshes: THREE.InstancedMesh[];
+  /** Built before the fine photo tiles had loaded: the crops are rebuilt once they have. */
+  coarse?: boolean;
 }
+
+// a parcel's tone needs the photo at several metres per pixel (zoom 17 and finer: 6 to 12 m); coarser tiles
+// blur neighbouring fields together
+const FIELD_PHOTO = 14;
 
 export interface GroundCoverOptions {
   route: Route;
@@ -179,8 +191,8 @@ export interface GroundCoverOptions {
   screeAt?: (x: number, z: number) => number;
   /** OSM field use at a point: 0 none, 1 arable, 2 meadow, 3 vineyard (biomes with a field season). */
   fieldAt?: (x: number, z: number) => number;
-  /** The orthophoto's sRGB colour at parcel scale (Terrain.photoAt); false while no tile covers the point. */
-  photoAt?: (x: number, z: number, out: number[]) => boolean;
+  /** The orthophoto's sRGB colour at parcel scale (Terrain.photoAt): metres per pixel, 0 while no tile covers it. */
+  photoAt?: (x: number, z: number, out: number[]) => number;
   biome?: Biome;
 }
 
@@ -208,6 +220,7 @@ export class GroundCover extends THREE.Group {
   private biome: Biome;
   private roadGrid = new Map<number, number[]>();
   private roadSegs: number[] = [];
+  private frame = 0;
 
   constructor(o: GroundCoverOptions) {
     super();
@@ -363,16 +376,40 @@ export class GroundCover extends THREE.Group {
       }
     }
     if (best >= 0) this.build(best);
-    for (const [c, chunk] of this.chunks) {
-      if (!keep.has(c)) {
-        for (const m of chunk.meshes) {
-          this.remove(m);
-          m.dispose();
-          if (m.userData.ownGeometry) m.geometry.dispose();
-        }
-        this.chunks.delete(c);
+    else if (this.o.photoAt && ++this.frame % 30 === 0) {
+      // a chunk built from coarse photo tiles: rebuild the nearest once the fine ones cover it
+      let redo = -1;
+      let redoD = Infinity;
+      for (const [c, d] of wanted) if (this.chunks.get(c)?.coarse && d < redoD && this.finePhoto(c)) { redo = c; redoD = d; }
+      if (redo >= 0) {
+        this.drop(redo);
+        this.build(redo);
       }
     }
+    for (const c of this.chunks.keys()) if (!keep.has(c)) this.drop(c);
+  }
+
+  private drop(c: number) {
+    const chunk = this.chunks.get(c);
+    if (!chunk) return;
+    for (const m of chunk.meshes) {
+      this.remove(m);
+      m.dispose();
+      if (m.userData.ownGeometry) m.geometry.dispose();
+    }
+    this.chunks.delete(c);
+  }
+
+  /** Whether fine photo tiles now cover a chunk's fields on both sides of the road. */
+  private finePhoto(ci: number): boolean {
+    const { route, halfWidth } = this.o;
+    const i = Math.min(route.n - 1, Math.floor(((ci + 0.5) * CHUNK) / route.step));
+    const rgb = [0, 0, 0];
+    return [-1, 1].every((side) => {
+      const d = (halfWidth + 12) * side;
+      const res = this.o.photoAt!(route.x[i] + Math.cos(route.heading[i]) * d, route.z[i] + Math.sin(route.heading[i]) * d, rgb);
+      return res > 0 && res < FIELD_PHOTO;
+    });
   }
 
   private build(ci: number) {
@@ -393,6 +430,7 @@ export class GroundCover extends THREE.Group {
     const vineKeys = new Set<string>();
     const rowDir = new Map<number, [number, number]>();
     const rgb = [0, 0, 0];
+    let coarse = false;
     const B = this.biome;
     const i0 = Math.floor((ci * CHUNK) / route.step);
     const i1 = Math.min(route.n - 1, Math.floor(((ci + 1) * CHUNK) / route.step));
@@ -451,7 +489,13 @@ export class GroundCover extends THREE.Group {
               this.vineRow(x, z, i0, i1, vines, vineKeys, rowDir);
               continue;
             }
-            const f = field !== 2 && cover !== 2 && this.o.photoAt?.(x, z, rgb) ? fieldState(rgb) : null;
+            const res = field !== 2 && cover !== 2 ? (this.o.photoAt?.(x, z, rgb) ?? 0) : -1;
+            // a field read from a blurred tile could be any crop: leave it bare until the chunk is rebuilt
+            if (res === 0 || res >= FIELD_PHOTO) {
+              coarse = true;
+              continue;
+            }
+            const f = res > 0 ? fieldState(rgb) : null;
             if (f?.state) {
               if (f.state === BEET && r() < 0.75) beets.push(x, y - 0.05, z, 0.85 + r() * 0.35, r() * 6.28, 0);
               else if (f.state === MAIZE && r() < 0.6) maize.push(x, y - 0.05, z, 0.95 + r() * 0.25, r() * 6.28, 0);
@@ -568,10 +612,10 @@ export class GroundCover extends THREE.Group {
     // the atlas leaves are a pale blue-green, its grass near neutral: the crops' own greens
     add(this.mound, this.grassMat, beets, 1, false, new THREE.Color(0.5, 0.8, 0.36), true);
     add(this.mound, this.grassMat, potatoes, 0.8, false, new THREE.Color(0.72, 0.66, 0.3), true);
-    add(this.tuft, this.grassMat, maize, 5.6, true, new THREE.Color(0.78, 1.0, 0.46), true);
+    add(this.tuft, this.grassMat, maize, 5.6, true, new THREE.Color(0.58, 0.86, 0.34), true);
     add(this.vine, this.grassMat, vines, 1, true, new THREE.Color(0.6, 0.86, 0.44), true);
     add(this.bale, this.baleMat, bales, 1, true, new THREE.Color().setRGB(0.8, 0.67, 0.42, THREE.SRGBColorSpace));
-    this.chunks.set(ci, { index: ci, meshes });
+    this.chunks.set(ci, { index: ci, meshes, coarse });
   }
 
   /**
@@ -595,17 +639,20 @@ export class GroundCover extends THREE.Group {
       dirs.set(cell, dir);
     }
     const [ax, az] = dir;
-    const ri = Math.round((z * ax - x * az) / 1.15), si = Math.floor((x * ax + z * az) / 2);
-    const key = `${cell},${ri},${si}`;
-    if (keys.has(key)) return;
-    keys.add(key);
-    const across = ri * 1.15, along = (si + 0.5) * 2;
-    const px = along * ax - across * az, pz = along * az + across * ax;
-    if (Math.floor(px / 60) !== gx || Math.floor(pz / 60) !== gz || (this.o.fieldAt?.(px, pz) ?? 0) !== 3) return;
-    const near = index.nearest(px, pz, REACH + 8);
-    if (near.index < i0 || near.index >= i1) return;
-    const py = groundHeight(px, pz);
-    if (Number.isFinite(py)) out.push(px, py - 0.03, pz, 1, Math.atan2(-az, ax), 0);
+    const ri = Math.round((z * ax - x * az) / 1.15), s0 = Math.floor((x * ax + z * az) / 2);
+    // the segment and its neighbours along the row: random tries alone left one segment in twenty missing
+    for (let si = s0 - 1; si <= s0 + 1; si++) {
+      const key = `${cell},${ri},${si}`;
+      if (keys.has(key)) continue;
+      keys.add(key);
+      const across = ri * 1.15, along = (si + 0.5) * 2;
+      const px = along * ax - across * az, pz = along * az + across * ax;
+      if (Math.floor(px / 60) !== gx || Math.floor(pz / 60) !== gz || (this.o.fieldAt?.(px, pz) ?? 0) !== 3) continue;
+      const near = index.nearest(px, pz, REACH + 8);
+      if (near.index < i0 || near.index >= i1 || near.dist < this.o.halfWidth + 3) continue;
+      const py = groundHeight(px, pz);
+      if (Number.isFinite(py)) out.push(px, py - 0.03, pz, 1, Math.atan2(-az, ax), 0);
+    }
   }
 
   dispose() {

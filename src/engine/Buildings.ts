@@ -553,6 +553,9 @@ vec2 fBrick(float u, float hy, float px) {
   float wallF = 1.0 - smoothstep(0.25, 0.5, abs(n.y));
   float u = abs(n.x) > abs(n.z) ? wp.z : wp.x;
   float hy = wp.y - vBaseY;
+  // a building's id for hashing: its base height quantised. The interpolated varying differs in its last bits
+  // from pixel to pixel, and a sin hash turns that into speckle (shutters and roller boxes half drawn)
+  float bid = floor(vBaseY * 4.0 + 0.5) * 0.25;
   // derivatives before any branching on the surface id
   vec3 fw = fwidth(wp);
   float px = max(max(fw.x, fw.y), fw.z);
@@ -577,7 +580,7 @@ vec2 fBrick(float u, float hy, float px) {
     // windows with frames, shutters and sky reflections; or wide doors (garages, barns), or church windows
     float house = fHash(floor(vec2(vBaseY, vBaseY * 0.37)));
     float k = wallF * detail;
-    vec3 brickCol = mix(vec3(0.33, 0.08, 0.04), vec3(0.42, 0.14, 0.07), fHash(vec2(vBaseY, 9.0)));
+    vec3 brickCol = mix(vec3(0.33, 0.08, 0.04), vec3(0.42, 0.14, 0.07), fHash(vec2(bid, 9.0)));
     float brickTone = 0.8 + 0.4 * fBrick(u, hy, px).y;
     if (sid == 9) {
       vec2 c = fChalk(u, hy, px);
@@ -610,12 +613,13 @@ vec2 fBrick(float u, float hy, float px) {
     if (sid == 10) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.62, 0.6, 0.55), sills * k);
     // shutters beside rural windows, one colour per house. In Champagne many houses have roller shutters
     // instead (a box over the window, the blind part way down), and some side shutters are closed
-    float cell = fHash(floor(vec2(u / bay, (hy - 0.45) / 2.9)) + vBaseY);
-    float roller = uShut4 * step(sid == 0 ? 0.5 : 0.82, fHash(vec2(vBaseY * 0.71, 2.0)));
+    float cell = fHash(floor(vec2(u / bay, (hy - 0.45) / 2.9)) + bid);
+    float roller = uShut4 * step(sid == 0 ? 0.5 : 0.82, fHash(vec2(bid * 0.71, 2.0)));
     float closed = uShut4 * (1.0 - roller) * step(0.78, cell);
     float side = step(0.5 - ww - 0.13, fx) * step(fx, 0.5 - ww - 0.01) + step(0.5 + ww + 0.01, fx) * step(fx, 0.5 + ww + 0.13);
     float shut = (sid == 5 ? 0.0 : 1.0) * open * rowIn * side * (1.0 - roller) * (1.0 - closed);
-    vec3 shutterCol = fShutter(house) * (0.85 + 0.15 * step(0.5, fract(fy * 9.0)));
+    float slats = 1.0 - smoothstep(0.01, 0.03, px);
+    vec3 shutterCol = fShutter(house) * mix(0.925, 0.85 + 0.15 * step(0.5, fract(fy * 9.0)), slats);
     float wy = (fy - 0.3) / 0.48;
     float blindDown = win * roller * step(1.0 - 0.9 * pow(cell, 1.6), wy);
     float rollerBox = open * roller * step(0.5 - ww, fx) * step(fx, 0.5 + ww) * step(0.78, fy) * step(fy, 0.83) * step(0.4, hy);
@@ -628,7 +632,7 @@ vec2 fBrick(float u, float hy, float px) {
     diffuseColor.rgb = mix(diffuseColor.rgb, glass, win * k);
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.9, 0.86), max(frame, mullion) * k);
     diffuseColor.rgb = mix(diffuseColor.rgb, shutterCol, win * closed * k);
-    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.72, 0.72, 0.7) * (0.88 + 0.12 * step(0.5, fract(hy * 16.0))), max(blindDown, rollerBox) * k);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.72, 0.72, 0.7) * mix(0.94, 0.88 + 0.12 * step(0.5, fract(hy * 16.0)), slats), max(blindDown, rollerBox) * k);
     if (mode == 2) {
       // a wide door every ~7 m: white (garages), green, brown or grey per building, in horizontal panels
       float dxu = fract(u / 7.0 + house * 5.0);
@@ -661,7 +665,7 @@ vec2 fBrick(float u, float hy, float px) {
     float ww = 0.15;
     float win = step(0.5 - ww, fx) * step(fx, 0.5 + ww) * step(0.18, fy) * step(fy, 0.8) * step(0.6, hy);
     float frame = win * (1.0 - step(0.5 - ww + 0.03, fx) * step(fx, 0.5 + ww - 0.03) * step(0.2, fy) * step(fy, 0.78));
-    float cell = fHash(floor(vec2(u / 3.4, (hy - 0.5) / 3.0)) + vBaseY);
+    float cell = fHash(floor(vec2(u / 3.4, (hy - 0.5) / 3.0)) + bid);
     // louvres: horizontal slats; closed shutters cover the window, open ones fold to the sides
     float slat = 0.75 + 0.25 * step(0.5, fract(fy * 26.0));
     vec3 green = (fHash(floor(vec2(vBaseY, vBaseY * 0.37))) > 0.5 ? uShutA : uShutB) * slat;
@@ -702,7 +706,7 @@ vec2 fBrick(float u, float hy, float px) {
     float prof = mix(0.95, 1.04, 1.0 - smoothstep(0.28, 0.32, rib)) * (1.0 - 0.2 * web);
     diffuseColor.rgb *= mix(0.96, prof, 1.0 - smoothstep(0.02, 0.06, px));
     float house = fHash(floor(vec2(vBaseY, vBaseY * 0.37)));
-    diffuseColor.rgb *= 0.9 + 0.14 * fHash(vec2(floor(ru), vBaseY));
+    diffuseColor.rgb *= 0.9 + 0.14 * fHash(vec2(floor(ru), bid));
     diffuseColor.rgb *= mix(1.0, mix(0.75, 1.0, smoothstep(-0.2, 1.4, hy)), wallF);
     float dxu = fract(ru / 14.0 + house * 3.0);
     float door = wallF * step(0.25, dxu) * step(dxu, 0.6) * step(hy, 4.5);

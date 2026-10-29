@@ -286,12 +286,11 @@ function villageTexture(name: string, exit: boolean): { tex: THREE.CanvasTexture
 }
 
 /**
- * Entry and exit signs of each village the route crosses. A built-up stretch is where 3+ OSM buildings stand
- * within 50 m of the road, gaps under 150 m bridged, at least 150 m long; it takes the name of the nearest
- * village place within 2.5 km (hamlets only when nothing larger is that close).
+ * Built-up stretches [from, to] (m along the route): where 3+ OSM buildings stand within 50 m of the road, gaps
+ * under 150 m bridged, at least 150 m long. The village signs stand just outside them and the French roadside
+ * posts stop inside them.
  */
-function villageSigns(route: Route, halfWidth: number, groundAt: (x: number, z: number) => number, osm: OsmWorld): THREE.Group {
-  const g = new THREE.Group();
+export function builtUpRuns(route: Route, osm: OsmWorld): [number, number][] {
   const step = route.step;
   const cell = (x: number, z: number) => Math.floor(x / 50) * 100003 + Math.floor(z / 50);
   const grid = new Map<number, number[]>();
@@ -325,6 +324,14 @@ function villageSigns(route: Route, halfWidth: number, groundAt: (x: number, z: 
     else runs.push([a, b]);
     k = e;
   }
+  return runs.filter(([a, b]) => b - a >= 150);
+}
+
+/** Entry and exit signs of each built-up stretch, named after the nearest village place within 2.5 km (hamlets
+ *  only when nothing larger is that close). */
+function villageSigns(route: Route, halfWidth: number, groundAt: (x: number, z: number) => number, osm: OsmWorld, runs: [number, number][]): THREE.Group {
+  const g = new THREE.Group();
+  const step = route.step;
   const rank = (kind: string) => (kind === 'hamlet' ? 1 : 0);
   const spot = (s: number) => {
     const i = Math.min(route.n - 1, Math.max(0, Math.round(s / step)));
@@ -337,7 +344,7 @@ function villageSigns(route: Route, halfWidth: number, groundAt: (x: number, z: 
   const poles: THREE.Matrix4[] = [];
   const up = new THREE.Vector3(0, 1, 0);
   for (const [a, b] of runs) {
-    if (b - a < 150 || a < 20 || b > route.length - 20) continue;
+    if (a < 20 || b > route.length - 20) continue;
     const mid = Math.min(route.n - 1, Math.round((a + b) / 2 / step));
     const mx = route.x[mid], mz = route.z[mid];
     const named = osm.places
@@ -379,10 +386,11 @@ export class Signs extends THREE.Group {
     groundAt: (x: number, z: number) => number,
     biome: Biome,
     osm?: OsmWorld,
+    towns: [number, number][] = [],
   ) {
     super();
     if (biome.posts === 'fr' && osm) {
-      this.add(villageSigns(route, halfWidth, groundAt, osm));
+      this.add(villageSigns(route, halfWidth, groundAt, osm, towns));
       return;
     }
     if (biome.id !== 'mediterranean') return;

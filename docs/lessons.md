@@ -84,6 +84,29 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   maize or potatoes), OSM meadows dry to hay, vineyards get leaf colour, the verge's spring green dries to olive. The
   3D crops by the road read the same photo the same way (`Terrain.photoAt`, `fieldState` in `GroundCover.ts`), so a
   maize wall stands where the ground is maize-green. Where: `terrainMaterial.ts`, `GroundCover.ts`, `Terrain.ts`.
+- **Shutters, roller boxes and brick dressings were half drawn, as pixel speckle.** The facade shader hashed the
+  building's base height, an interpolated varying whose last bits differ from pixel to pixel; a sin hash turns
+  1e-5 into a different value. Fix: hash the base height quantised to 25 cm (`bid`). Where: `Buildings.ts`
+  `facadeMaterial`. Hash only what is constant across a face.
+- **The ride took 300 s to start instead of 50.** The ground cover's photo sample read each new terrain tile back
+  from a GPU-backed 2D canvas, and every readback waited for the renderer. Fix: draw the decoded tile bitmaps into a
+  small CPU canvas (`willReadFrequently`) instead. Where: `Terrain.loadTexture`.
+- **No crops by the road, every field read as stubble.** The ground cover was built at the start, when only tiles of
+  hundreds of metres per pixel covered the fields, and never rebuilt. Fix: `photoAt` returns its metres per pixel;
+  chunks read from tiles coarser than 8 m are marked and rebuilt once the fine tiles are in. Where: `GroundCover`.
+- **Dark winter wheat stayed dark green in August, and pale chalk counted as green.** The first field rule wanted
+  a strong green (spring wheat in the IGN photo is near black-green at 3 m per pixel) and measured green as
+  g − 0.93·max(r, b), which is positive for any bright grey. Fix: green over red and blue without the factor, dark
+  saturated parcels count as crops, bare soil is any light, moderately saturated tone. Checked on probed colours
+  before changing the shader and `fieldState` together. Where: `terrainMaterial.ts`, `GroundCover.ts`.
+- **Stubble read near white** (198, 193, 167) where the Panoramax frames of 26 August show about (150, 135, 118).
+  Fix: straw albedo around 0.4, a straw grain and tone patches. Where: `terrainMaterial.ts`.
+- **Vine rows looked like rows of little trees.** The atlas leaf cluster is round, so each metre of row was a
+  lollipop. Fix: the vine walls use only the dense middle of the cluster, under a flat top (vines are trimmed square
+  in summer). Where: `GroundCover.vineGeometry`.
+- **Village squares beside the road read near white and blue-violet (Berru, km 23.8).** The photo's bright concrete
+  and gravel, JPEG colour noise included, went through the photo grade untouched. Fix: in built-up land, bright photo
+  pixels become worn concrete grey. Where: `terrainMaterial.ts` field-season block.
 
 ## Placement and geometry
 
@@ -209,6 +232,11 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
 - **Playwright's page screenshot timed out (240 s) under SwiftShader.** It waits for a compositor frame. Read the
   WebGL canvas instead: `toDataURL` in a `requestAnimationFrame` registered after the engine's own, while the
   drawing buffer still holds the frame.
+- **A capture never finished: 37 tiles stayed pending for 30 minutes.** Some IGN requests stalled with no answer,
+  holding their tile and the detail of the parent's whole area. Fix: imagery requests give up after 20 s and try the
+  next source. Where: `imagery.ts` `loadImageryTile`.
+- **Editing a running bash script broke it.** Bash reads a script as it runs: the batch went on to a syntax error and
+  left the dev server running. Write a new file instead. And kill vite itself, not the `npx` that started it.
 
 ## Devices and riding
 

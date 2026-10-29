@@ -11,9 +11,9 @@ import { terrainMaterial } from './terrainMaterial.ts';
 import { UNDERPASS_HALF, UNDERPASS_SIDE } from './Tunnel.ts';
 
 const SEG = 64;
-// side of the per-tile photo sample photoAt reads: 512 px at mip level 4, the blur the terrain shader
+// side of the per-tile photo sample photoAt reads: 512 px at mip level 5, the blur the terrain shader
 // takes a parcel's tone at
-const PHOTO = 32;
+const PHOTO = 16;
 const VERTS = (SEG + 1) * (SEG + 1);
 const SKIRT = 4 * SEG;
 const MAX_Z = 18;
@@ -453,8 +453,8 @@ export class Terrain extends THREE.Group {
   }
 
   /** The orthophoto's colour around a world point at parcel scale (sRGB 0..255 into `out`), from the finest
-   *  loaded tile; false while none covers it. */
-  photoAt(x: number, z: number, out: number[]): boolean {
+   *  loaded tile; returns the metres per pixel of that sample, 0 while no tile covers the point. */
+  photoAt(x: number, z: number, out: number[]): number {
     let best: Node | null = null;
     for (const root of this.roots) {
       let n: Node | null = root;
@@ -464,14 +464,14 @@ export class Terrain extends THREE.Group {
       }
       if (best) break;
     }
-    if (!best?.photo) return false;
+    if (!best?.photo) return 0;
     const i = Math.min(PHOTO - 1, Math.floor(((x - best.minX) / best.size) * PHOTO));
     const j = Math.min(PHOTO - 1, Math.floor(((z - best.minZ) / best.size) * PHOTO));
     const k = (j * PHOTO + i) * 4;
     out[0] = best.photo[k];
     out[1] = best.photo[k + 1];
     out[2] = best.photo[k + 2];
-    return true;
+    return best.size / PHOTO;
   }
 
   /** Terrain height (no road flattening) at a world position, NaN when not loaded. */

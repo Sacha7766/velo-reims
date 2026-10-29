@@ -12,6 +12,8 @@ export interface Biome {
   atlas: string;
   /** Needle trees: Norway spruce or Aleppo pine. */
   conifer: 'spruce' | 'pine';
+  /** Share of conifers in untagged woods below 700 m (default 0.4). */
+  lowlandConifers?: number;
   /** Leaf trees keep their leaves all year (holm oak, wild olive). */
   evergreen: boolean;
   /** Grass card colours: lush, dry, pale (high up). */
@@ -136,6 +138,8 @@ export const CHAMPAGNE: Biome = {
   fieldSeason: 1,
   cattle: false,
   firewood: false,
+  // copses and the woods of the Mont de Berru are mostly broadleaf; black pine only in a few chalk plantations
+  lowlandConifers: 0.15,
 };
 
 const BIOMES: Record<BiomeId, Biome> = { alpine: ALPINE, mediterranean: MEDITERRANEAN, champagne: CHAMPAGNE };

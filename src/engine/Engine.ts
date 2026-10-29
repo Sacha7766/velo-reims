@@ -29,7 +29,7 @@ import { Landmarks, loadRouteScene, type Placement } from './Landmarks.ts';
 import { ALPINE, biomeFor, type Biome } from './biome.ts';
 import { Roadside, type BarrierSpan } from './Roadside.ts';
 import { Tunnels } from './Tunnel.ts';
-import { Signs } from './Signs.ts';
+import { builtUpRuns, Signs } from './Signs.ts';
 import { Ocean } from './Ocean.ts';
 import { Props } from './Props.ts';
 import { Life } from './Life.ts';
@@ -401,13 +401,14 @@ export class Engine {
       for (const e of elements) if (fixes[e.id]) e.tags = { ...e.tags, ...fixes[e.id] };
       const osm: OsmWorld = parseOsm(route, elements);
       if (route.category !== 'city') {
+        const towns = biome.posts === 'fr' ? builtUpRuns(route, osm) : [];
         world.roadside = new Roadside(
           route, halfWidth, (x, z) => terrain.groundHeight(x, z), biome,
           (sceneDef?.barriers as BarrierSpan[] | undefined) ?? [], osm.barriers,
-          (sceneDef?.cutWalls as [number, number][] | undefined) ?? [],
+          (sceneDef?.cutWalls as [number, number][] | undefined) ?? [], towns,
         );
         this.scene.add(world.roadside);
-        world.signs = new Signs(route, halfWidth, (x, z) => terrain.groundHeight(x, z), biome, osm);
+        world.signs = new Signs(route, halfWidth, (x, z) => terrain.groundHeight(x, z), biome, osm, towns);
         this.scene.add(world.signs);
       }
       this.buildWaterMask(route, osm, baked);

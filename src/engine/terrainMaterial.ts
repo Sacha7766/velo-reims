@@ -244,28 +244,38 @@ float tBump = 0.0;
     float meadowTrue = smoothstep(0.3, 0.8, fm.g);
     float vines = smoothstep(0.3, 0.8, fm.b);
     float open = (1.0 - smoothstep(0.3, 0.8, land.b)) * (1.0 - smoothstep(0.3, 0.8, land.r)) * (1.0 - canopy) * (1.0 - verge) * (1.0 - steep);
-    // the parcel's tone: the photo blurred to about the width of one strip
-    vec3 pcl = texture(map, vMapUv, 4.0).rgb;
+    // the parcel's tone: the tile photo at 16 px (about 6 m at zoom 18, Terrain.photoAt reads the same), so a
+    // sparse crop with chalk showing through decides as one parcel instead of a camouflage of patches
+    vec3 pcl = textureLod(map, vMapUv, 5.0).rgb;
     vec3 pc = sqrt(max(pcl, vec3(0.0)));
     float pMax = max(pc.r, max(pc.g, pc.b));
     float pL = (pc.r + pc.g + pc.b) / 3.0;
-    float pG = pc.g - max(pc.r, pc.b) * 0.93;
+    // green over red and blue (a neutral grey reads 0)
+    float pV = pc.g - max(pc.r, pc.b);
     float pS = (pMax - min(pc.r, min(pc.g, pc.b))) / max(pMax, 1e-3);
     // hedges and copses OSM doesn't map are dark and rough in the photo: they stay as photographed
     float rough = abs(dot(img - imgB, vec3(0.333)));
     float treeish = smoothstep(0.03, 0.07, rough) * smoothstep(0.36, 0.26, L);
-    float green = smoothstep(0.03, 0.07, pG) * smoothstep(0.12, 0.2, pS);
-    float bare = (1.0 - green) * smoothstep(0.48, 0.6, pL) * smoothstep(0.16, 0.09, pS);
+    // a crop in spring is green, or dark where it is dense (winter wheat reads near black-green); bare soil is
+    // chalk-white to light brown, never grey asphalt (sampled on the Mont de Berru loop at 3 m per pixel)
+    float green = max(smoothstep(0.005, 0.03, pV), smoothstep(0.32, 0.24, pL) * 0.8) * smoothstep(0.06, 0.12, pS);
+    float bare = (1.0 - green) * smoothstep(0.26, 0.38, pL) * (1.0 - smoothstep(0.35, 0.45, pS)) * smoothstep(0.04, 0.08, pS);
     // smooth inside a parcel, different from its neighbours
-    float pick = fract(pL * 5.3 + pG * 23.0 + pS * 3.1);
+    float pick = fract(pL * 5.3 + pV * 23.0 + pS * 3.1);
     // harvested: pale to golden stubble, some with green regrowth, some already disced to chalk
-    vec3 stubble = mix(vec3(0.62, 0.53, 0.33), vec3(0.52, 0.4, 0.21), smoothstep(0.2, 0.7, pick));
-    stubble = mix(stubble, vec3(0.32, 0.34, 0.15), smoothstep(0.78, 0.84, pick) * (1.0 - smoothstep(0.88, 0.92, pick)));
-    stubble = mix(stubble, vec3(0.55, 0.52, 0.45), smoothstep(0.9, 0.95, pick));
-    // spring-sown: beet dark green, maize mid green, potatoes yellowing, a few still bare
-    vec3 crop = mix(vec3(0.12, 0.2, 0.06), vec3(0.18, 0.27, 0.08), smoothstep(0.42, 0.5, pick));
-    crop = mix(crop, vec3(0.3, 0.3, 0.12), smoothstep(0.7, 0.76, pick));
-    crop = mix(crop, vec3(0.55, 0.52, 0.45), smoothstep(0.86, 0.92, pick));
+    // straw is bright but not white: the render read (198, 193, 167) where the Panoramax frames of 26 August show
+    // stubble around (150, 135, 118)
+    vec3 stubble = mix(vec3(0.42, 0.37, 0.26), vec3(0.38, 0.3, 0.17), smoothstep(0.2, 0.7, pick));
+    stubble = mix(stubble, vec3(0.24, 0.27, 0.12), smoothstep(0.78, 0.84, pick) * (1.0 - smoothstep(0.88, 0.92, pick)));
+    stubble = mix(stubble, vec3(0.46, 0.44, 0.38), smoothstep(0.9, 0.95, pick));
+    // straw grain close up, tone patches where the swaths lay
+    stubble *= (0.9 + 0.2 * tNoise(p * 0.9) * tNoise(p * 2.7 + 7.0)) * (0.94 + 0.12 * tNoise(p * 0.11 + 3.0));
+    // spring-sown: spring barley and peas are harvested to stubble by now too; beet dark green, maize mid green,
+    // potatoes yellowing, a few fields already disced bare
+    vec3 crop = mix(stubble, vec3(0.12, 0.2, 0.06), smoothstep(0.34, 0.38, pick));
+    crop = mix(crop, vec3(0.18, 0.27, 0.08), smoothstep(0.58, 0.62, pick));
+    crop = mix(crop, vec3(0.3, 0.3, 0.12), smoothstep(0.7, 0.74, pick));
+    crop = mix(crop, vec3(0.55, 0.52, 0.45), smoothstep(0.84, 0.88, pick));
     // keep the photo's furrows, tram lines and soil patches inside the parcel
     float det = clamp(dot(img, vec3(0.3, 0.55, 0.15)) / max(dot(pcl, vec3(0.3, 0.55, 0.15)), 1e-3), 0.7, 1.3);
     float wobble = 0.92 + 0.16 * tNoise(p * 0.02);
@@ -282,6 +292,13 @@ float tBump = 0.0;
     float lushVerge = smoothstep(0.015, 0.05, img.g - max(img.r, img.b) * 0.95);
     vec3 august = mix(vec3(0.17, 0.2, 0.08), vec3(0.3, 0.29, 0.14), tNoise(p * 0.3));
     base = mix(base, august * mix(1.0, det, 0.5), verge * (1.0 - steep) * lushVerge * 0.7);
+    // village squares, yards and pavements: the photo's bright concrete and gravel, with its JPEG colour noise,
+    // read near white and blue-violet beside the road (Berru km 23.8, Witry km 0.6, where OSM maps no built-up
+    // land); worn concrete grey instead. Warm chalk (the white field tracks) is left alone
+    float imgL = dot(img, vec3(0.3, 0.55, 0.15));
+    float coolBright = smoothstep(0.3, 0.5, imgL) * smoothstep(-0.005, 0.02, img.b - img.r);
+    float paved = max(smoothstep(0.3, 0.8, land.b), 1.0 - fieldW) * (1.0 - canopy) * (1.0 - steep) * (1.0 - verge) * coolBright;
+    base = mix(base, vec3(min(dot(base, vec3(0.3, 0.55, 0.15)), 0.4)) * vec3(1.0, 0.98, 0.94) * mix(1.0, det, 0.5), paved * 0.75);
   }
   // meadows: pull bleached summer-photo grass back to a living green-gold
   float bl = dot(base, vec3(0.3, 0.55, 0.15));

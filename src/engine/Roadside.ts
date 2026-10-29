@@ -38,6 +38,8 @@ export class Roadside extends THREE.Group {
     osmBarriers: Barrier[] = [],
     /** Stretches [from, to] (m) where road cuts are faced with masonry (scenes/<id>.json "cutWalls"). */
     cutWallSpans: [number, number][] = [],
+    /** Built-up stretches [from, to] (m): French posts stop at the village sign (Signs.builtUpRuns). */
+    towns: [number, number][] = [],
   ) {
     super();
     const runs = this.findRailRuns(route, halfWidth, groundAt, biome, osmBarriers, cutWallSpans);
@@ -59,7 +61,7 @@ export class Roadside extends THREE.Group {
     // masonry cut walls where the road's walls are stone (the Mallorcan roads, not the Alpine ones)
     const cutWalls = this.cutRuns.filter((r) => typeAt(Math.round((r.a + r.b) / 2)) === 'stonewall');
     if (cutWalls.length) this.add(this.cutWalls(route, halfWidth, cutWalls, groundAt));
-    if (biome.posts === 'at' || biome.posts === 'fr') this.add(this.posts(route, halfWidth, runs, groundAt, biome.posts));
+    if (biome.posts === 'at' || biome.posts === 'fr') this.add(this.posts(route, halfWidth, runs, groundAt, biome.posts, towns));
     const chevrons = this.chevrons(route, halfWidth, groundAt);
     if (chevrons) this.add(chevrons);
   }
@@ -383,7 +385,7 @@ export class Roadside extends THREE.Group {
   }
 
   /** Leitpflöcke every 50 m (25 m in bends) where there is no guard rail. */
-  private posts(route: Route, hw: number, runs: Run[], groundAt: (x: number, z: number) => number, style: 'at' | 'fr'): THREE.InstancedMesh {
+  private posts(route: Route, hw: number, runs: Run[], groundAt: (x: number, z: number) => number, style: 'at' | 'fr', towns: [number, number][] = []): THREE.InstancedMesh {
     const white = new THREE.Color(0.93, 0.93, 0.91);
     const black = new THREE.Color(0.03, 0.03, 0.03);
     // reflector colours are HDR-ish so they catch the light like retroreflectors
@@ -413,6 +415,8 @@ export class Roadside extends THREE.Group {
       // French country roads carry them far more sparsely than Austrian ones (one in the Panoramax frames)
       next = i + Math.round((bend ? 25 : 50) * (style === 'fr' ? 2 : 1) / route.step);
       const h = route.heading[i];
+      const s = i * route.step;
+      if (style === 'fr' && towns.some(([a, b]) => s > a - 15 && s < b + 15)) continue;
       for (const side of [1, -1] as const) {
         if (railAt(side, i)) continue;
         const off = hw + 0.75;

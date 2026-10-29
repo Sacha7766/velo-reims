@@ -93,7 +93,10 @@ export async function loadImageryTile(
     if (z > src.maxZoom) continue;
     if (src.bounds && !hits.has(src.id) && (misses.get(src.id) ?? 0) > 40) continue;
     try {
-      const res = await fetch(src.url(z, x, y), { signal });
+      // a stalled request held its tile, and the detail of its parent's whole area, forever (sandbox captures
+      // on the Champagne plain waited 30 minutes): give up after 20 s and try the next source
+      const timeout = AbortSignal.timeout(20000);
+      const res = await fetch(src.url(z, x, y), { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
       if (!res.ok) throw new Error(`${src.id} ${res.status}`);
       const blob = await res.blob();
       // basemap.at answers out-of-coverage tiles with tiny placeholders

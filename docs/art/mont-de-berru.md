@@ -6,9 +6,10 @@ Berru: the route climbs to Nogent-l'Abbesse (182 m) and tops out at 200 m on its
 Cernay. No turnaround. The loop crosses each village on its main road, not via the mairie. Research notes:
 [research/champagne/visual-reference.md](../../research/champagne/visual-reference.md).
 
-**Mood:** a late-August afternoon after the cereal harvest: pale chalky stubble to the horizon, dark green sugar beet,
-a high pale-blue sky with thin cloud, warm dry air. Signature view: the plain opening below the Mont de Berru flank
-at km 26. Time preset: golden (unknown until Sacha picks a season).
+**Mood:** a late-August afternoon after the cereal harvest (Sacha's choice): pale chalky stubble to the horizon with
+the odd round bale, dark green sugar beet, maize, vines in full leaf on the Mont de Berru, a high pale-blue sky with
+thin cloud, warm dry air. Signature view: the plain opening below the Mont de Berru flank at km 26. Time preset:
+golden.
 
 **Hero categories** (scorecard, need 4+): ground and terrain, road and roadside, built environment, sense of place.
 
@@ -64,7 +65,7 @@ the observatory tower at Beine-Nauroy, the masts at km 16.7, 27.5 and 28.4 (18â€
 
 **Life.** Cars on the rural roads (PNX-4, PNX-7). Tractors, cyclists, animals: unknown.
 
-**Light.** Default: golden. Hero: unknown until a season is chosen.
+**Light.** Default: golden, late August (biome `day` 238). Hero: golden at km 26.
 
 ## References (board)
 
@@ -75,8 +76,14 @@ the observatory tower at Beine-Nauroy, the masts at km 16.7, 27.5 and 28.4 (18â€
 | streetlevel/reims-grand-tour-km34.00-6fa11a8b-avant.jpg | other loop | Bazancourt street: pale stone house, red brick gate pillars, street lamp |
 | streetlevel/vallee-de-la-suippe-km25.00-b96752e3-avant.jpg | other loop | Boult-sur-Suippe: beige rendered houses, red-brown tile roofs |
 | streetlevel/reims-grand-tour-km39.00-f98e078f-avant.jpg | other loop | Sugar beet field, white delineator post with a red band |
+| photos/berru-_glise_Berru_821.jpg | 23.8 | Ã‰glise Saint-Martin, Berru: warm grey-beige rubble stone, slate roofs, square tower with a slate pyramid spire, round-headed windows |
+| photos/berru-Mairie_Berru_831.JPG | 23.8 | Berru mairie and school: pale dressed stone, slate mansard roof, white roller shutters |
+| photos/caurel-Mairie_Caurel_82.jpg | 3.4 | Caurel mairie: rock-faced pale ashlar, dark brown tile roof, white roller shutters; rendered houses with red and slate roofs behind |
+| photos/lavannes-Mairie_Lavannes_212.JPG | 5.0 | Lavannes mairie and school: pale rock-faced stone with red brick window surrounds, slate roofs, brick chimney, oxblood shutters |
+| photos/lavannes-Lavannes_Lambert_209.JPG | 5.0 | Ã‰glise Saint-Lambert: pale limestone, two towers with slate spires, brown tile nave roof |
+| photos/witry-l-s-reims-Mairie_Witry_463.JPG | 0.6 | Witry mairie: pale stone, slate mansard roof with a clock lantern |
 
-No street-level photo exists on this loop except at km 30 (Witry). Commons photos of its villages: to add.
+No street-level photo exists on this loop except at km 30 (Witry). Commons photos (`research/champagne/photos/`, credits in the research note) show the mairies and churches.
 
 ## Don't touch
 
@@ -84,18 +91,24 @@ The Alpine and Mediterranean biomes and the other presets: the Champagne look is
 
 ## Open issues
 
-- The world falls back to the Alpine biome here: Salzburg farmhouses, spruce, Austrian posts (capture of
-  2026-10-29 at km 20.7).
-- Near-white ground beside the rider in some frames; cause unknown. The IGN answered 400 to some tiles in that
-  capture and Esri filled in.
+- Fixed 2026-10-29: the Alpine fallback (now the Champagne biome) and the near-white ground (Alpine photo grade
+  and meadow push on bright chalk; docs/lessons.md).
+- The IGN orthophoto is a spring image; the late-August fields are inferred from its tones (stubble where it was
+  green, beet, maize or potatoes where it was bare). Which crop each parcel really holds: unknown.
+- The village signs take the nearest OSM place name; a stretch of houses between two villages may get the wrong one.
 
 ## Feedback log
 
 | Date | Sacha said | Reason | Status |
 |---|---|---|---|
 | 2026-10-29 | No small detours to reach the mairies | Not useful when riding | Done: villages crossed on their main road |
-| 2026-10-29 | Saw a problem with the IGN imagery | The ground looked wrong | Open (see Open issues) |
+| 2026-10-29 | Saw a problem with the IGN imagery | The ground looked wrong | Done: Champagne photo grade and late-August fields |
+| 2026-10-29 | End of August is perfect | Season of the ride | Done: biome day 238, harvested fields, vines in leaf |
+| 2026-10-29 | Build the Champagne scenery with as much variety and realism as possible | The Alpine look didn't fit | Built: houses, crops, vines, bales, signs, landmarks; review pending |
 
 ## Status
 
-Brief written 2026-10-29 from regional references. Commons photos of the loop's villages pending. Build not started.
+Brief written 2026-10-29 from regional references; Commons photos of Berru, Caurel, Lavannes and Witry
+(`research/champagne/photos/`) show pale stone and rubble churches under slate spires, mairies in pale stone with
+slate roofs and white roller shutters, brick window surrounds on chalk (Lavannes). Champagne biome built 2026-10-29;
+review pending.
