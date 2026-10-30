@@ -218,47 +218,63 @@ export function pavements(
 ): THREE.Mesh {
   const pos: number[] = [];
   const col: number[] = [];
-  const kerb = new THREE.Color().setRGB(0.66, 0.65, 0.62, THREE.SRGBColorSpace);
-  const walk = new THREE.Color().setRGB(0.44, 0.43, 0.41, THREE.SRGBColorSpace);
+  // warm greys a shade above the asphalt: neutral ones turned lilac in the shade of the houses, paler ones glared
+  // white in the noon sun
+  const kerb = new THREE.Color().setRGB(0.62, 0.6, 0.56, THREE.SRGBColorSpace);
+  const walk = new THREE.Color().setRGB(0.41, 0.4, 0.37, THREE.SRGBColorSpace);
   // across from the asphalt's edge and up from its surface: kerb face, kerb top, pavement, its back face into the ground
   const prof: [number, number, THREE.Color][] = [
     [0.02, 0, kerb], [0.02, 0.13, kerb], [0.17, 0.13, kerb], [0.17, PAVEMENT, walk], [1.7, PAVEMENT - 0.01, walk], [1.7, -1.2, walk],
   ];
-  // a cross-section's end face where a stretch stops (junctions, banks): from the kerb down to the back face
+  // a stretch's end face (junctions, banks), down to the back face's foot: a fan from the kerb's foot left the
+  // underside open below a diagonal, and where the ground dips the slab floated
   const cap = (sec: number[][]) => {
-    const c = walk;
-    for (const [a, b, d] of [[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 5]]) {
-      for (const p of [sec[a], sec[b], sec[d]]) {
+    const foot = [sec[0][0], sec[5][1], sec[0][2]];
+    for (const [a, b] of [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5]]) {
+      for (const p of [foot, sec[a], sec[b]]) {
         pos.push(p[0], p[1], p[2]);
-        col.push(c.r, c.g, c.b);
+        col.push(walk.r, walk.g, walk.b);
+      }
+    }
+  };
+  const strip = (prev: number[][], sec: number[][]) => {
+    for (let k = 0; k + 1 < prof.length; k++) {
+      for (const p of [prev[k], prev[k + 1], sec[k + 1], prev[k], sec[k + 1], sec[k]]) {
+        pos.push(p[0], p[1], p[2]);
+        col.push(prof[k][2].r, prof[k][2].g, prof[k][2].b);
       }
     }
   };
   for (const [a, b] of towns) {
     for (const side of [-1, 1]) {
-      let prev: number[][] | null = null;
+      const runs: number[][][][] = [];
+      let run: number[][][] = [];
       for (let i = Math.ceil(a / route.step); i <= Math.min(route.n - 1, Math.floor(b / route.step)); i++) {
         const h = route.heading[i], rx = Math.cos(h) * side, rz = Math.sin(h) * side;
         // the asphalt's surface (Road lays it 6 cm above the route)
         const y = route.ele[i] + 0.06;
-        // none across a side road or driveway, nor where the ground falls away beside the road (it would float)
+        // none across a side road or driveway, nor where the ground falls away beside the road: half a metre
+        // above the ground beside it, a pavement read as a concrete slab on the verge
         const g = groundAt(route.x[i] + rx * (halfWidth + 1.8), route.z[i] + rz * (halfWidth + 1.8));
-        if (gaps.some((j) => Math.abs(j - i * route.step) < 6) || !(g > y - 1.1)) {
-          if (prev) cap(prev);
-          prev = null;
+        if (gaps.some((j) => Math.abs(j - i * route.step) < 6) || !(g > y - 0.45)) {
+          if (run.length) runs.push(run);
+          run = [];
           continue;
         }
-        const sec = prof.map(([o, dy]) => [route.x[i] + rx * (halfWidth + o), y + dy, route.z[i] + rz * (halfWidth + o)]);
-        if (!prev) cap(sec);
-        if (prev) {
-          for (let k = 0; k + 1 < prof.length; k++) {
-            for (const p of [prev[k], prev[k + 1], sec[k + 1], prev[k], sec[k + 1], sec[k]]) {
-              pos.push(p[0], p[1], p[2]);
-              col.push(prof[k][2].r, prof[k][2].g, prof[k][2].b);
-            }
-          }
+        run.push(prof.map(([o, dy]) => [route.x[i] + rx * (halfWidth + o), y + dy, route.z[i] + rz * (halfWidth + o)]));
+      }
+      if (run.length) runs.push(run);
+      for (const r of runs) {
+        if (r.length < 2) continue;
+        // at both ends the pavement ramps down into the ground and the kerb to the asphalt, as at a driveway: a cut
+        // end stood above the verge as a slab, and a kerb sunk to the ground under the road's edge (0.4 m below
+        // it) dived away as a wedge
+        for (const sec of [r[0], r[r.length - 1]]) {
+          for (let k = 1; k <= 4; k++) sec[k][1] = Math.max(sec[0][1], Math.min(sec[k][1], groundAt(sec[k][0], sec[k][2]) - 0.03));
         }
-        prev = sec;
+        cap(r[0]);
+        for (let k = 1; k < r.length; k++) strip(r[k - 1], r[k]);
+        cap(r[r.length - 1]);
       }
     }
   }
@@ -268,6 +284,51 @@ export function pavements(
   geo.computeVertexNormals();
   // both sides of the road wind opposite ways: lit from either face
   const mat = patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, side: THREE.DoubleSide }), { key: 'pavement' });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+/**
+ * Zebra crossings (passages piétons): white bands 0.5 m wide and 2.5 m long along the road, 0.5 m apart, across
+ * the carriageway a few metres before the side-road junction nearest the middle of each built-up stretch, and near
+ * a quarter of the way in on stretches over 600 m. One mesh for the route.
+ */
+export function crossings(route: Route, halfWidth: number, towns: [number, number][], gaps: number[]): THREE.Mesh | null {
+  const pos: number[] = [];
+  const at = (s: number) => {
+    const i = Math.min(route.n - 1, Math.max(0, Math.round(s / route.step)));
+    const h = route.heading[i], fx = Math.sin(h), fz = -Math.cos(h), rx = Math.cos(h), rz = Math.sin(h);
+    // each end at the asphalt's height there (on a grade one height for the whole band sank into it)
+    const y = (v: number) => {
+      const f = Math.min(route.n - 1.001, Math.max(0, (s + v) / route.step)), j = Math.floor(f);
+      return route.ele[j] + (route.ele[j + 1] - route.ele[j]) * (f - j) + 0.075;
+    };
+    for (let a = -halfWidth + 0.45; a + 0.5 <= halfWidth - 0.35; a += 1.0) {
+      const q = [[a, -1.25], [a + 0.5, -1.25], [a + 0.5, 1.25], [a, 1.25]].map(([u, v]) => [
+        route.x[i] + rx * u + fx * v, y(v), route.z[i] + rz * u + fz * v,
+      ]);
+      for (const k of [0, 1, 2, 0, 2, 3]) pos.push(...q[k]);
+    }
+  };
+  for (const [a, b] of towns) {
+    const want = b - a > 600 ? [(a + b) / 2, a + (b - a) / 4] : [(a + b) / 2];
+    const used: number[] = [];
+    for (const m of want) {
+      let best = -1;
+      for (const j of gaps) if (j > a + 30 && j < b - 30 && (best < 0 || Math.abs(j - m) < Math.abs(best - m))) best = j;
+      // a few metres short of the junction, never twice at one
+      if (best < 0 || used.includes(best) || Math.abs(best - m) > 250) continue;
+      used.push(best);
+      at(best - 9);
+    }
+  }
+  if (!pos.length) return null;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.computeVertexNormals();
+  const paint = new THREE.Color().setRGB(0.86, 0.86, 0.82, THREE.SRGBColorSpace);
+  const mat = patchMaterial(new THREE.MeshStandardMaterial({ color: paint, roughness: 0.6, side: THREE.DoubleSide }), { key: 'crossing', depthBias: 0.016 });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   return mesh;

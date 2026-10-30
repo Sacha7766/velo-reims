@@ -19,10 +19,10 @@ golden.
 |---|---|---|---|
 | 1 | 0.6 | Witry-lès-Reims main street | French village street: curbs, pavements, rendered houses, red-brown tile roofs |
 | 2 | 6–8 | Open plain between Lavannes and Époye | Huge fields, straight horizon, copses as dark islands, narrow road with a dashed white centre line and grass to the edge |
-| 3 | 11.0 | Époye: church 29 m to the right | Church and mairie by the road |
+| 3 | 10.9–11.0 | Époye: the street turns at km 10.89 towards Église Saint-Pierre, which closes it; the road bends left past it at 10.94 (seen from km 10.92) | Church and mairie by the road |
 | 4 | 18.5–20.7 | Climb to Nogent-l'Abbesse | The steepest 500 m of the loop (5.0 % at km 19.5), the village on the hill |
 | 5 | 23.8 | Berru: Église Saint-Martin 16 m to the left | Church, mairie and war memorial on the main street |
-| 6 | 25.9 | Top of the loop, 200 m, near L'Ermitage | Woods of the Mont de Berru, then the plain opening towards Reims (what is visible: unknown) |
+| 6 | 25.9–26.9 | Top of the loop, 200 m, near L'Ermitage, then the descent west towards Cernay (193 to 164 m by km 26.9, heading 260–296°, into the evening sun) | Woods of the Mont de Berru, then the plain opening towards Reims (what is visible: unknown) |
 
 ## Km by km
 
@@ -123,4 +123,10 @@ capture set qa2 (16 frames) reviewed 2026-10-29 (`research/mont-de-berru/review-
 2.75 (life 2 → 3), the Époye church still hidden, now behind a steel hall. Since: no steel halls in the villages,
 storey heights and hipped roofs per house, duller roofs at a lower pitch, lamps along every village, chalk sheets
 read as disced ground, pavements capped, woods out to 4 km as dark islands, more traffic. Third set qa3 (Époye
-from km 10.75, vines at 21.1 and 22.85, golden on the open plain) in capture.
+from km 10.75, vines at 21.1 and 22.85, golden on the open plain) in capture. Reviewed 2026-10-30
+(`research/mont-de-berru/review-2026-10-30-qa3.md`): REJECT, mean 2.88 (road 3 → 4), the Époye church still not in
+frame (it closes the street from km 10.92; from 10.88 a barn on the corner hides it). Since: village ground drawn as
+paving and lawns instead of the photo's smears, pavement ends ramped into the ground, quieter masonry, brick on few
+houses, colour drift, doors and carriage gates on every house, low sheds and walls, village-sized churches with
+belfries, flags on the mairies, no guessed crops off the RPG parcels, verge bands that come and go, vines with
+shoots and stakes, warmer shade and golden haze, more cars on the plain. Fourth set qa4 in capture.

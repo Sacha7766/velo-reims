@@ -41,17 +41,21 @@ const CHAMP_WALLS = [
   srgb(0.95, 0.94, 0.9), srgb(0.9, 0.8, 0.62), srgb(0.82, 0.78, 0.7),
 ];
 const CHALK_WALLS = [srgb(0.9, 0.87, 0.8), srgb(0.86, 0.83, 0.76), srgb(0.92, 0.9, 0.84), srgb(0.88, 0.82, 0.7)];
-const BRICKS = [srgb(0.52, 0.27, 0.2), srgb(0.58, 0.31, 0.23), srgb(0.48, 0.25, 0.19), srgb(0.6, 0.36, 0.27)];
+// weathered, brown-red: the saturated reds read as new brick blocks
+const BRICKS = [srgb(0.5, 0.3, 0.24), srgb(0.55, 0.34, 0.27), srgb(0.46, 0.29, 0.23), srgb(0.58, 0.4, 0.32)];
 const CHAMP_ROOFS = [
   srgb(0.42, 0.27, 0.21), srgb(0.38, 0.24, 0.19), srgb(0.46, 0.3, 0.24), srgb(0.36, 0.25, 0.2),
   srgb(0.41, 0.28, 0.23), srgb(0.3, 0.31, 0.34), srgb(0.22, 0.22, 0.24), srgb(0.37, 0.23, 0.18),
 ];
 const SHEDS = [
-  srgb(0.6, 0.62, 0.6), srgb(0.45, 0.5, 0.45), srgb(0.75, 0.72, 0.64), srgb(0.52, 0.55, 0.58), srgb(0.3, 0.38, 0.32), srgb(0.82, 0.8, 0.74),
+  srgb(0.6, 0.62, 0.6), srgb(0.45, 0.5, 0.45), srgb(0.75, 0.72, 0.64), srgb(0.52, 0.55, 0.58), srgb(0.44, 0.52, 0.46), srgb(0.82, 0.8, 0.74),
 ];
 // fibre-cement and steel roofs
 const SHED_ROOFS = [srgb(0.6, 0.6, 0.58), srgb(0.36, 0.38, 0.4), srgb(0.5, 0.47, 0.43), srgb(0.45, 0.26, 0.2), srgb(0.42, 0.46, 0.43)];
 const SLATE = srgb(0.3, 0.31, 0.34);
+// the tricolour and the European flag over a mairie's door
+const FLAG = [srgb(0.05, 0.14, 0.5), srgb(0.92, 0.92, 0.9), srgb(0.78, 0.1, 0.14)];
+const EU = srgb(0.04, 0.16, 0.55);
 const ZINC = srgb(0.46, 0.47, 0.48);
 
 /** A region's houses (biome `buildings`; scenes can override it through `biomeTweaks`). */
@@ -105,9 +109,9 @@ const STYLES: Record<Biome['buildings'], Style> = {
   },
   // shutters off-white, pale blue-grey, brown and oxblood; steep roofs with short eaves and zinc gutters
   champagne: {
-    med: false, flatTowns: false, walls: CHAMP_WALLS, roofs: CHAMP_ROOFS, woodTop: 0, balcony: 'none', pitch: [22, 32],
+    med: false, flatTowns: false, walls: CHAMP_WALLS, roofs: CHAMP_ROOFS, woodTop: 0, balcony: 'none', pitch: [20, 30],
     shutters: [V(0.72, 0.72, 0.68), V(0.32, 0.38, 0.42)], moreShutters: [V(0.16, 0.1, 0.06), V(0.19, 0.06, 0.045)],
-    eaves: [0.35, 0.12], masonry: [0.3, 0.04], chimneys: 0.6, barns: 'masonry', hips: 0.25,
+    eaves: [0.35, 0.12], masonry: [0.18, 0.015], chimneys: 0.6, barns: 'masonry', hips: 0.25,
   },
 };
 
@@ -189,10 +193,34 @@ function simplify(ring: Float32Array): THREE.Vector2[] {
   return out.length >= 3 ? out : pts;
 }
 
+/** A footprint's area and its width across the longest edge (the oriented box's short side). */
+function footprint(ring: THREE.Vector2[]): { area: number; width: number } {
+  let area = 0, best = 0, dx = 1, dz = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const p = ring[i], q = ring[(i + 1) % ring.length];
+    area += p.x * q.y - q.x * p.y;
+    const l = Math.hypot(q.x - p.x, q.y - p.y);
+    if (l > best) {
+      best = l;
+      dx = (q.x - p.x) / l;
+      dz = (q.y - p.y) / l;
+    }
+  }
+  let v0 = Infinity, v1 = -Infinity;
+  for (const p of ring) {
+    const v = -dz * p.x + dx * p.y;
+    v0 = Math.min(v0, v);
+    v1 = Math.max(v1, v);
+  }
+  return { area: Math.abs(area) / 2, width: v1 - v0 };
+}
+
 function addBuilding(
   bld: Building, b: Builder, heightAt: (x: number, z: number) => number, seed: number, ox: number, oz: number, style: Style,
   /** On a village street: big untagged farm buildings there are stone and brick, not steel halls. */
   village = false,
+  /** The nearest route point (a mairie hangs its flags on the wall facing it). */
+  road?: [number, number],
 ) {
   const med = style.med;
   const ring = simplify(bld.ring);
@@ -206,6 +234,12 @@ function addBuilding(
     gmax = Math.max(gmax, h);
   }
   const base = gmin - 0.6;
+  // Champagne: electricity cabinets, well heads and gate piers mapped as buildings are not drawn; garden sheds, and
+  // the walls and lean-tos mapped as narrow buildings, stay low (a strip 2 m wide stood end-on to a Berru street
+  // as a 4 m white pillar)
+  const fp = footprint(ring);
+  if (style.barns === 'masonry' && fp.area < 4) return;
+  const low = style.barns === 'masonry' && !bld.tagged && (fp.area < 14 || fp.width < 2.6);
   // Champagne houses vary in storey height (low cottages to tall nineteenth-century fronts); other regions keep 2.9 m
   const storeyStep = style.masonry ? Math.floor(rnd(seed + 71) * 8) : 3;
   const storey = 2.9 + 0.06 * (storeyStep - 3);
@@ -224,10 +258,14 @@ function addBuilding(
   const church = ['church', 'chapel', 'cathedral'].includes(bld.kind) ||
     /kirche|church|église|eglise|chiesa|kapelle|chapelle|cappella/i.test(bld.name ?? '');
   if (church && !bld.explicitRoof) roofShape = 'gabled';
+  else if (low && fp.width < 2.6 && !bld.explicitRoof) roofShape = 'flat';
   else if (style.hips && !bld.explicitRoof && roofShape === 'gabled' && rnd(seed + 73) < style.hips) roofShape = 'hipped';
   const pitched = roofShape !== 'flat';
   const levels = bld.levels ?? Math.max(1, Math.round((bld.height - (pitched ? 2.5 : 0)) / 3));
-  const wallTop = gmax + Math.max(2.8, levels * storey + 0.4);
+  let wallTop = low && !church ? gmax + 2.2 + 0.4 * rnd(seed + 93) : gmax + Math.max(2.8, levels * storey + 0.4);
+  // a village church's nave is 7 to 8.5 m to the eaves: the 14 m guessed for any church gave Époye cathedral walls
+  // and a 45 m tower
+  if (church && style.barns === 'masonry' && !bld.tagged) wallTop = gmax + 7 + 1.5 * rnd(seed + 97);
   const local = ring.map((p) => new THREE.Vector2(p.x - ox, p.y - oz));
   const cx = local.reduce((s, p) => s + p.x, 0) / local.length;
   const cz = local.reduce((s, p) => s + p.y, 0) / local.length;
@@ -248,7 +286,7 @@ function addBuilding(
   ).clone();
   // farmhouse look: wooden upper storey on many rural houses
   const woodTop = bld.woodTop ?? (!med && !barn && !big && !alm && !church && pitched && levels >= 2 && rnd(seed + 3) > 1 - style.woodTop);
-  const split = woodTop ? wallTop - 2.7 : wallTop;
+  let split = woodTop ? wallTop - 2.7 : wallTop;
   // rural Mallorcan houses are often bare marès / limestone masonry
   const mares = med && (barn || (pitched && rnd(seed + 9) > 0.55));
   // industrial blocks (the base of the Mont Ventoux transmitter), utility buildings (substations) and
@@ -298,7 +336,7 @@ function addBuilding(
     } else if (barn || (bld.kind === 'yes' && area > 240)) {
       // garages and garden sheds mostly rendered, barns in brick or chalk
       const small = area < 40;
-      wallSurf = r < (small ? 0.55 : 0.15) ? PLASTER : r < (small ? 0.8 : 0.55) ? BRICK : CHALK;
+      wallSurf = r < (small ? 0.6 : 0.35) ? PLASTER : r < (small ? 0.72 : 0.5) ? BRICK : CHALK;
       wallMode = DOORS;
       if (!bld.wallColour) wall.copy(pick(wallSurf === BRICK ? BRICKS : wallSurf === CHALK ? CHALK_WALLS : CHAMP_WALLS, 43));
     } else if (!big && style.masonry) {
@@ -307,6 +345,52 @@ function addBuilding(
     }
   }
   const wallId = wallSurf + wallMode;
+  // a French mairie from down the street: the tricolour and the European flag on short staffs over the door, on the
+  // wall facing the road
+  if (masonry && road && (bld.kind === 'townhall' || /mairie|h[ôo]tel de ville/i.test(bld.name ?? ''))) {
+    let bi = -1, bd = Infinity;
+    for (let i = 0; i < local.length; i++) {
+      const p = local[i], q = local[(i + 1) % local.length];
+      const d = Math.hypot((p.x + q.x) / 2 + ox - road[0], (p.y + q.y) / 2 + oz - road[1]);
+      if (d < bd && p.distanceTo(q) > 4) {
+        bd = d;
+        bi = i;
+      }
+    }
+    if (bi >= 0) {
+      const p = local[bi], q = local[(bi + 1) % local.length];
+      const len = p.distanceTo(q);
+      const ex = (q.x - p.x) / len, ez = (q.y - p.y) / len;
+      const mx = (p.x + q.x) / 2, mz = (p.y + q.y) / 2;
+      const out = (mx - cx) * -ez + (mz - cz) * ex >= 0 ? 1 : -1;
+      const nx = -ez * out, nz = ex * out;
+      const y0 = gmax + storey + 0.7;
+      const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+      for (const side of [-1, 1]) {
+        // staff from the wall, out and up at 40°; the flag hangs from its outer two thirds
+        const fx = mx + ex * side * 0.3, fz = mz + ez * side * 0.3;
+        const dx = nx * 0.75 + ex * side * 0.3, dz = nz * 0.75 + ez * side * 0.3;
+        const at = (s: number) => V(fx + dx * s, y0 + 0.68 * s, fz + dz * s);
+        const pole = srgb(0.85, 0.85, 0.82);
+        b.quad(at(0), at(1.1), at(1.1).setY(y0 + 0.68 * 1.1 + 0.04), at(0).setY(y0 + 0.04), pole, TRIM, centre);
+        for (let k = 0; k < 3; k++) {
+          const a = at(0.35 + (k / 3) * 0.75), c = at(0.35 + ((k + 1) / 3) * 0.75);
+          const col = side < 0 ? FLAG[k] : EU;
+          b.quad(a, c, c.clone().setY(c.y - 0.62), a.clone().setY(a.y - 0.62), col, TRIM, centre);
+        }
+      }
+    }
+  }
+  // the farms' and businesses' sheds are one high storey: at the 13 m guessed for a commercial block they towered
+  // over the houses (Berru km 24.0)
+  if (masonry && wallSurf === METAL && !bld.tagged && bld.kind !== 'silo') {
+    wallTop = Math.min(wallTop, gmax + 6 + 2 * rnd(seed + 95));
+    split = wallTop;
+  }
+  // no two houses quite the same colour: render and stone weather apart, tiles fade (the palette alone gave
+  // streets of clones)
+  if (masonry && !church && !bld.wallColour) wall.offsetHSL((rnd(seed + 81) - 0.5) * 0.025, (rnd(seed + 83) - 0.5) * 0.08, (rnd(seed + 85) - 0.5) * 0.07);
+  if (masonry && !church && !bld.roofColour) roofCol.offsetHSL((rnd(seed + 87) - 0.5) * 0.02, (rnd(seed + 89) - 0.5) * 0.08, (rnd(seed + 91) - 0.5) * 0.05);
 
   for (let i = 0; i < local.length; i++) {
     const p = local[i];
@@ -344,8 +428,23 @@ function addBuilding(
     const side = Math.min(7, Math.max(3.5, (v1 - v0) * 0.45));
     const tu = u0 + side / 2;
     const tcx = dir.x * tu + perp.x * vm, tcz = dir.y * tu + perp.y * vm;
-    const towerTop = gmax + Math.max(16, (wallTop - gmax) * 2.4 + 6);
+    const towerTop = gmax + (style.barns === 'masonry' ? (wallTop - gmax) * 2 + 3 : Math.max(16, (wallTop - gmax) * 2.4 + 6));
     b.box(tcx, tcz, dir, side / 2, side / 2, base, towerTop, wall, masonry ? CHALK + NAVE : TRIM);
+    // the belfry: two louvred openings in each face under the spire (a blank shaft read as a chimney)
+    if (masonry) {
+      const louvre = srgb(0.1, 0.1, 0.11);
+      for (const [nx, nz] of [[dir.x, dir.y], [-dir.x, -dir.y], [perp.x, perp.y], [-perp.x, -perp.y]]) {
+        const ox2 = tcx + nx * (side / 2 + 0.03), oz2 = tcz + nz * (side / 2 + 0.03);
+        for (const o of [-0.22, 0.22]) {
+          const a = ox2 - nz * side * (o - 0.1), b2 = oz2 + nx * side * (o - 0.1);
+          const c = ox2 - nz * side * (o + 0.1), d = oz2 + nx * side * (o + 0.1);
+          b.quad(
+            new THREE.Vector3(a, towerTop - 3.8, b2), new THREE.Vector3(c, towerTop - 3.8, d),
+            new THREE.Vector3(c, towerTop - 1.1, d), new THREE.Vector3(a, towerTop - 1.1, b2), louvre, TRIM, new THREE.Vector3(tcx, towerTop - 2.4, tcz),
+          );
+        }
+      }
+    }
     const apex = Q(tu, vm, towerTop + side * 1.9);
     const k = [Q(u0, vm - side / 2, towerTop), Q(u0 + side, vm - side / 2, towerTop), Q(u0 + side, vm + side / 2, towerTop), Q(u0, vm + side / 2, towerTop)];
     const sc = new THREE.Vector3(tcx, towerTop, tcz);
@@ -522,6 +621,7 @@ function facadeMaterial(style: Style) {
     shader.uniforms.uShutC = { value: style.moreShutters?.[0] ?? style.shutters[0] };
     shader.uniforms.uShutD = { value: style.moreShutters?.[1] ?? style.shutters[1] };
     shader.uniforms.uShut4 = { value: style.moreShutters ? 1 : 0 };
+    shader.uniforms.uMasonry = { value: style.barns === 'masonry' ? 1 : 0 };
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
@@ -538,6 +638,7 @@ uniform vec3 uShutB;
 uniform vec3 uShutC;
 uniform vec3 uShutD;
 uniform float uShut4;
+uniform float uMasonry;
 varying float vSurf;
 varying float vBaseY;
 varying vec3 vFNormal;
@@ -547,9 +648,9 @@ vec3 fShutter(float h) {
   return h < 0.25 ? uShutA : h < 0.5 ? uShutB : h < 0.75 ? uShutC : uShutD;
 }
 // masonry: x = 1 on a block face and 0 in a joint, y = a hash per block. px is the size of a pixel on the wall
-// (m): joints and then the blocks fade to their mean before they would shimmer
-vec2 fChalk(float u, float hy, float px) {
-  float ry = hy / 0.32;
+// (m): joints and then the blocks fade to their mean before they would shimmer. cs: the course height, the house's own
+vec2 fChalk(float u, float hy, float px, float cs) {
+  float ry = hy / cs;
   float row = floor(ry);
   float bx = (u + fHash(vec2(row, 1.0)) * 3.0) / (0.42 + 0.36 * fHash(vec2(row, 5.0)));
   float j = smoothstep(0.0, 0.07, fract(ry)) * smoothstep(1.0, 0.93, fract(ry)) * smoothstep(0.0, 0.05, fract(bx)) * smoothstep(1.0, 0.95, fract(bx));
@@ -608,15 +709,20 @@ vec2 fBrick(float u, float hy, float px) {
     // dull red-brown dressings; orange-red read as painted trim
     vec3 brickCol = mix(vec3(0.2, 0.075, 0.045), vec3(0.27, 0.11, 0.065), fHash(vec2(bid, 9.0)));
     float brickTone = 0.8 + 0.4 * fBrick(u, hy, px).y;
+    // chalk and rubble in courses that differ from house to house, the blocks a shade apart, pale lime joints:
+    // contrasting blocks in one grid over a whole wall read as stamped concrete blocks
     if (sid == 9) {
-      vec2 c = fChalk(u, hy, px);
-      diffuseColor.rgb = mix(diffuseColor.rgb * 0.8, diffuseColor.rgb * (0.88 + 0.22 * c.y), c.x);
+      vec2 c = fChalk(u, hy, px, (mode == 3 ? 0.22 : 0.27) + 0.1 * fHash(vec2(bid, 13.0)));
+      diffuseColor.rgb = mix(diffuseColor.rgb * 0.93, diffuseColor.rgb * (0.95 + 0.1 * c.y), c.x);
     } else if (sid == 10) {
       vec2 c = fBrick(u, hy, px);
-      diffuseColor.rgb = mix(vec3(0.5, 0.48, 0.43), diffuseColor.rgb * (0.78 + 0.44 * c.y), c.x);
+      diffuseColor.rgb = mix(vec3(0.5, 0.48, 0.43), diffuseColor.rgb * (0.86 + 0.28 * c.y), c.x);
     } else {
       diffuseColor.rgb *= 0.96 + 0.04 * fHash(floor(wp.xz * 3.0) + floor(wp.y * 3.0));
     }
+    // weather: broad stains down the wall and damp rising from the ground
+    float weather = (0.97 + 0.05 * sin(u * 0.83 + hy * 0.41 + bid) * sin(u * 0.29 - hy * 0.9 + bid * 0.7)) * mix(0.9, 1.0, smoothstep(0.2, 1.4, hy));
+    diffuseColor.rgb *= mix(1.0, weather, uMasonry);
     float socle = (1.0 - step(0.55, hy)) * wallF;
     if (sid == 9 && mode != 3) diffuseColor.rgb = mix(diffuseColor.rgb, brickCol * brickTone, socle * step(0.5, house));
     else diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.72, 0.7, 0.66), socle);
@@ -660,6 +766,17 @@ vec2 fBrick(float u, float hy, float px) {
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.9, 0.86), max(frame, mullion) * k);
     diffuseColor.rgb = mix(diffuseColor.rgb, shutterCol, win * closed * k);
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.72, 0.72, 0.7) * mix(0.94, 0.88 + 0.12 * step(0.5, fract(hy * 16.0)), slats), max(blindDown, rollerBox) * k);
+    // the ground floor: a front door in one bay of four and, on a quarter of the houses (the farms on the street),
+    // a carriage gate two bays on; rows of windows alone read as cut-outs
+    if (uMasonry > 0.5 && mode == 0 && sid != 5 && hy < storey + 0.3) {
+      float bayN = mod(floor(gx) + floor(fHash(vec2(bid, 19.0)) * 4.0), 4.0);
+      float door = step(bayN, 0.5) * step(abs(fx - 0.5), 0.5 / bay) * step(hy, 2.25);
+      float gate = step(1.5, bayN) * step(bayN, 2.5) * step(fHash(vec2(bid, 17.0)), 0.25) * step(abs(fx - 0.5), 1.35 / bay) * step(hy, 2.9);
+      float dh = fHash(vec2(bid, 21.0));
+      vec3 doorCol = dh < 0.3 ? vec3(0.8, 0.79, 0.76) : dh < 0.55 ? vec3(0.24, 0.15, 0.09) : dh < 0.7 ? vec3(0.1, 0.2, 0.14) : dh < 0.85 ? vec3(0.28, 0.33, 0.38) : vec3(0.33, 0.11, 0.09);
+      float boards = mix(1.0, 0.86 + 0.14 * step(0.1, fract(u / 0.14)), slats);
+      diffuseColor.rgb = mix(diffuseColor.rgb, doorCol * boards, max(door, gate) * step(0.05, hy) * k);
+    }
     if (mode == 2) {
       // a wide door every ~7 m: mostly white (garages), some green, brown or grey, in horizontal panels
       float dxu = fract(u / 7.0 + house * 5.0);
@@ -805,7 +922,12 @@ export class Buildings extends THREE.Group {
         g = { builder: new Builder(), ox: Math.floor(x / BUCKET) * BUCKET, oz: Math.floor(z / BUCKET) * BUCKET };
         groups.set(key, g);
       }
-      addBuilding(bld, g.builder, heightAt, i + 1, g.ox, g.oz, style, village?.(x, z) ?? false);
+      let road: [number, number] | undefined;
+      if (bld.kind === 'townhall' || /mairie|h[ôo]tel de ville/i.test(bld.name ?? '')) {
+        const n = index.nearest(x, z, 250);
+        if (n.index >= 0) road = index.at(n.index);
+      }
+      addBuilding(bld, g.builder, heightAt, i + 1, g.ox, g.oz, style, village?.(x, z) ?? false, road);
       this.centres.push(x, z);
       this.count++;
     });

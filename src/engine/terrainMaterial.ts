@@ -74,11 +74,12 @@ export function fieldColour(state: number, seed: number): [number, number, numbe
     // stubble greening with volunteer cereals or rape and the first cover crops
     case REGROWTH: return mix([0.27, 0.27, 0.16], [0.2, 0.24, 0.11]);
     case BEET: return mix([0.07, 0.13, 0.045], [0.09, 0.155, 0.055]);
-    case MAIZE: return mix([0.1, 0.17, 0.05], [0.13, 0.19, 0.06]);
+    // maize in full leaf and alfalfa between cuts are deep greens from above, not lime (the drone frame at km 18.8)
+    case MAIZE: return mix([0.085, 0.14, 0.045], [0.11, 0.16, 0.055]);
     // haulms dying back, yellow-brown, some still green
     case POTATO: return mix([0.24, 0.21, 0.1], [0.16, 0.19, 0.07]);
     // alfalfa between cuts; a quarter just cut, pale straw-green
-    case ALFALFA: return t < 0.25 ? [0.28, 0.29, 0.16] : mix([0.1, 0.16, 0.05], [0.13, 0.19, 0.065]);
+    case ALFALFA: return t < 0.25 ? [0.28, 0.29, 0.16] : mix([0.09, 0.14, 0.05], [0.12, 0.17, 0.065]);
     // grassland dried by the summer
     case GRASS: return mix([0.19, 0.21, 0.1], [0.26, 0.25, 0.13]);
     // the grassed rows between the vines (near the road the vines themselves are 3D rows)
@@ -243,9 +244,8 @@ float tBump = 0.0;
   float gGain = mix(uPhotoGrade.x, 0.9, uKarst);
   float gSat = mix(uPhotoGrade.y, 1.18, uKarst);
   vec3 tc = pow(max(mix(vec3(tl), img, gSat), vec3(0.0)), vec3(mix(uPhotoGrade.z, 1.12, uKarst))) * gGain;
-  vec3 area = texture(map, vMapUv, 5.0).rgb * photoFix;
-  float la = dot(area, vec3(0.2126, 0.7152, 0.0722));
-  area = pow(max(mix(vec3(la), area, gSat), vec3(0.0)), vec3(mix(uPhotoGrade.z, 1.12, uKarst))) * gGain;
+  // the photo's footprint per pixel, for the wide average read near the camera only (five mip levels up)
+  vec2 uvDx = dFdx(vMapUv) * 32.0, uvDy = dFdy(vMapUv) * 32.0;
 
   // detail textures (mean ~1): two scales against tiling
   float gd = texture2D(uGrassTex, p * 0.6).r * 2.0 * (0.55 + 0.9 * texture2D(uGrassTex, p * 0.063 + 0.31).r);
@@ -274,11 +274,19 @@ float tBump = 0.0;
 
   // close to the camera the photo blurs and smears at grazing angles: keep its colour, not its texels
   float soft = (1.0 - smoothstep(30.0, 180.0, camD));
-  vec3 base = mix(tc, area, soft * 0.9);
+  vec3 base = tc;
+  if (soft > 0.0) {
+    vec3 area = textureGrad(map, vMapUv, uvDx, uvDy).rgb * photoFix;
+    float la = dot(area, vec3(0.2126, 0.7152, 0.0722));
+    area = pow(max(mix(vec3(la), area, gSat), vec3(0.0)), vec3(mix(uPhotoGrade.z, 1.12, uKarst))) * gGain;
+    base = mix(tc, area, soft * 0.9);
+  }
   // Champagne at the end of August: the orthophoto shows the plain in spring. Fields known from the RPG parcels (and
   // OSM meadows and vineyards) carry their late-summer colour in uFields (A: known). Elsewhere each parcel's
   // photographed tone picks its state: green then (winter wheat, barley, rape) is harvested to stubble by now, bare
   // chalk then (the spring-sown beet, maize, potatoes) stands green
+  // village ground decided below (field season): the verge rule further down leaves it alone
+  float tTown = 0.0;
   if (uFieldSeason > 0.5) {
     vec4 fk = inMask ? texture2D(uFields, lmuv) : vec4(0.0);
     // ground metres per pixel, for the grain below (derivatives belong outside the per-pixel branches)
@@ -360,21 +368,30 @@ float tBump = 0.0;
       vec3 august = mix(vec3(0.22, 0.24, 0.1), vec3(0.34, 0.32, 0.17), tNoise(p * 0.3));
       base = mix(base, august * mix(1.0, det, 0.5), verge * (1.0 - steep) * lushVerge * 0.7);
     }
-    // village squares, yards and pavements: the photo's bright concrete and gravel, with its JPEG colour noise, read
-    // near white and blue-violet beside the road (Berru km 23.8, Witry km 0.6). In built-up land any pale,
-    // unsaturated ground is paved, elsewhere cool bright ground off the fields: worn concrete grey. The photo's
-    // building shadows (blue-black, under our own shadows) become a darker ground, not black
-    float imgL = dot(img, vec3(0.3, 0.55, 0.15));
+    // village ground: at riding height the spring photo's yards and gardens (roofs leaning over the footprints,
+    // parked cars, building shadows, JPEG colour noise) smeared into violet, white and black blotches beside the
+    // road (Berru km 23.8, Beine km 15.9), whatever each colour was graded to. In built-up land the photo now only
+    // tells, at parcel scale, a garden (green in spring) from paved or gravelled ground, and each takes an even
+    // late-summer colour with the photo's light and dark kept faintly
     float builtUp = smoothstep(0.3, 0.8, land.b);
     float ground = (1.0 - canopy) * (1.0 - steep) * (1.0 - verge);
-    float pale = smoothstep(0.22, 0.4, imgL) * smoothstep(0.3, 0.15, sat);
-    // concrete is neutral to cool and the JPEG's noise magenta; chalk (the white field tracks) is warm and stays
+    // (the verge band too: there the photo's roofs and cars beside the road showed through as pink smears)
+    float town = builtUp * (1.0 - canopy) * (1.0 - steep) * (1.0 - known);
+    tTown = town;
+    if (town > 0.0) {
+      float garden = smoothstep(0.0, 0.025, pV) * smoothstep(0.05, 0.1, pS);
+      float yard = tNoise(p * 0.07);
+      vec3 paving = mix(vec3(0.185, 0.18, 0.168), vec3(0.235, 0.225, 0.2), yard);
+      vec3 lawn = mix(vec3(0.15, 0.18, 0.075), vec3(0.25, 0.24, 0.13), smoothstep(0.35, 0.75, yard));
+      base = mix(base, mix(paving, lawn, garden) * mix(1.0, det, 0.25) * (0.95 + 0.1 * tNoise(p * 0.6)), town);
+    }
+    // off the fields outside the villages, cool bright ground (farmyards, car parks) is worn concrete: concrete is
+    // neutral to cool and the JPEG's noise magenta; chalk (the white field tracks) is warm and stays
+    float imgL = dot(img, vec3(0.3, 0.55, 0.15));
     float coolBright = smoothstep(0.3, 0.5, imgL) * smoothstep(0.04, 0.01, (img.r + img.g) * 0.5 - img.b);
-    float paved = max(builtUp * pale, (1.0 - max(known, fieldW)) * coolBright) * ground;
+    float paved = (1.0 - builtUp) * (1.0 - max(known, fieldW)) * coolBright * ground;
     float pvL = min(dot(base, vec3(0.3, 0.55, 0.15)), 0.21);
     base = mix(base, vec3(pvL) * vec3(1.0, 0.96, 0.9) * mix(1.0, det, 0.3), paved);
-    float photoShade = builtUp * smoothstep(0.1, 0.04, imgL) * ground;
-    base = mix(base, vec3(max(dot(base, vec3(0.3, 0.55, 0.15)), 0.12)) * vec3(1.0, 0.97, 0.9), photoShade * 0.85);
   }
   // meadows: pull bleached summer-photo grass back to a living green-gold
   float grassy = max(meadow, wGrass * 0.6 * uMeadowPush) * (1.0 - steep) * (1.0 - canopy);
@@ -467,7 +484,7 @@ float tBump = 0.0;
   }
   // the orthophoto's real road is often wider than or offset from our asphalt ribbon: grey,
   // unsaturated photo pixels in the road corridor become verge (grass in the Alps)
-  float photoRoad = verge * smoothstep(0.14, 0.06, sat) * (1.0 - uKarst) * (1.0 - steep);
+  float photoRoad = verge * smoothstep(0.14, 0.06, sat) * (1.0 - uKarst) * (1.0 - steep) * (1.0 - tTown);
   if (photoRoad > 0.0) {
     vec3 vergeGrass = uVergeCol * (0.85 + 0.3 * tNoise(p * 0.8)) * (0.9 + 0.2 * gd);
     base = mix(base, vergeGrass, photoRoad * 0.9);
@@ -506,7 +523,8 @@ float tBump = 0.0;
   vec3 bn = normalize(vTWNormal);
   // skylight on grass in shade: the photo's own shadows are already blue, and the blue sky fill on
   // top turned shaded meadow teal (blue above green); shade should be a darker ground colour
-  reflectedLight.indirectDiffuse *= vec3(1.04, 1.0, 0.8);
+  // (on the chalk plain the sunlit fields all round bounce warm light in too: pale ground in shade read lilac)
+  reflectedLight.indirectDiffuse *= mix(vec3(1.04, 1.0, 0.8), vec3(1.12, 1.02, 0.74), uFieldSeason);
   float away = (1.0 - smoothstep(-0.15, 0.25, dot(bn, uSunDir))) * smoothstep(0.0, 0.2, uSunDir.y);
   reflectedLight.indirectDiffuse += diffuseColor.rgb * uSunColor * vec3(0.92, 1.0, 0.84) * (0.16 * away);
 }`,

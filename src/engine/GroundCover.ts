@@ -128,6 +128,19 @@ function vineGeometry(): THREE.BufferGeometry {
     list.push({ reg: REGIONS.barkDark, p: [[x - 0.035, -0.05, 0], [x + 0.035, -0.05, 0], [x + 0.035, 0.5, 0], [x - 0.035, 0.5, 0]] });
     list.push({ reg: REGIONS.barkDark, p: [[x, -0.05, -0.035], [x, -0.05, 0.035], [x, 0.5, 0.035], [x, 0.5, -0.035]] });
   }
+  // shoots grown back above the trimmed top since the last pass of the trimmer, leaning out: the whole leaf
+  // cluster with its ragged outline, so a row's top is no longer a ruled edge
+  for (const [x, z, h, lean] of [[-0.8, 0.12, 0.34, 0.12], [-0.25, -0.1, 0.26, -0.1], [0.35, 0.08, 0.38, 0.14], [0.8, -0.13, 0.3, -0.12]]) {
+    list.push({ reg: L, p: [[x - 0.32, 1.18, z], [x + 0.32, 1.18, z], [x + 0.32, 1.18 + h, z + lean], [x - 0.32, 1.18 + h, z + lean]] });
+  }
+  return cards(list);
+}
+
+/** A vineyard post: the galvanised stakes that carry the wires, standing a little above the leaves. */
+function postGeometry(): THREE.BufferGeometry {
+  const list: { reg: typeof REGIONS.leaves; p: number[][] }[] = [];
+  list.push({ reg: REGIONS.barkDark, p: [[-0.025, -0.05, 0], [0.025, -0.05, 0], [0.025, 1.62, 0], [-0.025, 1.62, 0]] });
+  list.push({ reg: REGIONS.barkDark, p: [[0, -0.05, -0.025], [0, -0.05, 0.025], [0, 1.62, 0.025], [0, 1.62, -0.025]] });
   return cards(list);
 }
 
@@ -211,6 +224,9 @@ export interface GroundCoverOptions {
   fieldAt?: (x: number, z: number) => number;
   /** The orthophoto's sRGB colour at parcel scale (Terrain.photoAt): metres per pixel, 0 while no tile covers it. */
   photoAt?: (x: number, z: number, out: number[]) => number;
+  /** The farmland is known parcel by parcel (the RPG): land outside the parcels is gardens, waste ground or the edge
+   * of a wood, never a crop guessed from the photo. */
+  parcels?: boolean;
   biome?: Biome;
 }
 
@@ -233,6 +249,7 @@ export class GroundCover extends THREE.Group {
   private palmMats: THREE.Material | THREE.Material[] | null = null;
   private mound = moundGeometry();
   private vine = vineGeometry();
+  private post = postGeometry();
   private bale = new THREE.CylinderGeometry(0.72, 0.72, 1.2, 18, 1).rotateZ(Math.PI / 2).translate(0, 0.66, 0);
   private baleMat = patchMaterial(new THREE.MeshLambertMaterial({ color: 0xffffff }), { key: 'bale' });
   private biome: Biome;
@@ -446,6 +463,7 @@ export class GroundCover extends THREE.Group {
     const alfalfa: number[] = [];
     const bales: number[] = [];
     const vines: number[] = [];
+    const posts: number[] = [];
     const vineKeys = new Set<string>();
     const rowDir = new Map<number, [number, number]>();
     const rgb = [0, 0, 0];
@@ -505,15 +523,18 @@ export class GroundCover extends THREE.Group {
             continue;
           }
           // beyond the verge, what each field holds now; true meadows and gardens keep their grass
+          let unfarmed = false;
           if (B.fieldSeason && d > halfWidth + 3) {
             const known = this.o.fieldAt?.(x, z) ?? 0;
             let state = Math.floor(known);
             let seed = known - state;
+            // off the declared parcels: gardens, paddocks and waste ground at the villages' edges, kept short
+            unfarmed = !state && !!this.o.parcels && cover !== 2;
             if (state === VINES) {
-              this.vineRow(x, z, i0, i1, vines, vineKeys, rowDir);
+              this.vineRow(x, z, i0, i1, vines, posts, vineKeys, rowDir);
               continue;
             }
-            if (!state && cover !== 2) {
+            if (!state && cover !== 2 && !this.o.parcels) {
               const res = this.o.photoAt?.(x, z, rgb) ?? 0;
               // a field read from a blurred tile could be any crop: leave it bare until the chunk is rebuilt
               if (res === 0 || res >= FIELD_PHOTO) {
@@ -522,14 +543,17 @@ export class GroundCover extends THREE.Group {
               }
               ({ state, pick: seed } = fieldState(rgb));
             }
-            // meadows and fallow keep their grass
+            // meadows and fallow keep their grass; no crop grows under a tree's crown (a parcel's outline runs
+            // under the hedge at its edge)
             if (state && state !== GRASS && state !== FALLOW) {
-              if (state === BEET && r() < 0.75) beets.push(x, y - 0.05, z, 0.6 + r() * 0.25, r() * 6.28, 0);
+              if (canopy > 0.25) continue;
+              if (state === BEET && r() < 0.75) beets.push(x, y - 0.05, z, 0.5 + r() * 0.2, r() * 6.28, 0);
               else if ((state === MAIZE || state === HEMP) && r() < 0.6) maize.push(x, y - 0.05, z, (state === HEMP ? 0.75 : 0.95) + r() * 0.25, r() * 6.28, 0);
               else if (state === POTATO && r() < 0.5) potatoes.push(x, y - 0.05, z, 0.7 + r() * 0.3, r() * 6.28, 0);
               // alfalfa grown back since its last cut (fieldColour: a quarter of the fields were just cut)
               else if (state === ALFALFA && (seed * 7.31) % 1 >= 0.25 && r() < 0.35) alfalfa.push(x, y - 0.03, z, 0.5 + r() * 0.3, r() * 6.28, 0);
-              else if (state === REGROWTH && r() < 0.12) alfalfa.push(x, y - 0.03, z, 0.3 + r() * 0.25, r() * 6.28, 0);
+              // volunteers in the stubble: a few short shoots (taller and denser they read as an overgrown meadow)
+              else if (state === REGROWTH && r() < 0.03) alfalfa.push(x, y - 0.03, z, 0.18 + r() * 0.12, r() * 6.28, 0);
               // round bales left on some straw-coloured stubble, one every few hundred square metres
               else if (state === STUBBLE && seed < 0.75 && (seed * 7.13) % 1 < 0.45 && r() < 0.003) bales.push(x, y, z, 1, r() * 6.28, 0);
               continue;
@@ -567,17 +591,24 @@ export class GroundCover extends THREE.Group {
           // patchy meadow mask
           const patch = Math.sin(x * 0.11 + Math.sin(z * 0.07) * 2.0) * Math.cos(z * 0.09 + x * 0.03);
           if (d > halfWidth + 5 && patch < -0.35 && r() < 0.7) continue;
-          // late-summer verges grow in clumps a few metres long with mown and trodden gaps, not an even band
-          const clump = Math.sin(x * 0.53 + z * 0.29) + Math.sin(z * 0.61 - x * 0.37 + side);
-          if (B.fieldSeason && d <= halfWidth + 5 && (patch < -0.15 || clump < -0.4) && r() < 0.75) continue;
+          // late-summer verges: mown short along the asphalt, then a band of tall dry grass at the field edge that
+          // widens, narrows and gives out along the road. Tufts spread evenly over both verges read as planted rows
+          let band = false;
+          if (B.fieldSeason && d <= halfWidth + 7 && !kerbed) {
+            const s = i * route.step + t;
+            const o = d - halfWidth - 1.8;
+            const width = 1.6 + 2.0 * Math.sin(s * 0.041 + side * 2.1) + 1.3 * Math.sin(s * 0.13 + side + Math.sin(s * 0.023) * 2.0);
+            band = o >= 0 && o < width;
+            if (o < 0 ? r() < 0.72 : !band && r() < 0.9) continue;
+          }
           // open meadows away from the verge are mown short: only scattered tufts
-          if (cover === 1 && d > halfWidth + 4 && r() < 0.55) continue;
+          if ((cover === 1 || unfarmed) && d > halfWidth + 4 && r() < (unfarmed ? 0.8 : 0.55)) continue;
           if (alpine > 0.75 && r() < alpine * 0.6) continue;
           // mown verge next to the asphalt and grazed/mown meadows stay short
           const verge = d < halfWidth + 1.8;
-          const short = verge || cover === 1 || cover === 2;
+          const short = verge || cover === 1 || cover === 2 || unfarmed;
           // the verge is mown to a few centimetres in autumn: low tufts over the turf, not blades
-          const sc = (verge ? 0.3 + r() * 0.22 : short ? 0.5 + r() * 0.35 : 0.7 + r() * 0.6) - alpine * 0.2;
+          const sc = (band ? 0.55 + r() * 0.75 : verge ? 0.3 + r() * 0.22 : short ? 0.5 + r() * 0.35 : 0.7 + r() * 0.6) - alpine * 0.2;
           // October: only a few late flowers left; the end of August still has wild carrot, tansy and chicory
           const target = r() < (B.fieldSeason ? 0.08 : 0.025 + (1 - alpine) * 0.015) ? flowers : grass;
           target.push(x, y, z, sc, r() * 6.28, alpine);
@@ -620,8 +651,12 @@ export class GroundCover extends THREE.Group {
         m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(sc, sc * tall * lean, sc));
         mesh.setMatrixAt(k, m);
         if (tint instanceof THREE.Color) {
-          // crops and bales: their own colour, each plant a little different
-          mesh.setColorAt(k, col.copy(tint).multiplyScalar(0.86 + 0.28 * ((rot * 13.7) % 1)));
+          // crops and bales: their own colour, each plant a little different in value and hue (vines in one
+          // tone read as clipped hedges)
+          // (by position too: a vineyard cell's rows all share one heading)
+          const v = (((rot * 13.7 + x * 0.53 + z * 0.29) % 1) + 1) % 1;
+          col.copy(tint).multiplyScalar(0.86 + 0.28 * v).offsetHSL((((x * 0.37 + z * 0.71) % 1) + 1) % 1 * 0.05 - 0.025, 0, 0);
+          mesh.setColorAt(k, col);
         } else if (tint && alpine === 1 && this.biome.shrubTint) {
           // shrub cushions (flag 1): their own green
           mesh.setColorAt(k, col.copy(this.biome.shrubTint).multiplyScalar(0.8 + 0.3 * ((rot * 7.3) % 1)));
@@ -652,6 +687,7 @@ export class GroundCover extends THREE.Group {
     add(this.tuft, this.grassMat, alfalfa, 0.6, false, new THREE.Color(0.5, 0.82, 0.34), true);
     add(this.tuft, this.grassMat, maize, 5.6, true, new THREE.Color(0.58, 0.86, 0.34), true);
     add(this.vine, this.grassMat, vines, 1, true, new THREE.Color(0.6, 0.86, 0.44), true);
+    add(this.post, this.grassMat, posts, 1, false, new THREE.Color(0.78, 0.8, 0.82), true);
     add(this.bale, this.baleMat, bales, 1, true, new THREE.Color().setRGB(0.8, 0.67, 0.42, THREE.SRGBColorSpace));
     this.chunks.set(ci, { index: ci, meshes, coarse });
   }
@@ -661,7 +697,9 @@ export class GroundCover extends THREE.Group {
    * the slope of their 60 m cell (a parcel-sized patch of straight rows); a segment belongs to the chunk whose
    * stretch of road is nearest, so neighbouring chunks never draw it twice.
    */
-  private vineRow(x: number, z: number, i0: number, i1: number, out: number[], keys: Set<string>, dirs: Map<number, [number, number]>) {
+  private vineRow(
+    x: number, z: number, i0: number, i1: number, out: number[], posts: number[], keys: Set<string>, dirs: Map<number, [number, number]>,
+  ) {
     const { groundHeight, index } = this.o;
     const gx = Math.floor(x / 60), gz = Math.floor(z / 60);
     const cell = gx * 100003 + gz;
@@ -683,7 +721,14 @@ export class GroundCover extends THREE.Group {
       const near = index.nearest(px, pz, REACH + 8);
       if (near.index < i0 || near.index >= i1 || near.dist < this.o.halfWidth + 3) continue;
       const py = groundHeight(px, pz);
-      if (Number.isFinite(py)) out.push(px, py - 0.03, pz, 1, Math.atan2(-az, ax), 0);
+      if (!Number.isFinite(py)) continue;
+      // a vine dead and not yet replaced here and there; vigour (height) varies along the row
+      const h = Math.abs(Math.sin(ri * 12.9898 + si * 78.233) * 43758.5453) % 1;
+      if (h < 0.03) continue;
+      const rot = Math.atan2(-az, ax);
+      out.push(px, py - 0.03, pz, 0.92 + 0.16 * ((h * 7.13) % 1), rot, 0);
+      // a stake every third segment, at its start
+      if (si % 3 === 0) posts.push(px - ax, py - 0.03, pz - az, 0.95 + 0.1 * ((h * 3.7) % 1), rot, 0);
     }
   }
 
@@ -703,6 +748,7 @@ export class GroundCover extends THREE.Group {
     this.rock.dispose();
     this.mound.dispose();
     this.vine.dispose();
+    this.post.dispose();
     this.bale.dispose();
     this.baleMat.dispose();
     this.grassMat.dispose();

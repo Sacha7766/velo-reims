@@ -3,6 +3,7 @@
 
 import * as THREE from 'three';
 import type { Route } from '../geo/route.ts';
+import type { TimeOfDay } from './atmosphere.ts';
 
 export type BiomeId = 'alpine' | 'mediterranean' | 'champagne';
 
@@ -58,6 +59,10 @@ export interface Biome {
   /** Sun elevation and azimuth (degrees) per time of day (atmosphere TIMES id) where the region and season differ
    * from the presets' Salzburg in mid-October. */
   sun?: Record<string, [number, number]>;
+  /** Light colours per time of day where the region's ground and air change them (atmosphere TIMES fields). */
+  light?: Record<string, Partial<Pick<TimeOfDay, 'sun' | 'sunIntensity' | 'zenith' | 'ambientSky' | 'ambientGround' | 'ambientIntensity'>>>;
+  /** 0..1: how warm the hazy sky away from a low sun is (dry, dusty summer air); 0 keeps it pale blue. */
+  warmHaze?: number;
   /** Orthophoto grading: gain, saturation and gamma (basemap.at needs lifting; IGN plains do not). */
   photoGrade?: [number, number, number];
   /** 1: arable fields photographed in spring are drawn harvested (late summer); see terrainMaterial. */
@@ -140,6 +145,16 @@ export const CHAMPAGNE: Biome = {
   // the sun over Reims (49.25° N) on 26 August: 51° at solar noon; morning and evening low in the east and the
   // west-north-west, not the south-east and south-west of the October presets
   sun: { morning: [16, 93], noon: [51, 180], golden: [11, 273], inversion: [14, 91], dusk: [2.5, 283] },
+  // the sunlit stubble and chalk all round bounce warm light into the shade (blue-black shadows across the street
+  // read wrong), and the evening air is warm and dusty (the golden preset read dusk-blue facing away from the sun)
+  light: {
+    noon: { ambientSky: [0.64, 0.68, 0.76], ambientGround: [0.44, 0.39, 0.3], ambientIntensity: 1.45 },
+    golden: {
+      sun: [1.0, 0.72, 0.44], sunIntensity: 3.8, zenith: [0.07, 0.21, 0.5],
+      ambientSky: [0.6, 0.58, 0.64], ambientGround: [0.46, 0.36, 0.25], ambientIntensity: 1.35,
+    },
+  },
+  warmHaze: 0.45,
   photoGrade: [1.0, 1.1, 1.08],
   fieldSeason: 1,
   cattle: false,

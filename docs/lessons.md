@@ -107,6 +107,25 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
 - **Village squares beside the road read near white and blue-violet (Berru, km 23.8).** The photo's bright concrete
   and gravel, JPEG colour noise included, went through the photo grade untouched. Fix: in built-up land, bright photo
   pixels become worn concrete grey. Where: `terrainMaterial.ts` field-season block.
+- **Village ground smeared violet, white and black beside the road (qa3, finding 1).** At riding height the spring
+  photo's yards (roofs leaning over their footprints, parked cars, building shadows, JPEG colour noise) smeared into
+  blotches whatever each colour was graded to, and lifting the photo's shadows turned them lilac. Fix: in built-up
+  land the photo only tells a garden (green in spring, at parcel scale) from paved or gravelled ground; each takes an
+  even late-summer colour with the photo's light and dark kept at a quarter, the verge band included. Where:
+  `terrainMaterial.ts` field season (`tTown`).
+- **Noon shadows read blue-black and the golden hour dusk-blue (qa3, findings 8, 11, 13).** The presets' sky light
+  suits Alpine meadows in October. On the chalk plain in August the sunlit stubble bounces warm light into every
+  shade, and the evening air is dusty. Fix: `biome.light` sets the ambient sky and ground light per time of day
+  (Champagne: warmer and stronger), the terrain's skylight warms over the fields, and `biome.warmHaze` warms the sky
+  and haze away from a low sun. Where: `biome.ts`, `Engine.setTime`, `atmosphere.ts` (`uWarmHaze`),
+  `terrainMaterial.ts`.
+- **Walls read as stamped concrete blocks (qa3, finding 3).** One grid of 0.32 m courses at ±11 % per block covered
+  every chalk house, barn and church. Fix: a course height per house (0.27–0.37 m, rubble 0.22–0.32 m on churches),
+  blocks a shade apart (±5 %) with pale lime joints, broad weather stains and rising damp on every wall. Where:
+  facade shader, `fChalk`.
+- **The terrain read and graded the wide photo average for every pixel.** Only the ground within 180 m of the camera
+  blends it in. Fix: read it there only, with the gradients taken before the branch (`textureGrad`). Where:
+  `terrainMaterial.ts`.
 
 - **The terrain shader was most of the frame (74 % in the software-renderer probe at Berru km 23.85).** Every pixel paid
   for everything: seven tri-planar rock reads on the flat chalk plain, karst-only noise in Champagne, meadow, litter
@@ -220,6 +239,49 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
 - **Every house the same height (qa2, finding 9).** One 2.9 m storey everywhere. Fix: in Champagne a storey step per
   house (2.72–3.14 m) rides above the building id in the surface attribute, so walls and window rows agree; a
   quarter of the houses get a hipped roof. Where: `Buildings.ts` `Builder.setBase`, facade shader.
+- **Pavement ends stood as slabs and wedges on the verge (qa3 finding 12, qa4-10920).** The road flattening leaves the
+  verge 0.4 m below the road surface, so every pavement stood above the ground beside it; a capped end read as a
+  slab, a ramped one as a grey wedge. Fix: the terrain knows the plain's built-up stretches (`Terrain.setTowns`,
+  set before anything is placed there) and brings the ground up to just under the pavement, easing in over 20 m
+  at each end, rebuilding the tiles already loaded. At each end of a stretch the pavement ramps down to the ground
+  and the kerb to the asphalt, as at a driveway (sunk to the ground under the road's edge, the kerb dived away as a
+  wedge). The mountain villages keep their approved profile. Where: `Terrain.flatten`, `Road.pavements`,
+  `Engine.loadWorld`.
+- **A 4 m white pillar on a Berru pavement (qa3, finding 12).** Walls and lean-tos mapped as narrow buildings, and
+  garden sheds, each took a storey and a hipped roof; untagged sheds took the 13 m guessed for a commercial block and
+  towered over the houses. Fix (Champagne): under 4 m² nothing is drawn; under 14 m² or 2.6 m wide, 2.2–2.6 m high,
+  the narrow ones flat; untagged steel sheds 6–8 m. Where: `Buildings.ts` `footprint`, `addBuilding`.
+- **Village churches were cathedrals.** The 14 m guessed for any church gave the Époye nave 12 m walls and a 45 m
+  tower. Fix (Champagne): nave 7–8.5 m to the eaves, the tower twice that plus 3 m under its spire, with belfry
+  openings (a blank shaft read as a chimney). Where: `addBuilding`.
+- **The Époye church never in frame (reviews qa1 to qa3, the blocker).** It closes the street that turns at km 10.89,
+  then stands beside and behind the rider; from km 10.88 a barn on the corner hides it. Fix: the hero frame at
+  km 10.92, the church at the end of the street. Where: the brief's hero 3.
+- **Mairies didn't read as mairies (qa3, finding 9).** Berru's is a point inside an untagged building. Fix: the
+  building around an `amenity=townhall` point is the mairie (stone, slate); every mairie flies the tricolour and the
+  European flag over its door, on the wall facing the road. Where: `osm.ts` `parseOsm`, `Buildings.ts`.
+- **Clone houses with no doors (qa3, finding 5).** Fix: each house's render and tiles drift in hue, saturation and
+  value; one bay in four has a front door on the ground floor, a quarter of the houses a farm's carriage gate; brick
+  on 1.5 % of houses and 15 % of barns, weathered brown-red (saturated brick read as new blocks). Doors, gates and
+  weathering are the masonry style's only (`uMasonry`): the other regions keep their approved faces. Where:
+  `addBuilding`, facade shader.
+- **Beet under the trees at L'Ermitage (qa3, finding 14).** Off the RPG parcels the ground cover still guessed crops
+  from the spring photo, under baked tree crowns too. The RPG covers nearly all farmland, so land outside it is
+  gardens, waste ground or wood edges. Fix: with parcels loaded, land outside them grows grass; no crop grows under a
+  crown; volunteers in stubble are a few short shoots. Where: `GroundCover.ts` (`parcels`).
+- **Land off the parcels became a flowering meadow (qa4-4700, outside Lavannes).** Without a guessed crop it fell
+  through to the meadow tufts, tall and dense. At a village's edge it is gardens, paddocks and waste ground, mown
+  or grazed by late August. Fix: off the parcels the tufts are few and short. Where: `GroundCover.build` (`unfarmed`).
+- **No zebra crossing in any village (qa2, qa3).** Fix: white bands 0.5 m wide, 2.5 m long and 0.5 m apart across the
+  carriageway, a few metres before the side-road junction nearest the middle of each built-up stretch (and a
+  quarter of the way in on stretches over 600 m), following the grade. Where: `Road.crossings`.
+- **Verge tufts in rows (qa1 to qa3).** Tufts spread evenly over both verges read as planted rows. Fix: a mown strip
+  along the asphalt, then a band of tall dry grass at the field edge whose width comes and goes along the road. Where:
+  `GroundCover.build`.
+- **Vines read as clipped hedges (qa3, finding 7).** Every segment of a vineyard cell had the same shade: the instance
+  tint hashed the heading, which a cell's rows share. Fix: tint by position, height per segment, shoots above the
+  trimmed top, a stake every 6 m standing above the leaves, a vine missing here and there. Where:
+  `GroundCover.vineGeometry`, `postGeometry`, `vineRow`.
 
 ## Data and bakes
 

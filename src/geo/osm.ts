@@ -29,6 +29,8 @@ export interface Building {
   explicitRoof?: boolean;
   /** Timber upper storey forced on or off by a route scene (osmTags "serpentine:wood_top"); random otherwise. */
   woodTop?: boolean;
+  /** OSM height or building:levels was tagged (otherwise the height is a guess from the kind). */
+  tagged?: boolean;
 }
 
 /** Open land cover that changes ground shading and ground cover. */
@@ -291,6 +293,14 @@ function ringArea(r: Float32Array): number {
   return Math.abs(a) / 2;
 }
 
+function inRing(x: number, z: number, r: Float32Array): boolean {
+  let c = false;
+  for (let i = 0, j = r.length - 2; i < r.length; j = i, i += 2) {
+    if (r[i + 1] > z !== r[j + 1] > z && x < ((r[j] - r[i]) * (z - r[i + 1])) / (r[j + 1] - r[i + 1]) + r[i]) c = !c;
+  }
+  return c;
+}
+
 function ringBbox(r: Float32Array): [number, number, number, number] {
   let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
   for (let i = 0; i < r.length; i += 2) {
@@ -457,6 +467,7 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
       buildings.push({
         ring, height: tiny ? 3.2 : siloH && silo ? siloH : buildingHeight(t), roof: silo && !roofTag ? 'flat' : roof, kind: silo ? 'silo' : shed ? 'shed' : t.building,
         levels: Number.isFinite(levels) ? levels : undefined,
+        tagged: !!t.height || Number.isFinite(levels),
         wallColour: t['building:colour'], roofColour: t['roof:colour'], name: t.name, explicitRoof: !!roofTag,
         woodTop: t['serpentine:wood_top'] === undefined ? undefined : t['serpentine:wood_top'] === 'yes',
       });
@@ -476,6 +487,15 @@ export function parseOsm(route: Route, elements: OsmElement[]): OsmWorld {
       roads.push({ pts, kind: t.highway, width: ROAD_WIDTH[t.highway] ?? 4 });
     }
   }
+  // a mairie mapped as a point inside an untagged building (Berru): that building is the mairie
+  for (const p of pois) {
+    if (p.kind !== 'townhall') continue;
+    const b = buildings.find((b) => b.kind === 'yes' && inRing(p.x, p.z, b.ring));
+    if (b) {
+      b.kind = 'townhall';
+      b.name ??= p.name ?? 'Mairie';
+    }
+  }
   return { forests, water, buildings, roads, trees: new Float32Array(trees), cover, barriers, pois, towers, places };
 }
 
@@ -493,6 +513,7 @@ function poiKind(t: Record<string, string>): string | null {
   if (t.highway === 'bus_stop') return 'bus_stop';
   if (t.highway === 'street_lamp') return 'street_lamp';
   if (t.amenity === 'bench') return 'bench';
+  if (t.amenity === 'townhall') return 'townhall';
   if (t.amenity === 'shelter') return 'shelter';
   if (t.historic === 'wayside_cross' || t.man_made === 'cross' || t.summit_cross === 'yes') return 'cross';
   if (t.historic === 'wayside_shrine') return 'shrine';

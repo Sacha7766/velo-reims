@@ -68,6 +68,23 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 const SETTINGS_KEY = 'serpentine.settings';
 
+/**
+ * Graphics for a rider who never chose: Balanced on the base Apple M1 and M2 and on Intel graphics, whose GPUs have a
+ * fraction of the cores of the Pro and Max chips Beautiful was tuned on; Beautiful elsewhere. The adaptive
+ * resolution still goes down from there when a frame runs late.
+ */
+function defaultQuality(): AppSettings['quality'] {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2');
+    const info = gl?.getExtension('WEBGL_debug_renderer_info');
+    const gpu = gl && info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : '';
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    return /Apple M[12](?!\s*(Pro|Max|Ultra))|Intel/i.test(gpu) ? 'medium' : 'high';
+  } catch {
+    return 'high';
+  }
+}
+
 /** Settings of the active rider profile. */
 export function loadSettings(): AppSettings {
   // settings saved before the name was a setting take it from the rider's profile
@@ -78,7 +95,7 @@ export function loadSettings(): AppSettings {
   } catch {
     /* storage blocked */
   }
-  return defaults;
+  return { ...defaults, quality: defaultQuality() };
 }
 
 export function saveSettings(s: AppSettings) {

@@ -579,6 +579,11 @@ export class RouteIndex {
    * along the main polyline, road elevation there, and whether it lies on a turnaround
    * (then index/f point at the route end it belongs to).
    */
+  /** Route sample i's position (x, z). */
+  at(i: number): [number, number] {
+    return [this.route.x[i], this.route.z[i]];
+  }
+
   nearest(x: number, z: number, maxDist: number): { index: number; dist: number; f: number; ele: number; turn: boolean } {
     const r = this.route;
     const c = this.cell;

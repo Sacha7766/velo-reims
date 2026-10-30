@@ -19,7 +19,7 @@ import { applyTime, atmo, clearTunnels, TIMES } from './atmosphere.ts';
 import { Buildings } from './Buildings.ts';
 import { CameraRig, type CameraMode } from './CameraRig.ts';
 import { Rider, type RiderStyle } from './Rider.ts';
-import { pavements, Road } from './Road.ts';
+import { crossings, pavements, Road } from './Road.ts';
 import { Sky } from './Sky.ts';
 import { Terrain } from './Terrain.ts';
 import { TerrainShadow } from './TerrainShadow.ts';
@@ -304,8 +304,9 @@ export class Engine {
     this.timeId = id;
     const preset = TIMES.find((x) => x.id === id) ?? TIMES[0];
     const sun = this.biome.sun?.[preset.id];
-    const t = sun ? { ...preset, sunElevation: sun[0], sunAzimuth: sun[1] } : preset;
+    const t = { ...preset, ...this.biome.light?.[preset.id], ...(sun ? { sunElevation: sun[0], sunAzimuth: sun[1] } : {}) };
     applyTime(t);
+    atmo.uWarmHaze.value = this.biome.warmHaze ?? 0;
     this.updateEnvironment();
     // valley-fog inversions sit a fixed height above the valley floor of the route
     atmo.uFogTop.value = t.fogAbove !== undefined && this.world ? this.world.route.minEle + t.fogAbove : -1e4;
@@ -422,7 +423,12 @@ export class Engine {
       // roads and driveways join ours
       const towns = route.category !== 'city' && biome.posts === 'fr' ? builtUpRuns(route, osm) : [];
       const junctions = towns.length ? junctionsAlong(route, index, osm) : [];
+      // before anything is placed on the ground there: it comes up to the pavements (the plain's villages; the
+      // mountain villages' streets keep the road profile their review approved)
+      if (towns.length && biome.fieldSeason) terrain.setTowns(towns);
       if (towns.length) road.add(pavements(route, halfWidth, towns, junctions, (x, z) => terrain.groundHeight(x, z)));
+      const zebras = towns.length ? crossings(route, halfWidth, towns, junctions) : null;
+      if (zebras) road.add(zebras);
       if (route.category !== 'city') {
         world.roadside = new Roadside(
           route, halfWidth, (x, z) => terrain.groundHeight(x, z), biome,
@@ -529,6 +535,7 @@ export class Engine {
       screeAt: (x, z) => this.screeAt(x, z),
       fieldAt: this.biome.fieldSeason ? (x, z) => this.fieldAt(x, z) : undefined,
       photoAt: this.biome.fieldSeason ? (x, z, out) => world.terrain.photoAt(x, z, out) : undefined,
+      parcels: this.parcelCount > 0,
     });
     world.cover = cover;
     this.scene.add(cover);
@@ -539,6 +546,7 @@ export class Engine {
     this.waterMask = null;
     this.canopyMask = null;
     this.fieldMask = null;
+    this.parcelCount = parcels.length;
     if (!osm.water.length && !osm.cover.length && !osm.forests.length && !baked) return;
     const [bx0, bz0, bx1, bz1] = route.bounds;
     const m = CORRIDOR + 600;
@@ -701,6 +709,8 @@ export class Engine {
 
   private canopyMask: { data: Uint8ClampedArray; x0: number; z0: number; res: number; w: number; h: number } | null = null;
   private fieldMask: { data: Uint8Array; x0: number; z0: number; res: number; w: number; h: number } | null = null;
+  /** RPG parcels loaded for the route (GroundCover then guesses no crops outside them). */
+  private parcelCount = 0;
 
   /** What the field at a world point holds at the end of August (a geo/fields.ts state), its seed as the fraction; 0
    * where no field is known. */
@@ -752,6 +762,7 @@ export class Engine {
     clearWaterMask();
     setFieldMask(null);
     this.fieldMask = null;
+    this.parcelCount = 0;
     this.setBots([]);
     this.bots = [];
     const w = this.world;

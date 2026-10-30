@@ -137,8 +137,10 @@ export class Life extends THREE.Group {
   ) {
     this.route = route;
     this.groundAt = groundAt;
+    // the plain's roads link villages a few kilometres apart: a car every 10 to 30 s (open-road frames still showed
+    // none at 0.55)
     if (biome?.fieldSeason) {
-      this.gaps = 0.55;
+      this.gaps = 0.35;
       this.nextOncoming = 2;
     }
     const r = rng(7);

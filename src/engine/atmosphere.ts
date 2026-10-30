@@ -109,6 +109,8 @@ export const atmo = {
   uFogTop: { value: -1e4 },
   /** Extinction inside the fog layer, 1/m. */
   uFogLayer: { value: 1 / 170 },
+  /** Biome warmHaze: the low sun's haze away from it, pale blue (0) to warm (1). */
+  uWarmHaze: { value: 0 },
 };
 
 export function sunDirection(t: TimeOfDay): THREE.Vector3 {
@@ -138,6 +140,7 @@ uniform float uFogBase;
 uniform float uTime;
 uniform float uFogTop;
 uniform float uFogLayer;
+uniform float uWarmHaze;
 
 float atmoHash(vec2 p) { return fract(sin(dot(p, vec2(41.7, 289.3))) * 43758.5453); }
 float atmoNoise(vec2 p) {
@@ -164,6 +167,7 @@ vec3 atmoSky(vec3 rd) {
   vec2 sl = uSunDir.xz / max(length(uSunDir.xz), 1e-4);
   float sunSide = pow(clamp(0.5 + 0.5 * dot(fl, sl), 0.0, 1.0), 2.2);
   vec3 coolHorizon = mix(uZenith, vec3(0.82, 0.88, 0.96), 0.62);
+  coolHorizon = mix(coolHorizon, vec3(0.93, 0.85, 0.78), uWarmHaze * (1.0 - smoothstep(0.1, 0.5, uSunDir.y)));
   vec3 horizon = mix(coolHorizon, uHorizon, sunSide * (1.0 - smoothstep(0.35, 0.9, uSunDir.y)) + smoothstep(0.35, 0.9, uSunDir.y) * 0.5);
   vec3 col = mix(horizon, uZenith, 1.0 - exp(-h * 5.5));
   float sd = max(dot(rd, uSunDir), 0.0);

@@ -145,6 +145,8 @@ export class Terrain extends THREE.Group {
   private opts: Required<TerrainOptions>;
   /** Where the road passes under itself: the lower road's centre, direction and floor height. */
   private underpasses: { x: number; z: number; fx: number; fz: number; floor: number }[];
+  /** Built-up stretches [from, to] (m along the route): the ground comes up to the pavements there. */
+  private towns: [number, number][] = [];
   private roots: Node[] = [];
   private active = 0;
   private queue: { node: Node; d: number }[] = [];
@@ -187,6 +189,42 @@ export class Terrain extends THREE.Group {
 
   setDetail(detail: number) {
     this.opts.detail = detail;
+  }
+
+  /**
+   * The villages' built-up stretches (Signs.builtUpRuns), where kerbs and pavements line the road (Road.pavements):
+   * beside them the ground comes up to just under the pavement. Tiles already built along them are built again.
+   */
+  setTowns(towns: [number, number][]) {
+    this.towns = towns;
+    const { route } = this.opts;
+    const pts: number[] = [];
+    for (const [a, b] of towns) {
+      for (let s = a; s <= b; s += 8) {
+        const i = Math.min(route.n - 1, Math.round(s / route.step));
+        pts.push(route.x[i], route.z[i]);
+      }
+    }
+    const reach = this.opts.roadHalfWidth + 20;
+    const rebuild = (n: Node) => {
+      let near = false;
+      for (let k = 0; k < pts.length && !near; k += 2) {
+        near = pts[k] > n.minX - reach && pts[k] < n.maxX + reach && pts[k + 1] > n.minZ - reach && pts[k + 1] < n.maxZ + reach;
+      }
+      if (!near) return;
+      if (n.state === READY && n.mesh && n.z >= FLATTEN_Z) {
+        const old = n.mesh;
+        const mat = old.material as THREE.MeshLambertMaterial;
+        const tex = mat.map === this.fallbackTex ? null : mat.map;
+        this.remove(old);
+        old.geometry.dispose();
+        mat.dispose();
+        this.buildMesh(n, Math.min(n.z, DEM_MAX_Z), tex);
+        n.mesh!.visible = old.visible;
+      }
+      n.children?.forEach(rebuild);
+    };
+    this.roots.forEach(rebuild);
   }
 
   update(camera: THREE.Camera) {
@@ -435,6 +473,25 @@ export class Terrain extends THREE.Group {
     const s = near.f * route.step;
     if (!near.turn) for (const [a, b] of route.tunnels) if (s > a + 4 && s < b - 4) return h;
     const road = near.ele - 0.45;
+    // in a village the ground beside the kerbs meets the pavement (its top 0.18 m above the route), easing in over
+    // 20 m from each end of the stretch
+    let town = 0;
+    for (const [a, b] of this.towns) if (s > a && s < b) town = smooth01(Math.min(s - a, b - s) / 20);
+    if (town > 0 && near.dist <= roadHalfWidth + 17) {
+      const kerb = near.ele + 0.1;
+      const verge = road + (kerb - road) * smooth01((near.dist - roadHalfWidth + 0.2) / 1.0);
+      const w = 1 - smooth01((near.dist - roadHalfWidth - 2.5) / 14);
+      const flat = h + (verge - h) * w;
+      if (town >= 1) return flat;
+      // (the ends blend with the open road's profile below)
+      return flat * town + this.flattenOpen(h, near, s, road) * (1 - town);
+    }
+    return this.flattenOpen(h, near, s, road);
+  }
+
+  /** The open road's profile: embankments and cuts. */
+  private flattenOpen(h: number, near: { dist: number }, s: number, road: number): number {
+    const { roadHalfWidth } = this.opts;
     const cut = h > road + 0.5;
     if (cut && this.opts.cutWidth < 8) {
       // a real road cut: a near-vertical rock face of a few metres right at the verge, then a
