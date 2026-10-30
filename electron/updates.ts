@@ -3,24 +3,42 @@
 // anyone rides. One found later (a check every four hours) downloads in the background and installs when the
 // app quits, so it never cuts into a ride; the page shows a small notice with "Restart now".
 
-import { app, dialog, ipcMain, type BrowserWindow } from 'electron';
+import { app, dialog, ipcMain, shell, type BrowserWindow } from 'electron';
 import { autoUpdater } from 'electron-updater';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
+/** This fork's releases (electron-builder.yml publishes there too). */
+const OWNER = 'Sacha7766';
+const REPO = 'velo-reims';
 const EVERY_MS = 4 * 3600_000;
 /** The start-up check only takes over the window if it finds something this quickly. */
 const STARTUP_MS = 15_000;
 
+/**
+ * A copy signed ad hoc (the DMG GitHub Actions builds without a Developer ID) can't replace itself: Squirrel checks
+ * the new version's signature against the running one. That build says so in its package.json.
+ */
+function canSelfUpdate(): boolean {
+  try {
+    return JSON.parse(readFileSync(join(app.getAppPath(), 'package.json'), 'utf8')).selfUpdate !== false;
+  } catch {
+    return true;
+  }
+}
+
 export function attachUpdates(win: BrowserWindow, log: (...a: unknown[]) => void) {
   const wc = win.webContents;
+  const auto = app.isPackaged && canSelfUpdate();
   let ready: string | null = null;
-  let startup = app.isPackaged;
+  let startup = auto;
   let installing: { version: string; percent: number } | null = null;
   const showInstalling = () => wc.send('update:installing', installing);
 
   // SERPENTINE_UPDATE_URL points a test copy at a local folder of builds instead of GitHub
   const local = process.env.SERPENTINE_UPDATE_URL;
   autoUpdater.setFeedURL(
-    local ? { provider: 'generic', url: local } : { provider: 'github', owner: 'chrisperkles', repo: 'serpentine', releaseType: 'release' },
+    local ? { provider: 'generic', url: local } : { provider: 'github', owner: OWNER, repo: REPO, releaseType: 'release' },
   );
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
@@ -71,7 +89,7 @@ export function attachUpdates(win: BrowserWindow, log: (...a: unknown[]) => void
   });
 
   const check = () => void autoUpdater.checkForUpdates().catch((e: unknown) => log('update check failed', e));
-  if (app.isPackaged) {
+  if (auto) {
     check();
     setTimeout(() => {
       if (!installing) startup = false;
@@ -83,6 +101,17 @@ export function attachUpdates(win: BrowserWindow, log: (...a: unknown[]) => void
   return async function checkNow() {
     if (!app.isPackaged) {
       await dialog.showMessageBox(win, { message: 'Updates work in the installed app only.' });
+      return;
+    }
+    if (!auto) {
+      const { response } = await dialog.showMessageBox(win, {
+        message: 'This copy updates by hand.',
+        detail: `Version ${app.getVersion()}. Newer versions are DMGs on the GitHub releases page; install one over this copy.`,
+        buttons: ['Open Releases', 'Close'],
+        defaultId: 0,
+        cancelId: 1,
+      });
+      if (response === 0) void shell.openExternal(`https://github.com/${OWNER}/${REPO}/releases`);
       return;
     }
     if (ready) {

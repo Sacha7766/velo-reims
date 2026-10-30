@@ -1,0 +1,58 @@
+# The Mac app as a DMG on a GitHub release, built on a macOS runner without a Developer ID: signed ad hoc (Apple
+# silicon runs nothing unsigned), not notarized, so macOS asks once before the first start (see the release text).
+# Runs when package.json's version changes on main or the working branch, or by hand; a version that already has a
+# release only leaves the DMG as a run artifact.
+name: Mac app
+
+on:
+  push:
+    branches: [main, claude/nice-wright-t00ije]
+    paths: [package.json, .github/workflows/mac-app.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mac-app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dmg:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      # Icon Composer's layered icon needs Xcode 26's actool; take it when the runner has it
+      - name: Newest Xcode
+        run: |
+          x=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$x" ]; then echo "DEVELOPER_DIR=$x/Contents/Developer" >> "$GITHUB_ENV"; echo "using $x"; fi
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node electron/build.mjs
+      - name: DMG, signed ad hoc
+        run: >-
+          npx electron-builder --mac --publish never
+          -c.mac.identity=- -c.mac.hardenedRuntime=false -c.mac.notarize=false
+          -c.extraMetadata.selfUpdate=false
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - run: codesign --verify --deep --strict --verbose=2 dist-app/mac-arm64/Serpentine.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Serpentine-dmg
+          path: dist-app/*.dmg
+          retention-days: 14
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if gh release view "v$v" >/dev/null 2>&1; then echo "v$v is already released"; exit 0; fi
+          gh release create "v$v" "dist-app/Serpentine-$v.dmg" --target "$GITHUB_SHA" --title "Serpentine $v" \
+            --notes-file .github/mac-app-release.md --latest

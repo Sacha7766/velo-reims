@@ -37,6 +37,6 @@ dmg:
   artifactName: Serpentine-${version}.dmg
 publish:
   provider: github
-  owner: chrisperkles
-  repo: serpentine
+  owner: Sacha7766
+  repo: velo-reims
   releaseType: release

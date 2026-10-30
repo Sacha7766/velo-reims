@@ -22,6 +22,15 @@ blockmaps and `latest-mac.yml`. Without `--publish` it stops after the build; ev
 
 Installed copies only take a higher version, so the version in `package.json` always goes up.
 
+## Without a Developer ID (GitHub Actions)
+
+`.github/workflows/mac-app.yml` builds the DMG on a macOS runner when the version in `package.json` changes on
+`main` or the working branch (or by hand), and puts it on the release `v<version>` with
+`.github/mac-app-release.md` as its text. That build is signed ad hoc (`-c.mac.identity=-`, no hardened runtime,
+not notarized): it runs on Apple silicon, but macOS asks once (Privacy & Security ▸ Open Anyway), and it can't
+replace itself, so it carries `selfUpdate: false` and Help ▸ Check for Updates opens the releases page instead.
+Updates and releases point at this fork, `Sacha7766/velo-reims` (`electron/updates.ts`, `electron-builder.yml`).
+
 ## One-time setup
 
 1. **Developer ID Application certificate** for team AF86JFLJ32 in the login keychain (Xcode ▸ Settings ▸
