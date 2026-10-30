@@ -25,7 +25,7 @@ import { Terrain } from './Terrain.ts';
 import { TerrainShadow } from './TerrainShadow.ts';
 import { clearWaterMask, fieldColour, setFieldMask, setTerrainBiome, setWaterMask } from './terrainMaterial.ts';
 import { Vegetation } from './Vegetation.ts';
-import { GroundCover } from './GroundCover.ts';
+import { GroundCover, vineDirection } from './GroundCover.ts';
 import { farWoods } from './FarWoods.ts';
 import { Landmarks, loadRouteScene, type Placement } from './Landmarks.ts';
 import { ALPINE, biomeFor, type Biome } from './biome.ts';
@@ -672,6 +672,27 @@ export class Engine {
       if (s && sd[i + 3] > 200 && Math.abs(sd[i] - s * 16) <= 2) known[j] = s | (sd[i + 1] & 0xf0);
     }
     this.fieldMask = { data: known, x0, z0, res, w: cw, h: ch };
+    // the land mask's alpha: 0, or on a vineyard 1 + the direction of its rows (0..π in 254 steps), per 60 m cell as
+    // GroundCover plants the 3D rows near the road; the terrain draws the rows beyond them
+    const land = this.waterMask!.data;
+    const dirs = new Map<number, number>();
+    const groundAt = (x: number, z: number) => this.world?.terrain.groundHeight(x, z) ?? NaN;
+    for (let j = 0; j < known.length; j++) {
+      if ((known[j] & 15) !== VINES) {
+        land[j * 4 + 3] = 0;
+        continue;
+      }
+      const gx = Math.floor((x0 + ((j % cw) + 0.5) * res) / 60), gz = Math.floor((z0 + (Math.floor(j / cw) + 0.5) * res) / 60);
+      const cell = gx * 100003 + gz;
+      let a = dirs.get(cell);
+      if (a === undefined) {
+        const [ax, az] = vineDirection(gx, gz, groundAt);
+        a = 1 + Math.round(((Math.atan2(az, ax) + Math.PI) % Math.PI) / Math.PI * 254);
+        dirs.set(cell, a);
+      }
+      land[j * 4 + 3] = a;
+    }
+    tex.needsUpdate = true;
     const ftex = maskTexture(fx.getImageData(0, 0, cw, ch).data, cw, ch);
     ftex.colorSpace = THREE.SRGBColorSpace;
     colours.width = colours.height = states.width = states.height = 0;

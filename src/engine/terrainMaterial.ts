@@ -339,6 +339,20 @@ float tBump = 0.0;
       vec3 field = mix(stubble, crop, bare / max(bare + green, 1e-3)) * mix(1.0, det, 0.3) * wobble;
       base = mix(base, field, fieldW);
     }
+    // vineyards: rows 1.15 m apart, dark leaf over chalk and grass, in the direction the land mask's alpha gives
+    // (the 3D rows near the road stand on them); where a pixel spans more than a row, their mean
+    if (known > 0.0) {
+      float va = texelFetch(uWaterMask, ivec2(lmuv * vec2(textureSize(uWaterMask, 0))), 0).a;
+      if (va > 0.0) {
+        float th = (va * 255.0 - 1.0) / 254.0 * 3.14159265;
+        vec2 ad = vec2(cos(th), sin(th));
+        float across = (p.y * ad.x - p.x * ad.y) / 1.15;
+        float off = abs(fract(across + 0.5) - 0.5) * 1.15;
+        float leaf = mix(1.0 - smoothstep(0.2, 0.32, off), 0.48, smoothstep(0.25, 0.6, foot));
+        vec3 rows = mix(vec3(0.27, 0.26, 0.19), vec3(0.08, 0.13, 0.045), leaf) * mix(1.0, det, 0.2);
+        base = mix(base, rows, known);
+      }
+    }
     // verges: the photo's spring-green grass is olive and straw by now (its grey asphalt pixels become
     // verge grass further down)
     float lushVerge = smoothstep(0.015, 0.05, img.g - max(img.r, img.b) * 0.95);

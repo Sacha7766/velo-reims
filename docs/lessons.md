@@ -273,6 +273,11 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   masks are DataTextures sharing that copy. Unloading a world now disposes the textures its materials hold (village
   signs, models) and the props, traffic and landmarks it built. Where: `Terrain.loadTexture`,
   `Engine.buildWaterMask`, `Engine.unloadWorld`.
+- **No vine was planted since the fields became RPG states (qa2, qa3 at km 21.1 and 22.85).** `vineRow` still
+  compared `fieldAt` with the old OSM class code 3; the states put vines at 9 with the seed as a fraction, so every
+  segment was skipped. Fix: compare the state. Beyond the 3D rows' 24 m, vineyards were flat green: the terrain now
+  draws their rows, in the 3D rows' direction per 60 m cell, which the land mask's alpha carries. Where:
+  `GroundCover.vineRow`, `vineDirection`, `Engine.buildWaterMask`, `terrainMaterial.ts`.
 
 ## Capture and review
 

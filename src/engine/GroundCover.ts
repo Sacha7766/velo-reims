@@ -176,6 +176,20 @@ interface Chunk {
 // blur neighbouring fields together
 const FIELD_PHOTO = 14;
 
+/**
+ * The direction of the vine rows in a 60 m cell (x, z of its corner divided by 60): down the slope where there is
+ * one, else a direction of its own. The terrain draws far vineyards' rows the same way (Engine.buildWaterMask).
+ */
+export function vineDirection(gx: number, gz: number, groundHeight: (x: number, z: number) => number): [number, number] {
+  const cx = (gx + 0.5) * 60, cz = (gz + 0.5) * 60;
+  const sx = groundHeight(cx + 15, cz) - groundHeight(cx - 15, cz);
+  const sz = groundHeight(cx, cz + 15) - groundHeight(cx, cz - 15);
+  const l = Math.hypot(sx, sz);
+  // on the flat the rows keep a direction of their own per cell
+  const a = Math.abs(Math.sin(cx * 0.013 + cz * 0.029) * 4375.85) % Math.PI;
+  return l > 0.6 ? [sx / l, sz / l] : [Math.cos(a), Math.sin(a)];
+}
+
 export interface GroundCoverOptions {
   route: Route;
   index: RouteIndex;
@@ -653,13 +667,7 @@ export class GroundCover extends THREE.Group {
     const cell = gx * 100003 + gz;
     let dir = dirs.get(cell);
     if (!dir) {
-      const cx = (gx + 0.5) * 60, cz = (gz + 0.5) * 60;
-      const sx = groundHeight(cx + 15, cz) - groundHeight(cx - 15, cz);
-      const sz = groundHeight(cx, cz + 15) - groundHeight(cx, cz - 15);
-      const l = Math.hypot(sx, sz);
-      // on the flat the rows keep a direction of their own per cell
-      const a = Math.abs(Math.sin(cx * 0.013 + cz * 0.029) * 4375.85) % Math.PI;
-      dir = l > 0.6 ? [sx / l, sz / l] : [Math.cos(a), Math.sin(a)];
+      dir = vineDirection(gx, gz, groundHeight);
       dirs.set(cell, dir);
     }
     const [ax, az] = dir;
@@ -671,7 +679,7 @@ export class GroundCover extends THREE.Group {
       keys.add(key);
       const across = ri * 1.15, along = (si + 0.5) * 2;
       const px = along * ax - across * az, pz = along * az + across * ax;
-      if (Math.floor(px / 60) !== gx || Math.floor(pz / 60) !== gz || (this.o.fieldAt?.(px, pz) ?? 0) !== 3) continue;
+      if (Math.floor(px / 60) !== gx || Math.floor(pz / 60) !== gz || Math.floor(this.o.fieldAt?.(px, pz) ?? 0) !== VINES) continue;
       const near = index.nearest(px, pz, REACH + 8);
       if (near.index < i0 || near.index >= i1 || near.dist < this.o.halfWidth + 3) continue;
       const py = groundHeight(px, pz);
