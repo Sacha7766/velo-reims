@@ -211,7 +211,7 @@ export const PAVEMENT = 0.12;
 
 /**
  * Village kerbs and pavements from sign to sign: a kerb stone 13 cm high and a 1.5 m pavement behind it on both
- * sides, broken for 12 m where a side road or driveway joins. One mesh for the route.
+ * sides, dropped to the asphalt for about 10 m where a side road or driveway joins. One mesh for the route.
  */
 export function pavements(
   route: Route, halfWidth: number, towns: [number, number][], gaps: number[], groundAt: (x: number, z: number) => number,
@@ -253,19 +253,23 @@ export function pavements(
         const h = route.heading[i], rx = Math.cos(h) * side, rz = Math.sin(h) * side;
         // the asphalt's surface (Road lays it 6 cm above the route)
         const y = route.ele[i] + 0.06;
-        // none across a side road or driveway, nor where the ground falls away beside the road: half a metre
-        // above the ground beside it, a pavement read as a concrete slab on the verge
+        // none where the ground falls away beside the road: half a metre above the ground beside it, a pavement
+        // read as a concrete slab on the verge
         const g = groundAt(route.x[i] + rx * (halfWidth + 1.8), route.z[i] + rz * (halfWidth + 1.8));
-        if (gaps.some((j) => Math.abs(j - i * route.step) < 6) || !(g > y - 0.45)) {
+        if (!(g > y - 0.45)) {
           if (run.length) runs.push(run);
           run = [];
           continue;
         }
-        run.push(prof.map(([o, dy]) => [route.x[i] + rx * (halfWidth + o), y + dy, route.z[i] + rz * (halfWidth + o)]));
+        // across a side road or driveway the kerb and the pavement come down to the asphalt (a dropped kerb): cut
+        // there, each end's face stood over the dip beside the road's edge
+        const drop = gaps.some((j) => Math.abs(j - i * route.step) < 5);
+        run.push(prof.map(([o, dy], k) => [route.x[i] + rx * (halfWidth + o), y + (drop && k >= 1 && k <= 4 ? Math.min(dy, 0.02) : dy), route.z[i] + rz * (halfWidth + o)]));
       }
       if (run.length) runs.push(run);
       for (const r of runs) {
-        if (r.length < 2) continue;
+        // no pavement islands between banks a few metres apart: ramped up and down again they stood as wedges
+        if (r.length < 6) continue;
         // at both ends the pavement ramps down into the ground and the kerb to the asphalt, as at a driveway: a cut
         // end stood above the verge as a slab, and a kerb sunk to the ground under the road's edge (0.4 m below
         // it) dived away as a wedge

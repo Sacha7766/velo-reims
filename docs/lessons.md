@@ -244,9 +244,11 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   slab, a ramped one as a grey wedge. Fix: the terrain knows the plain's built-up stretches (`Terrain.setTowns`,
   set before anything is placed there) and brings the ground up to just under the pavement, easing in over 20 m
   at each end, rebuilding the tiles already loaded. At each end of a stretch the pavement ramps down to the ground
-  and the kerb to the asphalt, as at a driveway (sunk to the ground under the road's edge, the kerb dived away as a
-  wedge). The mountain villages keep their approved profile. Where: `Terrain.flatten`, `Road.pavements`,
-  `Engine.loadWorld`.
+  and the kerb to the asphalt (sunk to the ground under the road's edge, the kerb dived away as a wedge). Side roads
+  and driveways no longer break the pavement: the kerb drops to the asphalt across them. Cut there, each end's face
+  stood over the dip the road leaves beside its edge (the terrain grid, 1.6 m, can't come up within the kerb's
+  width), and short stretches between driveways stood as wedges (qa4-10920). The mountain villages keep their
+  approved profile. Where: `Terrain.flatten`, `Road.pavements`, `Engine.loadWorld`.
 - **A 4 m white pillar on a Berru pavement (qa3, finding 12).** Walls and lean-tos mapped as narrow buildings, and
   garden sheds, each took a storey and a hipped roof; untagged sheds took the 13 m guessed for a commercial block and
   towered over the houses. Fix (Champagne): under 4 m² nothing is drawn; under 14 m² or 2.6 m wide, 2.2–2.6 m high,
