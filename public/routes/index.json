@@ -219,5 +219,82 @@
     "gain": 136,
     "startEle": 81,
     "endEle": 81
+  },
+  {
+    "id": "coteaux-saint-thierry",
+    "name": "Boucle des coteaux de Saint-Thierry",
+    "region": "Marne, FR",
+    "category": "rolling",
+    "loop": true,
+    "lengthKm": 33.18,
+    "gain": 468,
+    "startEle": 138.3,
+    "endEle": 138.3
+  },
+  {
+    "id": "loivre-bourgogne",
+    "name": "Boucle de Loivre et Bourgogne",
+    "region": "Marne, FR",
+    "category": "flat",
+    "loop": true,
+    "lengthKm": 30.1,
+    "gain": 112,
+    "startEle": 68,
+    "endEle": 68
+  },
+  {
+    "id": "petite-montagne",
+    "name": "Boucle de la Petite Montagne",
+    "region": "Marne, FR",
+    "category": "rolling",
+    "loop": true,
+    "lengthKm": 30.88,
+    "gain": 186,
+    "startEle": 96.5,
+    "endEle": 96.5
+  },
+  {
+    "id": "ardre-ecaille",
+    "name": "Boucle de l'Ardre et de L'Écaille",
+    "region": "Marne, FR",
+    "category": "rolling",
+    "loop": true,
+    "lengthKm": 28.73,
+    "gain": 363,
+    "startEle": 96.5,
+    "endEle": 96.5
+  },
+  {
+    "id": "grands-crus",
+    "name": "Boucle des Grands Crus",
+    "region": "Marne, FR",
+    "category": "rolling",
+    "loop": true,
+    "lengthKm": 32.77,
+    "gain": 419,
+    "startEle": 145,
+    "endEle": 145
+  },
+  {
+    "id": "foret-montagne-de-reims",
+    "name": "Boucle de la forêt de la Montagne de Reims",
+    "region": "Marne, FR",
+    "category": "rolling",
+    "loop": true,
+    "lengthKm": 36.84,
+    "gain": 498,
+    "startEle": 169.3,
+    "endEle": 169.3
+  },
+  {
+    "id": "d64-vesle",
+    "name": "Boucle de la D64 et de la Vesle",
+    "region": "Marne, FR",
+    "category": "flat",
+    "loop": true,
+    "lengthKm": 41.3,
+    "gain": 204,
+    "startEle": 132.8,
+    "endEle": 132.8
   }
 ]

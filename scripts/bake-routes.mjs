@@ -46,6 +46,31 @@ const PRESETS = [
   // Warmeriville → over the plateau to Ménil-Lépinois → Aussonce → La Neuville-en-Tourne-à-Fuy → Bétheniville →
   // down the Suippe through Pontfaverger, Selles, Saint-Masmes and Heutrégiville
   { id: 'suippe-amont', name: 'Boucle de la Haute Suippe', region: 'Marne, FR', category: 'rolling', loop: true, from: [4.22124, 49.34998], via: [[4.28485, 49.37826], [4.36786, 49.2933]] },
+  // Villages west and south of Reims (2026-10-30 extract): the Massif de Saint-Thierry, the Petite Montagne, the
+  // Ardre, the Montagne de Reims and the Vesle. Points are on each village's through road; where the centre is a
+  // dead end off it, the point sits where the loop passes
+  // Saint-Thierry → Merfy → Macô → Châlons-sur-Vesle → by Chenay → Trigny → over the massif to Prouilly and Pévy →
+  // Bouvancourt → Hermonville → by Villers-Franqueux → Pouillon → Thil
+  { id: 'coteaux-saint-thierry', name: 'Boucle des coteaux de Saint-Thierry', region: 'Marne, FR', category: 'rolling', loop: true, from: [3.96487, 49.30451], via: [[3.9475, 49.29582], [3.94439, 49.28344], [3.91774, 49.28947], [3.92631, 49.29685], [3.89525, 49.30268], [3.85024, 49.29821], [3.84262, 49.31047], [3.83432, 49.33776], [3.90954, 49.33581], [3.94233, 49.32797], [3.94958, 49.31442]] },
+  // Loivre → Berméricourt → D 30 to Bourgogne-Fresne → Fresne-lès-Reims → Bétheny → along the canal to Courcy
+  { id: 'loivre-bourgogne', name: 'Boucle de Loivre et Bourgogne', region: 'Marne, FR', category: 'flat', loop: true, from: [3.97973, 49.34641], via: [[3.9931, 49.35732], [4.07134, 49.34912], [4.09725, 49.33792], [4.05349, 49.28451], [4.002, 49.32327]] },
+  // Gueux → Vrigny → Coulommes-la-Montagne → Pargny → Jouy → the D 26 through the vines to Sacy, Écueil and Chamery →
+  // down to Villers-aux-Nœuds → Champfleury → Les Mesneux → Ormes → Thillois. No road crosses the Petite Montagne's
+  // woods between Chamery and Courmas, so its west side is the Ardre loop
+  { id: 'petite-montagne', name: 'Boucle de la Petite Montagne', region: 'Marne, FR', category: 'rolling', loop: true, from: [3.90954, 49.25106], via: [[3.91207, 49.23508], [3.91085, 49.22582], [3.92502, 49.22011], [3.92859, 49.21564], [3.95201, 49.19813], [3.95512, 49.18772], [3.95709, 49.17382], [3.99749, 49.19426], [3.96371, 49.2208], [3.95663, 49.23816], [3.9538, 49.25303]] },
+  // Gueux → Muizon → Rosnay → Janvry and L'Écaille → Méry-Prémecy → Saint-Euphraise → Bouilly → Courmas →
+  // Jouy → Pargny → Coulommes-la-Montagne → Vrigny
+  { id: 'ardre-ecaille', name: "Boucle de l'Ardre et de L'Écaille", region: 'Marne, FR', category: 'rolling', loop: true, from: [3.90954, 49.25106], via: [[3.88862, 49.27585], [3.8622, 49.25386], [3.87471, 49.24598], [3.86155, 49.22692], [3.89242, 49.21267], [3.88869, 49.19918], [3.90873, 49.19054], [3.91085, 49.22582], [3.91207, 49.23508]] },
+  // Ludes → Mailly-Champagne → Puisieulx → Sillery → Verzenay → Verzy → through the forest to Louvois →
+  // Ville-en-Selve → the D 33 over the Montagne back to Ludes
+  { id: 'grands-crus', name: 'Boucle des Grands Crus', region: 'Marne, FR', category: 'rolling', loop: true, from: [4.08028, 49.15498], via: [[4.11131, 49.15808], [4.11396, 49.1931], [4.13119, 49.19757], [4.16304, 49.18398], [4.14487, 49.1602], [4.16259, 49.14948], [4.1174, 49.10348], [4.0814, 49.12602]] },
+  // Rilly-la-Montagne → Villers-Allerand → Sermiers → Nanteuil-la-Forêt → Saint-Imoges → Germaine →
+  // Ville-en-Selve → the D 33 to Ludes → Chigny-les-Roses
+  { id: 'foret-montagne-de-reims', name: 'Boucle de la forêt de la Montagne de Reims', region: 'Marne, FR', category: 'rolling', loop: true, from: [4.04459, 49.16357], via: [[4.02462, 49.16598], [3.98389, 49.15954], [3.97645, 49.16185], [3.92093, 49.13185], [3.97503, 49.11033], [4.03009, 49.11336], [4.0814, 49.12602], [4.08028, 49.15498], [4.06279, 49.15678]] },
+  // Cernay → the D 64 under the Mont de Berru to Nogent-l'Abbesse → Beine-Nauroy → Prunay → round by Val-de-Vesle to
+  // Beaumont-sur-Vesle → Sillery → Taissy → Saint-Léonard (Cernay's first 2 km are ridden out and back: the D 64 leaves
+  // the D 364 there)
+  { id: 'd64-vesle', name: 'Boucle de la D64 et de la Vesle', region: 'Marne, FR', category: 'flat', loop: true, from: [4.10503, 49.26278], via: [[4.15774, 49.25115], [4.21517, 49.24895], [4.18241, 49.19684], [4.21397, 49.17814], [4.18435, 49.17325], [4.13119, 49.19757], [4.09375, 49.21442], [4.09665, 49.22131]] },
 ];
 
 const args = process.argv.slice(2);

@@ -40,6 +40,13 @@ One brief per route, written before visual work starts (`_template.md`):
 | Mont de Berru (Reims) | [mont-de-berru.md](mont-de-berru.md) | `research/champagne/board-*.jpg` (regional) |
 | Massif de Saint-Thierry (Reims) | [massif-de-saint-thierry.md](massif-de-saint-thierry.md) | `research/champagne/board-*.jpg` (regional) |
 | Haute Suippe (Reims) | [suippe-amont.md](suippe-amont.md) | `research/champagne/board-*.jpg` (regional) |
+| Coteaux de Saint-Thierry (Reims) | [coteaux-saint-thierry.md](coteaux-saint-thierry.md) | `research/champagne/board-*.jpg` (regional) |
+| Loivre et Bourgogne (Reims) | [loivre-bourgogne.md](loivre-bourgogne.md) | `research/champagne/board-*.jpg` (regional) |
+| Petite Montagne (Reims) | [petite-montagne.md](petite-montagne.md) | `research/champagne/board-*.jpg` (regional) |
+| Ardre et L'Écaille (Reims) | [ardre-ecaille.md](ardre-ecaille.md) | `research/champagne/board-*.jpg` (regional) |
+| Grands Crus (Reims) | [grands-crus.md](grands-crus.md) | `research/champagne/board-*.jpg` (regional) |
+| Forêt de la Montagne de Reims | [foret-montagne-de-reims.md](foret-montagne-de-reims.md) | `research/champagne/board-*.jpg` (regional) |
+| D64 et Vesle (Reims) | [d64-vesle.md](d64-vesle.md) | `research/champagne/board-*.jpg` (regional) |
 
 The other presets have no brief yet: Wachau, Neusiedler See, Central Park, Sydney and the Vienna Ring. Their QA findings are in `research/qa-presets.md` (2026-10-11; the white ground at
 Stelvio, the turnarounds, houses on the road and Ventoux's summit tower were fixed on 2026-10-12).

@@ -18,6 +18,13 @@ Baked by `node scripts/bake-routes.mjs [id|--all]` from BRouter (OSM routing, `f
 | central-park | Central Park Loop | city | 9.89 | 55 | yes | Counter-clockwise: East Drive north, around Harlem Meer, West Drive south, Center Drive east. Start at 72nd St / East Drive |
 | sydney | Sydney Coast & Park | city | 17.66 | 228 | yes | Bondi Beach, Tamarama, Bronte, Clovelly, Coogee, Randwick, through Centennial Park, Oxford St back to Bondi. Roads only, no steps |
 | vienna-ring | Wiener Ringstraße | city | 5.88 | 16 | yes | Clockwise from Stubenring over Parkring, Kärntner Ring, Opernring, Burgring, Universitätsring, Schottenring and Franz-Josefs-Kai |
+| coteaux-saint-thierry | Boucle des coteaux de Saint-Thierry | rolling | 33.18 | 468 | yes | Saint-Thierry, Merfy, Macô, Châlons-sur-Vesle, by Chenay, Trigny, Prouilly, Pévy, Bouvancourt, Hermonville, by Villers-Franqueux, Pouillon, Thil |
+| loivre-bourgogne | Boucle de Loivre et Bourgogne | flat | 30.10 | 112 | yes | Loivre, Berméricourt, the D 30 to Bourgogne-Fresne, Fresne-lès-Reims, Bétheny, Courcy |
+| petite-montagne | Boucle de la Petite Montagne | rolling | 30.88 | 186 | yes | Gueux, Vrigny, Coulommes-la-Montagne, Pargny, Jouy, the D 26 through Sacy, Écueil and Chamery, Villers-aux-Nœuds, Les Mesneux, Ormes, Thillois |
+| ardre-ecaille | Boucle de l'Ardre et de L'Écaille | rolling | 28.73 | 363 | yes | Gueux, Muizon, Rosnay, Janvry and L'Écaille, Méry-Prémecy, Saint-Euphraise, Bouilly, Courmas, Jouy, Pargny, Coulommes, Vrigny |
+| grands-crus | Boucle des Grands Crus | rolling | 32.77 | 419 | yes | Ludes, Mailly-Champagne, Puisieulx, Sillery, Verzenay, Verzy, the forest to Louvois, Ville-en-Selve, the D 33 back to Ludes; one sharp corner at Louvois |
+| foret-montagne-de-reims | Boucle de la forêt de la Montagne de Reims | rolling | 36.84 | 498 | yes | Rilly-la-Montagne, Villers-Allerand, Sermiers, Nanteuil-la-Forêt, Saint-Imoges, Germaine, Ville-en-Selve, the D 33 to Ludes, Chigny-les-Roses |
+| d64-vesle | Boucle de la D64 et de la Vesle | flat | 41.30 | 204 | yes | Cernay, the D 64 to Nogent-l'Abbesse, Beine-Nauroy, Prunay, Val-de-Vesle, Beaumont-sur-Vesle, Sillery, Taissy, Saint-Léonard; Cernay's first 2 km out and back |
 
 Notes: the six climbs and their numbers were not re-fetched, only `category`/`loop` were added. Do not put via points on side streets or footways next to the road; BRouter turns them into out-and-back spurs.
 
