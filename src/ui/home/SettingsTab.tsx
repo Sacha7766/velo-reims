@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { HELMETS, helmetById, OUTFITS, outfitById, type Outfit } from '../../engine/outfits.ts';
 import { clearTileCache, tileCacheStats } from '../../geo/tileCache.ts';
 import { activeProfile, MAIN, removeProfile, switchProfile } from '../../sim/profiles.ts';
 import { openRidesFolder, type AppSettings } from '../../sim/storage.ts';
 import { DrivetrainSection } from './DrivetrainSection.tsx';
+import { KitPreview } from './KitPreview.tsx';
 import { ColorField, DevicesPanel, NumberField } from './shared.tsx';
 import { StravaCard } from './StravaCard.tsx';
 
@@ -30,11 +32,6 @@ export function SettingsTab({
           <NumberField label="Weight" unit="kg" value={settings.weight} min={35} max={150} onChange={(v) => set('weight', v)} />
           <NumberField label="Bike" unit="kg" value={settings.bikeWeight} min={5} max={20} step={0.5} onChange={(v) => set('bikeWeight', v)} />
         </div>
-        <div className="kit">
-          <ColorField label="Jersey" value={settings.kit} onChange={(v) => set('kit', v)} />
-          <ColorField label="Stripe" value={settings.accent} onChange={(v) => set('accent', v)} />
-          <ColorField label="Frame" value={settings.bike} onChange={(v) => set('bike', v)} />
-        </div>
         {activeProfile() !== MAIN && (
           <button
             className="btn ghost small remove-rider"
@@ -48,6 +45,8 @@ export function SettingsTab({
           </button>
         )}
       </section>
+
+      <KitSection settings={settings} set={set} />
 
       <section>
         <h2>Trainer</h2>
@@ -131,5 +130,92 @@ export function SettingsTab({
         </div>
       </section>
     </div>
+  );
+}
+
+/** The jersey (its print when it has one) beside the bibs, as on the rider. */
+function KitSwatch({ o }: { o: Outfit }) {
+  return (
+    <svg className="kit-swatch" viewBox="0 0 40 24" aria-hidden="true">
+      {o.print ? (
+        <>
+          <rect width="24" height="24" fill={o.print[0]} />
+          <path d="M0 24 L12 4 L24 24 Z" fill={o.print[1]} />
+          <path d="M12 4 L24 0 L24 24 Z" fill={o.print[2]} />
+        </>
+      ) : (
+        <>
+          <rect width="24" height="24" fill={o.jersey} />
+          <rect x="18" width="6" height="24" fill={o.panel} />
+        </>
+      )}
+      <rect x="26" width="14" height="24" fill={o.bibs} />
+    </svg>
+  );
+}
+
+/**
+ * The rider's kit: an outfit (jersey, bibs, white mid-calf socks and white shoes), the helmet's colourway and the
+ * frame, beside the rider wearing them. "Your colours" brings back the jersey and stripe pickers.
+ */
+function KitSection({
+  settings,
+  set,
+}: {
+  settings: AppSettings;
+  set: <K extends keyof AppSettings>(k: K, v: AppSettings[K]) => void;
+}) {
+  const outfit = outfitById(settings.outfit);
+  const helmet = helmetById(settings.helmet);
+  const style = { kit: settings.kit, accent: settings.accent, bike: settings.bike, outfit, helmet };
+  return (
+    <section className="kit-section">
+      <h2>Kit</h2>
+      <div className="kit-pick">
+        <fieldset className="kit-options">
+          <legend>Jersey and bibs</legend>
+          {OUTFITS.map((o) => (
+            <label key={o.id} className="kit-option">
+              <input type="radio" name="outfit" checked={settings.outfit === o.id} onChange={() => set('outfit', o.id)} />
+              <KitSwatch o={o} />
+              <span>{o.label}</span>
+            </label>
+          ))}
+          <label className="kit-option">
+            <input type="radio" name="outfit" checked={!outfit} onChange={() => set('outfit', 'custom')} />
+            <svg className="kit-swatch" viewBox="0 0 40 24" aria-hidden="true">
+              <rect width="24" height="24" fill={settings.kit} />
+              <rect x="18" width="6" height="24" fill={settings.accent} />
+              <rect x="26" width="14" height="24" fill="#141516" />
+            </svg>
+            <span>Your colours</span>
+          </label>
+        </fieldset>
+        <KitPreview style={style} />
+      </div>
+      {!outfit && (
+        <div className="kit">
+          <ColorField label="Jersey" value={settings.kit} onChange={(v) => set('kit', v)} />
+          <ColorField label="Stripe" value={settings.accent} onChange={(v) => set('accent', v)} />
+        </div>
+      )}
+      <fieldset className="helmet-options">
+        <legend>Helmet, S-Works Evade 4</legend>
+        {HELMETS.map((h) => (
+          <label key={h.id} className="helmet-option">
+            <input type="radio" name="helmet" checked={helmet.id === h.id} onChange={() => set('helmet', h.id)} />
+            <svg viewBox="0 0 22 22" aria-hidden="true">
+              <circle cx="11" cy="11" r="11" fill={h.shell} />
+              <path d="M11 0 A11 11 0 0 1 22 11 L11 11 Z" fill={h.trim} />
+            </svg>
+            <span>{h.label}</span>
+          </label>
+        ))}
+      </fieldset>
+      <div className="kit">
+        <ColorField label="Frame" value={settings.bike} onChange={(v) => set('bike', v)} />
+      </div>
+      <p className="kit-note">White mid-calf socks and white shoes with every kit.</p>
+    </section>
   );
 }

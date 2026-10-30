@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { patchMaterial } from './atmosphere.ts';
 import { loadModel } from './Landmarks.ts';
+import type { Helmet, Outfit } from './outfits.ts';
 
 const WHEEL_R = 0.34;
 const BB = new THREE.Vector3(0, 0.27, -0.09);
@@ -18,6 +19,77 @@ export interface RiderStyle {
   accent: string;
   bike: string;
   ghost?: boolean;
+  /** A whole outfit (outfits.ts): jersey, bibs, socks and shoes; kit and accent are ignored then. */
+  outfit?: Outfit;
+  helmet?: Helmet;
+}
+
+const srgb = (c: string) => new THREE.Color(c).convertSRGBToLinear();
+
+/**
+ * Cloth: a soft sheen at grazing angles (the jersey's satin knit, the bibs' Lycra), which the plain matte colour
+ * lacked. The rider is a few thousand pixels, so the physical material's extra cost is small.
+ */
+function cloth(color: string, rough: number, sheen: number, key: string): THREE.MeshPhysicalMaterial {
+  const m = new THREE.MeshPhysicalMaterial({ color: srgb(color), roughness: rough, sheen, sheenRoughness: 0.5 });
+  m.sheenColor.copy(srgb(color)).lerp(new THREE.Color(1, 1, 1), 0.45);
+  return patchMaterial(m, { key });
+}
+
+/**
+ * A jersey's folded-paper print: facets of three tones on a triangular lattice in the part's own space, with a
+ * faint crease along each fold. Tones and scale are an interpretation of the "PAS Origami" name.
+ */
+function origami(m: THREE.MeshPhysicalMaterial, tones: [string, string, string]) {
+  const prev = m.onBeforeCompile;
+  m.onBeforeCompile = (shader, renderer) => {
+    shader.uniforms.uPrintA = { value: srgb(tones[0]) };
+    shader.uniforms.uPrintB = { value: srgb(tones[1]) };
+    shader.uniforms.uPrintC = { value: srgb(tones[2]) };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vKit;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvKit = position;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vKit;\nuniform vec3 uPrintA;\nuniform vec3 uPrintB;\nuniform vec3 uPrintC;')
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+{
+  vec2 q = vec2(vKit.x + vKit.z * 0.7, vKit.y) / 0.11;
+  vec2 g = vec2(q.x - q.y * 0.57735, q.y * 1.1547);
+  vec2 i = floor(g), f = fract(g);
+  float up = step(1.0, f.x + f.y);
+  float h = fract(sin(dot(i * 2.0 + vec2(up, 0.0), vec2(12.9898, 78.233))) * 43758.5453);
+  vec3 tone = h < 0.45 ? uPrintA : h < 0.8 ? uPrintB : uPrintC;
+  float e = up > 0.5 ? min(min(1.0 - f.x, 1.0 - f.y), f.x + f.y - 1.0) : min(min(f.x, f.y), 1.0 - f.x - f.y);
+  diffuseColor.rgb = tone * mix(0.9, 1.0, smoothstep(0.0, 0.06, e));
+}`,
+      );
+    prev.call(m, shader, renderer);
+  };
+}
+
+/**
+ * Mid-calf socks: the leg's skin below `top` (the shin's own space runs knee −0.235 to ankle +0.235) takes the
+ * sock colour, with a ribbed cuff, over the model's ankle-high sock.
+ */
+function sockedShin(m: THREE.MeshStandardMaterial, sock: string, top: number) {
+  const prev = m.onBeforeCompile;
+  m.onBeforeCompile = (shader, renderer) => {
+    shader.uniforms.uSock = { value: srgb(sock) };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying float vLegY;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLegY = position.y;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vLegY;\nuniform vec3 uSock;')
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+if (vLegY > ${top.toFixed(3)}) diffuseColor.rgb = uSock * (vLegY < ${(top + 0.016).toFixed(3)} ? 0.9 : 1.0);`,
+      )
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\nif (vLegY > ${top.toFixed(3)}) roughnessFactor = 0.95;`);
+    prev.call(m, shader, renderer);
+  };
 }
 
 function std(color: THREE.ColorRepresentation, rough = 0.6, metal = 0) {
@@ -73,6 +145,8 @@ export class Rider extends THREE.Group {
   private bike!: THREE.Group;
   /** 0 = seated, 1 = out of the saddle (blended). */
   stand = 0;
+  /** Settles once the modelled bike and body have replaced the primitive shapes (or failed to load). */
+  readonly ready: Promise<void>;
   private standing = false;
   private wantFor = 0;
   private sitFor = 0;
@@ -219,7 +293,7 @@ export class Rider extends THREE.Group {
     if (ghost) this.traverse((o) => ((o as THREE.Mesh).castShadow = false));
     this.update(0, 0, 0);
     this.parts = { bike: bikeProcedural, head, torso: [torso, stripe, shorts], style };
-    void this.upgrade(bike, ghost).catch((e) => console.warn('rider model unavailable', e));
+    this.ready = this.upgrade(bike, ghost).catch((e) => console.warn('rider model unavailable', e));
   }
 
   /** Swap the primitive shapes for the Blender-built bike and body parts (public/models/rider.glb). */
@@ -229,20 +303,61 @@ export class Rider extends THREE.Group {
     if (!p) return;
     const ghostMat = ghost ? new THREE.MeshBasicMaterial({ color: 0x7ff5ff, transparent: true, opacity: 0.28, depthWrite: false }) : null;
     const tints: Record<string, string> = { jersey: p.style.kit, accent: p.style.accent, bike_frame: p.style.bike };
-    const matCache = new Map<THREE.Material, THREE.Material>();
-    const mat = (m: THREE.Material): THREE.Material => {
+    const kit = p.style.outfit;
+    const helmet = p.style.helmet;
+    const matCache = new Map<string, THREE.Material>();
+    // an outfit dresses each part on its own: the model's one "accent" is a sleeve end, a sock cuff and a shoe's
+    // trim, and the shin's skin carries the taller sock
+    const dressed = (m: THREE.Material, part: string): THREE.Material | null => {
+      if (kit) {
+        if (m.name === 'jersey') {
+          const j = cloth(kit.jersey, 0.72, 0.6, kit.print ? 'rider:print' : 'rider:cloth');
+          if (kit.print) origami(j, kit.print);
+          return j;
+        }
+        if (m.name === 'accent') {
+          const c = part === 'torso' || part === 'upperarm' ? kit.panel : part === 'shin' ? kit.socks : part === 'shoe' ? '#3a3b3e' : '#26272a';
+          return cloth(c, 0.8, part === 'shoe' ? 0 : 0.4, 'rider:cloth');
+        }
+        if (m.name === 'shorts') return cloth(kit.bibs, 0.55, 0.8, 'rider:cloth');
+        if (m.name === 'shorts_grip') return cloth(kit.gripper, 0.6, 0.5, 'rider:cloth');
+        if (m.name === 'sock') return cloth(kit.socks, 0.95, 0.3, 'rider:cloth');
+        if (m.name === 'shoe') return patchMaterial(new THREE.MeshPhysicalMaterial({ color: srgb(kit.shoes), roughness: 0.35, clearcoat: 0.4, clearcoatRoughness: 0.3 }), { key: 'rider:shoe' });
+        if (m.name === 'shoe_dark') return patchMaterial(new THREE.MeshStandardMaterial({ color: srgb('#9a9b9d'), roughness: 0.45 }), { key: 'rider' });
+        if (m.name === 'skin' && part === 'shin') {
+          const c = (m as THREE.MeshStandardMaterial).clone();
+          sockedShin(c, kit.socks, 0.03);
+          return patchMaterial(c, { key: 'rider:shin' });
+        }
+      }
+      if (helmet && (m.name === 'helmet' || m.name === 'helmet_dark')) {
+        const shell = m.name === 'helmet';
+        return patchMaterial(
+          new THREE.MeshPhysicalMaterial({
+            color: srgb(shell ? helmet.shell : helmet.trim),
+            roughness: helmet.gloss ? 0.22 : 0.58,
+            clearcoat: helmet.gloss && shell ? 1 : 0,
+            clearcoatRoughness: 0.12,
+          }),
+          { key: 'rider:helmet' },
+        );
+      }
+      return null;
+    };
+    const mat = (m: THREE.Material, part: string): THREE.Material => {
       if (ghostMat) return ghostMat;
-      let out = matCache.get(m);
+      const k = `${part}:${m.name}`;
+      let out = matCache.get(k);
       if (!out) {
-        out = m;
-        const tint = tints[m.name];
+        out = dressed(m, part) ?? m;
+        const tint = out === m ? tints[m.name] : undefined;
         if (tint) {
           const c = m.clone() as THREE.MeshStandardMaterial;
           c.color.set(tint).convertSRGBToLinear();
           patchMaterial(c, { key: `rider:${m.name}` });
           out = c;
         }
-        matCache.set(m, out);
+        matCache.set(k, out);
       }
       return out;
     };
@@ -258,7 +373,7 @@ export class Rider extends THREE.Group {
       o.traverse((c) => {
         const m = c as THREE.Mesh;
         if (!m.isMesh) return;
-        m.material = Array.isArray(m.material) ? m.material.map(mat) : mat(m.material);
+        m.material = Array.isArray(m.material) ? m.material.map((x) => mat(x, name)) : mat(m.material, name);
         m.castShadow = !ghost;
         m.receiveShadow = !ghost;
       });

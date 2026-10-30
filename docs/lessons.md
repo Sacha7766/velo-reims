@@ -123,6 +123,12 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   every chalk house, barn and church. Fix: a course height per house (0.27–0.37 m, rubble 0.22–0.32 m on churches),
   blocks a shade apart (±5 %) with pale lime joints, broad weather stains and rising damp on every wall. Where:
   facade shader, `fChalk`.
+- **One "accent" material dressed a sleeve end, a sock cuff and a shoe's trim (the rider model).** Tinting it per
+  kit coloured all three alike. Fix: the rider's materials are chosen per part and material name (`torso:accent`,
+  `shin:accent`…), so an outfit dresses each part on its own; the shin's own skin carries the taller sock. Where:
+  `Rider.upgrade`, `outfits.ts`.
+- **A shader that set `roughnessFactor` at `color_fragment` failed to compile.** MeshStandardMaterial declares it
+  later, in `roughnessmap_fragment`. Fix: write it after that chunk. Where: `Rider.ts` `sockedShin`.
 - **The terrain read and graded the wide photo average for every pixel.** Only the ground within 180 m of the camera
   blends it in. Fix: read it there only, with the gradients taken before the branch (`textureGrad`). Where:
   `terrainMaterial.ts`.

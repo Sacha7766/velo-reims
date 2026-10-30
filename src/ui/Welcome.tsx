@@ -47,8 +47,8 @@ export function Welcome({ settings, onDone }: { settings: AppSettings; onDone: (
           FTP is the power you can hold for about an hour. Not sure? Keep the estimate and take the 20-minute ramp test
           under Train when you're ready.
         </p>
-        <div className="kit-swatches" role="radiogroup" aria-label="Jersey">
-          <span>Jersey</span>
+        <div className="kit-swatches" role="radiogroup" aria-label="Your colour">
+          <span>Your colour</span>
           {KITS.map((k) => (
             <button key={k} type="button" role="radio" aria-checked={k === kit} aria-label={k} style={{ background: k }} onClick={() => setKit(k)} />
           ))}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { hub } from '../devices/index.ts';
 import { Engine, type LoadProgress } from '../engine/Engine.ts';
 import type { CameraMode } from '../engine/CameraRig.ts';
+import { helmetById, outfitById } from '../engine/outfits.ts';
 import { RideAudio } from '../audio/RideAudio.ts';
 import { sourcesFor } from '../geo/imagery.ts';
 import { prefetchRoute } from '../geo/prefetch.ts';
@@ -252,7 +253,8 @@ export function App() {
       engine.riderS = resume?.snapshot.st.s ?? opts?.at ?? 0;
       engine.setCameraMode('cinematic');
       const halfWidth = route.category === 'city' ? 4.2 : route.category === 'flat' ? 3.2 : 3.1;
-      await engine.loadWorld(route, { kit: cfg.kit, accent: cfg.accent, bike: cfg.bike }, setProgress, halfWidth);
+      const style = { kit: cfg.kit, accent: cfg.accent, bike: cfg.bike, outfit: outfitById(cfg.outfit), helmet: helmetById(cfg.helmet) };
+      await engine.loadWorld(route, style, setProgress, halfWidth);
       const best = cfg.ghost ? await bestRideFor(route.id, route.leadIn > 0) : null;
       const history = await listRides();
       const segmentBests: Record<string, number> = {};
@@ -422,6 +424,8 @@ export function App() {
     }
     if (q.get('time')) settingsRef.current = { ...settingsRef.current, time: q.get('time')! };
     if (q.get('bots')) settingsRef.current = { ...settingsRef.current, bots: q.get('bots')!.split(',').map(Number) };
+    if (q.get('outfit')) settingsRef.current = { ...settingsRef.current, outfit: q.get('outfit')! };
+    if (q.get('helmet')) settingsRef.current = { ...settingsRef.current, helmet: q.get('helmet')! };
     void (async () => {
       const data = (await (await fetch(`/routes/${id}.json`)).json()) as RouteData;
       const workout = LIBRARY.find((w) => w.id === q.get('workout')) ?? null;

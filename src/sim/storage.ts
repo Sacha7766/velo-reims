@@ -2,6 +2,7 @@ import { del, get, set } from 'idb-keyval';
 import type { RouteData } from '../geo/route.ts';
 import type { ActivePlan } from '../training/plans.ts';
 import type { Workout } from '../workouts/types.ts';
+import { DEFAULT_HELMET, DEFAULT_OUTFIT } from '../engine/outfits.ts';
 import { DEFAULT_CUSTOM_DRIVETRAIN } from './drivetrain.ts';
 import type { RiderSettings } from './session.ts';
 import { encodeFit } from './fit.ts';
@@ -13,6 +14,10 @@ export interface AppSettings extends RiderSettings {
   kit: string;
   accent: string;
   bike: string;
+  /** An outfit (engine/outfits.ts) or 'custom' for the kit and accent colours. */
+  outfit: string;
+  /** The helmet's colourway (engine/outfits.ts HELMETS). */
+  helmet: string;
   time: string;
   quality: 'low' | 'medium' | 'high';
   erg: boolean;
@@ -48,6 +53,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   kit: '#e8442e',
   accent: '#f4efe6',
   bike: '#16181c',
+  outfit: DEFAULT_OUTFIT,
+  helmet: DEFAULT_HELMET,
   time: 'morning',
   quality: 'high',
   erg: true,
