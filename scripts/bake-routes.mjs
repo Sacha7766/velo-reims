@@ -71,6 +71,9 @@ const PRESETS = [
   // Beaumont-sur-Vesle → Sillery → Taissy → Saint-Léonard (Cernay's first 2 km are ridden out and back: the D 64 leaves
   // the D 364 there)
   { id: 'd64-vesle', name: 'Boucle de la D64 et de la Vesle', region: 'Marne, FR', category: 'flat', loop: true, from: [4.10503, 49.26278], via: [[4.15774, 49.25115], [4.21517, 49.24895], [4.18241, 49.19684], [4.21397, 49.17814], [4.18435, 49.17325], [4.13119, 49.19757], [4.09375, 49.21442], [4.09665, 49.22131]] },
+  // Bourgogne-Fresne → Auménancourt → Saint-Étienne-sur-Suippe → Poilcourt-Sydney → Houdilcourt → Sault-Saint-Remy →
+  // Roizy (Ardennes) → down to Boult-sur-Suippe → Bazancourt → Pomacle → Fresne-lès-Reims (round its roundabout)
+  { id: 'roizy-suippe', name: 'Boucle de Roizy et de la Suippe', region: 'Marne and Ardennes, FR', category: 'flat', loop: true, from: [4.07134, 49.34912], via: [[4.06814, 49.38449], [4.10167, 49.42235], [4.12565, 49.42529], [4.17427, 49.42393], [4.14815, 49.37081], [4.1716, 49.36269], [4.14649, 49.33509]] },
 ];
 
 const args = process.argv.slice(2);

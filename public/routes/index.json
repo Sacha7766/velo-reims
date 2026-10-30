@@ -296,5 +296,16 @@
     "gain": 204,
     "startEle": 132.8,
     "endEle": 132.8
+  },
+  {
+    "id": "roizy-suippe",
+    "name": "Boucle de Roizy et de la Suippe",
+    "region": "Marne and Ardennes, FR",
+    "category": "flat",
+    "loop": true,
+    "lengthKm": 35.21,
+    "gain": 96,
+    "startEle": 87.3,
+    "endEle": 87.3
   }
 ]

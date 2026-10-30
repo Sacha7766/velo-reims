@@ -25,6 +25,7 @@ Baked by `node scripts/bake-routes.mjs [id|--all]` from BRouter (OSM routing, `f
 | grands-crus | Boucle des Grands Crus | rolling | 32.77 | 419 | yes | Ludes, Mailly-Champagne, Puisieulx, Sillery, Verzenay, Verzy, the forest to Louvois, Ville-en-Selve, the D 33 back to Ludes; one sharp corner at Louvois |
 | foret-montagne-de-reims | Boucle de la forêt de la Montagne de Reims | rolling | 36.84 | 498 | yes | Rilly-la-Montagne, Villers-Allerand, Sermiers, Nanteuil-la-Forêt, Saint-Imoges, Germaine, Ville-en-Selve, the D 33 to Ludes, Chigny-les-Roses |
 | d64-vesle | Boucle de la D64 et de la Vesle | flat | 41.30 | 204 | yes | Cernay, the D 64 to Nogent-l'Abbesse, Beine-Nauroy, Prunay, Val-de-Vesle, Beaumont-sur-Vesle, Sillery, Taissy, Saint-Léonard; Cernay's first 2 km out and back |
+| roizy-suippe | Boucle de Roizy et de la Suippe | flat | 35.21 | 96 | yes | Bourgogne-Fresne, Auménancourt, Saint-Étienne-sur-Suippe, Poilcourt-Sydney, Houdilcourt, Sault-Saint-Remy, Roizy (Ardennes), Boult-sur-Suippe, Bazancourt, Pomacle, Fresne-lès-Reims; round the roundabout in Fresne |
 
 Notes: the six climbs and their numbers were not re-fetched, only `category`/`loop` were added. Do not put via points on side streets or footways next to the road; BRouter turns them into out-and-back spurs.
 

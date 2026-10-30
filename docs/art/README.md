@@ -47,6 +47,7 @@ One brief per route, written before visual work starts (`_template.md`):
 | Grands Crus (Reims) | [grands-crus.md](grands-crus.md) | `research/champagne/board-*.jpg` (regional) |
 | Forêt de la Montagne de Reims | [foret-montagne-de-reims.md](foret-montagne-de-reims.md) | `research/champagne/board-*.jpg` (regional) |
 | D64 et Vesle (Reims) | [d64-vesle.md](d64-vesle.md) | `research/champagne/board-*.jpg` (regional) |
+| Roizy et Suippe (Reims, Ardennes) | [roizy-suippe.md](roizy-suippe.md) | `research/champagne/board-*.jpg` (regional) |
 
 The other presets have no brief yet: Wachau, Neusiedler See, Central Park, Sydney and the Vienna Ring. Their QA findings are in `research/qa-presets.md` (2026-10-11; the white ground at
 Stelvio, the turnarounds, houses on the road and Ventoux's summit tower were fixed on 2026-10-12).
