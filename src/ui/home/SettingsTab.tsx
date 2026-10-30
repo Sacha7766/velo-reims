@@ -200,7 +200,7 @@ function KitSection({
         </div>
       )}
       <fieldset className="helmet-options">
-        <legend>Helmet, S-Works Evade 4</legend>
+        <legend>Helmet, S-Works Evade</legend>
         {HELMETS.map((h) => (
           <label key={h.id} className="helmet-option">
             <input type="radio" name="helmet" checked={helmet.id === h.id} onChange={() => set('helmet', h.id)} />

@@ -37,8 +37,8 @@ function cloth(color: string, rough: number, sheen: number, key: string): THREE.
 }
 
 /**
- * A jersey's folded-paper print: facets of three tones on a triangular lattice in the part's own space, with a
- * faint crease along each fold. Tones and scale are an interpretation of the "PAS Origami" name.
+ * A jersey's triangle print (PAS Origami): facets of three tones on a triangular lattice in the part's own space,
+ * mostly the ground tone, with a faint crease along each edge.
  */
 function origami(m: THREE.MeshPhysicalMaterial, tones: [string, string, string]) {
   const prev = m.onBeforeCompile;
@@ -55,12 +55,12 @@ function origami(m: THREE.MeshPhysicalMaterial, tones: [string, string, string])
         '#include <color_fragment>',
         `#include <color_fragment>
 {
-  vec2 q = vec2(vKit.x + vKit.z * 0.7, vKit.y) / 0.11;
+  vec2 q = vec2(vKit.x + vKit.z * 0.7, vKit.y) / 0.075;
   vec2 g = vec2(q.x - q.y * 0.57735, q.y * 1.1547);
   vec2 i = floor(g), f = fract(g);
   float up = step(1.0, f.x + f.y);
   float h = fract(sin(dot(i * 2.0 + vec2(up, 0.0), vec2(12.9898, 78.233))) * 43758.5453);
-  vec3 tone = h < 0.45 ? uPrintA : h < 0.8 ? uPrintB : uPrintC;
+  vec3 tone = h < 0.55 ? uPrintA : h < 0.78 ? uPrintB : uPrintC;
   float e = up > 0.5 ? min(min(1.0 - f.x, 1.0 - f.y), f.x + f.y - 1.0) : min(min(f.x, f.y), 1.0 - f.x - f.y);
   diffuseColor.rgb = tone * mix(0.9, 1.0, smoothstep(0.0, 0.06, e));
 }`,

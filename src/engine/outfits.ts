@@ -1,8 +1,7 @@
 // Rider outfits: jersey, bib shorts, socks, shoes and helmet as one choice (Settings, Kit), after the rider's own
 // kit: Pas Normal Studios Mechanism Pro jerseys (Grey Moss, PAS Origami) and bibs (Grey Moss, Black), white
-// mid-calf socks, white shoes and a Specialized S-Works Evade 4 helmet. The colours are taken from the
-// colourways' names, not from the products (their pages could not be opened); "Custom colours" keeps the
-// jersey and stripe pickers.
+// mid-calf socks, white shoes and a Specialized S-Works helmet. Colours sampled from the product photos the rider
+// sent (daylight shots); the brand's lettering is left off. "Your colours" keeps the jersey and stripe pickers.
 
 export interface Outfit {
   id: string;
@@ -27,22 +26,24 @@ export interface Helmet {
   gloss: boolean;
 }
 
-const GREY_MOSS = '#7d8376';
-const GREY_MOSS_PANEL = '#6c7266';
-const GREY_MOSS_BIBS = '#5f6559';
+// a grey with a little green in it; the bibs in the same colourway are a deeper olive
+const GREY_MOSS = '#979c90';
+const GREY_MOSS_PANEL = '#878c80';
+const GREY_MOSS_BIBS = '#687058';
 const BLACK_BIBS = '#141516';
 const WHITE_SOCKS = '#f1f1ee';
 const WHITE_SHOES = '#efefec';
-const ORIGAMI: [string, string, string] = ['#e9e7e1', '#cfcdc6', '#a7aa9f'];
+// white with coral and red triangles
+const ORIGAMI: [string, string, string] = ['#ece8e6', '#ef9b8d', '#e5433f'];
 
 export const OUTFITS: Outfit[] = [
-  { id: 'grey-moss', label: 'Grey Moss', jersey: GREY_MOSS, panel: GREY_MOSS_PANEL, bibs: GREY_MOSS_BIBS, gripper: '#555a50', socks: WHITE_SOCKS, shoes: WHITE_SHOES },
+  { id: 'grey-moss', label: 'Grey Moss', jersey: GREY_MOSS, panel: GREY_MOSS_PANEL, bibs: GREY_MOSS_BIBS, gripper: '#5c6350', socks: WHITE_SOCKS, shoes: WHITE_SHOES },
   { id: 'grey-moss-black', label: 'Grey Moss and black', jersey: GREY_MOSS, panel: GREY_MOSS_PANEL, bibs: BLACK_BIBS, gripper: '#26282a', socks: WHITE_SOCKS, shoes: WHITE_SHOES },
-  { id: 'origami-black', label: 'Origami and black', jersey: ORIGAMI[0], panel: '#bdbbb4', print: ORIGAMI, bibs: BLACK_BIBS, gripper: '#26282a', socks: WHITE_SOCKS, shoes: WHITE_SHOES },
-  { id: 'origami-moss', label: 'Origami and Grey Moss', jersey: ORIGAMI[0], panel: '#bdbbb4', print: ORIGAMI, bibs: GREY_MOSS_BIBS, gripper: '#555a50', socks: WHITE_SOCKS, shoes: WHITE_SHOES },
+  { id: 'origami-black', label: 'Origami and black', jersey: ORIGAMI[0], panel: '#e3dfdc', print: ORIGAMI, bibs: BLACK_BIBS, gripper: '#26282a', socks: WHITE_SOCKS, shoes: WHITE_SHOES },
+  { id: 'origami-moss', label: 'Origami and Grey Moss', jersey: ORIGAMI[0], panel: '#e3dfdc', print: ORIGAMI, bibs: GREY_MOSS_BIBS, gripper: '#5c6350', socks: WHITE_SOCKS, shoes: WHITE_SHOES },
 ];
 
-/** The S-Works Evade 4's colourways sold in Europe. */
+/** S-Works Evade colourways: white with black details as in the rider's photos, white and red, black. */
 export const HELMETS: Helmet[] = [
   { id: 'matte-white', label: 'Matte white', shell: '#ecebe7', trim: '#2a2b2d', gloss: false },
   { id: 'white-red', label: 'White and red', shell: '#f2f2ef', trim: '#c8202b', gloss: true },
