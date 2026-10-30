@@ -13,6 +13,8 @@ const THIGH = 0.45;
 const SHIN = 0.47;
 const HIP_Y = 1.0;
 const HIP_Z = -0.29;
+const UPPER_ARM = 0.29;
+const FOREARM = 0.29;
 
 export interface RiderStyle {
   kit: string; // jersey colour
@@ -37,32 +39,153 @@ function cloth(color: string, rough: number, sheen: number, key: string): THREE.
 }
 
 /**
- * A jersey's triangle print (PAS Origami): facets of three tones on a triangular lattice in the part's own space,
- * mostly the ground tone, with a faint crease along each edge.
+ * Lettering drawn once into a canvas, white on clear, for the shaders below to stamp in a colour: the kit's
+ * "PAS", the helmet's wordmark.
  */
-function origami(m: THREE.MeshPhysicalMaterial, tones: [string, string, string]) {
+function lettering(text: string, w: number, h: number, font: string, italic = false): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const g = c.getContext('2d')!;
+  g.font = `${italic ? 'italic ' : ''}900 ${Math.round(h * 0.86)}px ${font}`;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillStyle = '#fff';
+  const tw = g.measureText(text).width;
+  // stretched or squeezed to fill the box, as the print is
+  g.setTransform((w * 0.96) / tw, 0, 0, 1, w / 2, h / 2 + h * 0.04);
+  g.fillText(text, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.anisotropy = 4;
+  return t;
+}
+
+const HEAVY = '"Arial Black", "Helvetica Neue", Arial, sans-serif';
+
+/** The jersey's front: the PNS diamond on the right of the chest, the maker's name on the left, "PAS" across. */
+function chestPrint(): THREE.CanvasTexture {
+  const w = 512;
+  const h = 320;
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const g = c.getContext('2d')!;
+  g.fillStyle = g.strokeStyle = '#fff';
+  // the diamond, outlined, its three letters inside (the viewer's left)
+  const dx = 104;
+  const dy = 62;
+  const r = 40;
+  g.lineWidth = 6;
+  g.beginPath();
+  g.moveTo(dx, dy - r);
+  g.lineTo(dx + r, dy);
+  g.lineTo(dx, dy + r);
+  g.lineTo(dx - r, dy);
+  g.closePath();
+  g.stroke();
+  g.font = `700 17px ${HEAVY}`;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText('P', dx, dy - 19);
+  g.fillText('N', dx - 17, dy + 2);
+  g.fillText('S', dx + 17, dy + 2);
+  g.fillText('·', dx, dy + 20);
+  g.font = `700 21px ${HEAVY}`;
+  g.textAlign = 'left';
+  g.fillText('PAS NORMAL', 318, 50);
+  g.fillText('STUDIOS', 318, 76);
+  // "PAS" across the lower two thirds, stretched to the width as printed
+  const ph = h * 0.62;
+  g.font = `900 ${Math.round(ph * 0.86)}px ${HEAVY}`;
+  g.textAlign = 'center';
+  const tw = g.measureText('PAS').width;
+  g.setTransform((w * 0.96) / tw, 0, 0, 1, w / 2, h - ph / 2 + ph * 0.04);
+  g.fillText('PAS', 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.anisotropy = 4;
+  return t;
+}
+
+let pasTex: THREE.CanvasTexture | null = null;
+let chestTex: THREE.CanvasTexture | null = null;
+let wordmarkTex: THREE.CanvasTexture | null = null;
+const pas = () => (pasTex ??= lettering('PAS', 512, 200, HEAVY));
+const chest = () => (chestTex ??= chestPrint());
+const wordmark = () => (wordmarkTex ??= lettering('S-WORKS', 512, 96, '"Helvetica Neue", Arial, sans-serif', true));
+
+/**
+ * Where a part carries lettering, in its own (unposed) space: GLSL that sets `uv` inside the unit square on the
+ * lettering and leaves it outside elsewhere (`second` picks the second texture). `uSide` is +1 on the rider's left,
+ * −1 on the right (the mirrored limb, whose lateral face is at −x); text reads the right way round from outside on
+ * both.
+ */
+const DECALS = {
+  // the chest print (logos and "PAS", across the zip) and "PAS" between the shoulder blades
+  torso: `if (vKit.z > 0.0) { uv = vec2((vKit.x + 0.13) / 0.26, (vKit.y - 0.065) / 0.16); second = 1.0; }
+  else uv = vec2((0.145 - vKit.x) / 0.29, (vKit.y - 0.075) / 0.112);`,
+  // down the outside of the sleeve, letters' tops to the front
+  arm: `if (vKit.x * uSide > 0.02) uv = vec2(uSide > 0.0 ? (0.102 - vKit.y) / 0.088 : (vKit.y - 0.014) / 0.088, 0.5 - vKit.z / 0.036);`,
+  // along the outside of the thigh, letters' tops to the front, so it reads from the side as the thigh comes up
+  leg: `if (vKit.x * uSide > 0.03) uv = vec2(uSide > 0.0 ? (0.25 - vKit.y) / 0.175 : (vKit.y - 0.075) / 0.175, 0.5 - vKit.z / 0.072);`,
+  // along each side of the shell, under the flank slot, reading front to back on the left and on the right
+  helmet: `if (abs(vKit.x) > 0.05 && vKit.y < 0.05) uv = vec2(vKit.x > 0.0 ? (0.0 - vKit.z) / 0.11 : (vKit.z + 0.11) / 0.11, (vKit.y + 0.006 + 0.06 * (vKit.z + 0.05)) / 0.022);`,
+};
+
+/**
+ * A part's print in its own space: the jersey's triangle print (PAS Origami: facets of three tones on a triangular
+ * lattice, mostly the ground tone, with a faint crease along each edge) and lettering stamped in `ink`.
+ */
+function printed(
+  m: THREE.MeshPhysicalMaterial,
+  opts: { tones?: [string, string, string]; decal?: string; tex?: THREE.Texture; tex2?: THREE.Texture; ink?: string; side?: number },
+) {
   const prev = m.onBeforeCompile;
   m.onBeforeCompile = (shader, renderer) => {
-    shader.uniforms.uPrintA = { value: srgb(tones[0]) };
-    shader.uniforms.uPrintB = { value: srgb(tones[1]) };
-    shader.uniforms.uPrintC = { value: srgb(tones[2]) };
+    const { tones, decal, tex, ink } = opts;
+    if (tones) {
+      shader.uniforms.uPrintA = { value: srgb(tones[0]) };
+      shader.uniforms.uPrintB = { value: srgb(tones[1]) };
+      shader.uniforms.uPrintC = { value: srgb(tones[2]) };
+    }
+    shader.uniforms.uLetters = { value: tex ?? null };
+    shader.uniforms.uLetters2 = { value: opts.tex2 ?? tex ?? null };
+    shader.uniforms.uInk = { value: srgb(ink ?? '#ffffff') };
+    shader.uniforms.uSide = { value: opts.side ?? 1 };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vKit;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvKit = position;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vKit;\nuniform vec3 uPrintA;\nuniform vec3 uPrintB;\nuniform vec3 uPrintC;')
+      .replace(
+        '#include <common>',
+        '#include <common>\nvarying vec3 vKit;\nuniform vec3 uPrintA;\nuniform vec3 uPrintB;\nuniform vec3 uPrintC;\nuniform sampler2D uLetters;\nuniform sampler2D uLetters2;\nuniform vec3 uInk;\nuniform float uSide;',
+      )
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-{
-  vec2 q = vec2(vKit.x + vKit.z * 0.7, vKit.y) / 0.075;
+${
+  tones
+    ? `{
+  vec2 q = vec2(vKit.x + vKit.z * 0.7, vKit.y) / 0.042;
   vec2 g = vec2(q.x - q.y * 0.57735, q.y * 1.1547);
   vec2 i = floor(g), f = fract(g);
   float up = step(1.0, f.x + f.y);
   float h = fract(sin(dot(i * 2.0 + vec2(up, 0.0), vec2(12.9898, 78.233))) * 43758.5453);
   vec3 tone = h < 0.55 ? uPrintA : h < 0.78 ? uPrintB : uPrintC;
   float e = up > 0.5 ? min(min(1.0 - f.x, 1.0 - f.y), f.x + f.y - 1.0) : min(min(f.x, f.y), 1.0 - f.x - f.y);
-  diffuseColor.rgb = tone * mix(0.9, 1.0, smoothstep(0.0, 0.06, e));
+  diffuseColor.rgb = tone * mix(0.96, 1.0, smoothstep(0.0, 0.06, e));
+}`
+    : ''
+}
+${
+  decal
+    ? `{
+  vec2 uv = vec2(-1.0);
+  float second = 0.0;
+  ${decal}
+  if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0)
+    diffuseColor.rgb = mix(diffuseColor.rgb, uInk, second > 0.5 ? texture2D(uLetters2, uv).a : texture2D(uLetters, uv).a);
+}`
+    : ''
 }`,
       );
     prev.call(m, shader, renderer);
@@ -122,6 +245,101 @@ class Limb {
   }
 }
 
+const LATERAL = new THREE.Vector3(1, 0, 0);
+
+/**
+ * A modelled limb skinned to three bones: the upper one from the hip or shoulder, the lower one from the knee or
+ * elbow, and one at the joint turned half-way between them, so the joint bends as one surface and keeps its
+ * volume (two rigid parts showed a seam and a ball there). The model runs along +Y from the root (y = 0) through
+ * the joint (y = `joint`), lateral +X; the right limb is the left one mirrored.
+ */
+class SkinnedLimb {
+  readonly group = new THREE.Group();
+  private bones = [new THREE.Bone(), new THREE.Bone(), new THREE.Bone()];
+  private readonly l1: number;
+  private readonly l2: number;
+
+  constructor(src: THREE.Object3D, joint: number, l2: number, blend: number, side: number) {
+    this.l1 = joint;
+    this.l2 = l2;
+    const [root, mid, end] = this.bones;
+    mid.position.y = end.position.y = joint;
+    this.group.add(root, mid, end);
+    const back = new THREE.Matrix4().makeTranslation(0, -joint, 0);
+    const skeleton = new THREE.Skeleton(this.bones, [new THREE.Matrix4(), back, back.clone()]);
+    src.updateMatrixWorld(true);
+    src.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const g = m.geometry.clone();
+      if (side < 0) mirrorX(g);
+      const pos = g.attributes.position;
+      const idx = new Uint16Array(pos.count * 4);
+      const wt = new Float32Array(pos.count * 4);
+      for (let i = 0; i < pos.count; i++) {
+        const y = pos.getY(i);
+        const a = THREE.MathUtils.smoothstep(y, joint - blend, joint);
+        const b = THREE.MathUtils.smoothstep(y, joint, joint + blend);
+        // upper → joint across the first half of the band, joint → lower across the second
+        idx.set(b > 0 ? [1, 2, 0, 0] : [0, 1, 0, 0], i * 4);
+        wt.set(b > 0 ? [1 - b, b, 0, 0] : [1 - a, a, 0, 0], i * 4);
+      }
+      g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(idx, 4));
+      g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(wt, 4));
+      const sm = new THREE.SkinnedMesh(g, m.material);
+      sm.castShadow = m.castShadow;
+      sm.receiveShadow = m.receiveShadow;
+      // (the bounds are the straight limb's; a bent one can leave them)
+      sm.frustumCulled = false;
+      sm.bind(skeleton, new THREE.Matrix4());
+      this.group.add(sm);
+    });
+  }
+
+  /** Root, joint and end positions (the IK's), in the parent's space. */
+  pose(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3) {
+    const [root, mid, end] = this.bones;
+    const d1 = b.clone().sub(a);
+    const d2 = c.clone().sub(b);
+    // both bones keep the limb's lateral side towards +X, so the joint's two halves don't twist apart
+    aim(root.quaternion, d1);
+    aim(end.quaternion, d2);
+    root.position.copy(a);
+    root.scale.y = d1.length() / this.l1;
+    end.position.copy(b);
+    end.scale.y = d2.length() / this.l2;
+    mid.position.copy(b);
+    mid.quaternion.slerpQuaternions(root.quaternion, end.quaternion, 0.5);
+    mid.scale.y = (root.scale.y + end.scale.y) / 2;
+  }
+}
+
+const basis = new THREE.Matrix4();
+/** Turns +Y onto `dir` with +X kept lateral. */
+function aim(q: THREE.Quaternion, dir: THREE.Vector3) {
+  const y = dir.clone().normalize();
+  const z = LATERAL.clone().cross(y).normalize();
+  const x = y.clone().cross(z);
+  q.setFromRotationMatrix(basis.makeBasis(x, y, z));
+}
+
+/** The geometry mirrored across x = 0, still facing outwards. */
+function mirrorX(g: THREE.BufferGeometry) {
+  for (const name of ['position', 'normal']) {
+    const a = g.attributes[name];
+    if (!a) continue;
+    for (let i = 0; i < a.count; i++) a.setX(i, -a.getX(i));
+  }
+  const ix = g.index;
+  if (ix) {
+    for (let i = 0; i < ix.count; i += 3) {
+      const t = ix.getX(i + 1);
+      ix.setX(i + 1, ix.getX(i + 2));
+      ix.setX(i + 2, t);
+    }
+  }
+}
+
 /** Solve knee/elbow in a plane: returns joint position given root, end, lengths and bend hint. */
 function twoBone(root: THREE.Vector3, end: THREE.Vector3, l1: number, l2: number, bend: THREE.Vector3): THREE.Vector3 {
   const d = end.clone().sub(root);
@@ -136,9 +354,9 @@ function twoBone(root: THREE.Vector3, end: THREE.Vector3, l1: number, l2: number
 export class Rider extends THREE.Group {
   private wheels: THREE.Object3D[] = [];
   private crankArm: THREE.Group;
-  private legs: { thigh: Limb; shin: Limb; foot: THREE.Mesh; side: number }[] = [];
+  private legs: { thigh: Limb; shin: Limb; foot: THREE.Mesh; side: number; skin?: SkinnedLimb }[] = [];
   private torso: THREE.Group;
-  private arms: { upper: Limb; fore: Limb; side: number }[] = [];
+  private arms: { upper: Limb; fore: Limb; side: number; skin?: SkinnedLimb }[] = [];
   private crankAngle = 0;
   private wheelAngle = 0;
   private body = new THREE.Group();
@@ -284,8 +502,8 @@ export class Rider extends THREE.Group {
       foot.castShadow = true;
       this.body.add(thigh.mesh, shin.mesh, foot);
       this.legs.push({ thigh, shin, foot, side: s });
-      const upper = new Limb(0.05, 0.045, 0.29, kit);
-      const fore = new Limb(0.042, 0.036, 0.29, skin);
+      const upper = new Limb(0.05, 0.045, UPPER_ARM, kit);
+      const fore = new Limb(0.042, 0.036, FOREARM, skin);
       this.body.add(upper.mesh, fore.mesh);
       this.arms.push({ upper, fore, side: s });
     }
@@ -302,54 +520,58 @@ export class Rider extends THREE.Group {
     const p = this.parts;
     if (!p) return;
     const ghostMat = ghost ? new THREE.MeshBasicMaterial({ color: 0x7ff5ff, transparent: true, opacity: 0.28, depthWrite: false }) : null;
-    const tints: Record<string, string> = { jersey: p.style.kit, accent: p.style.accent, bike_frame: p.style.bike };
+    const tints: Record<string, string> = { jersey: p.style.kit, accent: p.style.accent, bike_frame: p.style.bike, helmet_trim: p.style.accent };
     const kit = p.style.outfit;
     const helmet = p.style.helmet;
     const matCache = new Map<string, THREE.Material>();
     // an outfit dresses each part on its own: the model's one "accent" is a sleeve end, a sock cuff and a shoe's
-    // trim, and the shin's skin carries the taller sock
-    const dressed = (m: THREE.Material, part: string): THREE.Material | null => {
+    // trim, and the leg's skin carries the taller sock
+    const dressed = (m: THREE.Material, part: string, side: number): THREE.Material | null => {
       if (kit) {
         if (m.name === 'jersey') {
-          const j = cloth(kit.jersey, 0.72, 0.6, kit.print ? 'rider:print' : 'rider:cloth');
-          if (kit.print) origami(j, kit.print);
+          const decal = part === 'torso' || part === 'arm' ? part : undefined;
+          const j = cloth(kit.jersey, 0.72, 0.6, `rider:jersey:${decal ?? ''}:${kit.print ? 'print' : ''}`);
+          printed(j, { tones: kit.print, decal: decal && DECALS[decal], tex: pas(), tex2: chest(), ink: kit.ink, side });
           return j;
         }
         if (m.name === 'accent') {
-          const c = part === 'torso' || part === 'upperarm' ? kit.panel : part === 'shin' ? kit.socks : part === 'shoe' ? '#3a3b3e' : '#26272a';
+          const c = part === 'torso' || part === 'arm' ? kit.panel : part === 'leg' ? kit.socks : part === 'shoe' ? '#3a3b3e' : '#26272a';
           return cloth(c, 0.8, part === 'shoe' ? 0 : 0.4, 'rider:cloth');
         }
-        if (m.name === 'shorts') return cloth(kit.bibs, 0.55, 0.8, 'rider:cloth');
+        if (m.name === 'shorts') {
+          const b = cloth(kit.bibs, 0.55, 0.8, part === 'leg' ? 'rider:bibs' : 'rider:cloth');
+          if (part === 'leg') printed(b, { decal: DECALS.leg, tex: pas(), ink: kit.bibsInk, side });
+          return b;
+        }
         if (m.name === 'shorts_grip') return cloth(kit.gripper, 0.6, 0.5, 'rider:cloth');
         if (m.name === 'sock') return cloth(kit.socks, 0.95, 0.3, 'rider:cloth');
         if (m.name === 'shoe') return patchMaterial(new THREE.MeshPhysicalMaterial({ color: srgb(kit.shoes), roughness: 0.35, clearcoat: 0.4, clearcoatRoughness: 0.3 }), { key: 'rider:shoe' });
         if (m.name === 'shoe_dark') return patchMaterial(new THREE.MeshStandardMaterial({ color: srgb('#9a9b9d'), roughness: 0.45 }), { key: 'rider' });
-        if (m.name === 'skin' && part === 'shin') {
+        if (m.name === 'skin' && part === 'leg') {
           const c = (m as THREE.MeshStandardMaterial).clone();
-          sockedShin(c, kit.socks, 0.03);
+          sockedShin(c, kit.socks, 0.715);
           return patchMaterial(c, { key: 'rider:shin' });
         }
       }
-      if (helmet && (m.name === 'helmet' || m.name === 'helmet_dark')) {
+      if (helmet && (m.name === 'helmet' || m.name === 'helmet_trim')) {
         const shell = m.name === 'helmet';
-        return patchMaterial(
-          new THREE.MeshPhysicalMaterial({
-            color: srgb(shell ? helmet.shell : helmet.trim),
-            roughness: helmet.gloss ? 0.22 : 0.58,
-            clearcoat: helmet.gloss && shell ? 1 : 0,
-            clearcoatRoughness: 0.12,
-          }),
-          { key: 'rider:helmet' },
-        );
+        const h = new THREE.MeshPhysicalMaterial({
+          color: srgb(shell ? helmet.shell : helmet.trim),
+          roughness: helmet.gloss ? 0.22 : 0.58,
+          clearcoat: helmet.gloss ? 1 : 0,
+          clearcoatRoughness: 0.12,
+        });
+        if (shell) printed(h, { decal: DECALS.helmet, tex: wordmark(), ink: helmet.logo });
+        return patchMaterial(h, { key: shell ? 'rider:helmet:shell' : 'rider:helmet' });
       }
       return null;
     };
-    const mat = (m: THREE.Material, part: string): THREE.Material => {
+    const mat = (m: THREE.Material, part: string, side: number): THREE.Material => {
       if (ghostMat) return ghostMat;
-      const k = `${part}:${m.name}`;
+      const k = `${part}:${m.name}:${side}`;
       let out = matCache.get(k);
       if (!out) {
-        out = dressed(m, part) ?? m;
+        out = dressed(m, part, side) ?? m;
         const tint = out === m ? tints[m.name] : undefined;
         if (tint) {
           const c = m.clone() as THREE.MeshStandardMaterial;
@@ -367,13 +589,13 @@ export class Rider extends THREE.Group {
       // glTF splits multi-material meshes into a group of primitives
       return o;
     };
-    const cloneOf = (name: string): THREE.Object3D => {
+    const cloneOf = (name: string, side = 1): THREE.Object3D => {
       const o = part(name).clone(true);
       o.position.set(0, 0, 0);
       o.traverse((c) => {
         const m = c as THREE.Mesh;
         if (!m.isMesh) return;
-        m.material = Array.isArray(m.material) ? m.material.map((x) => mat(x, name)) : mat(m.material, name);
+        m.material = Array.isArray(m.material) ? m.material.map((x) => mat(x, name, side)) : mat(m.material, name, side);
         m.castShadow = !ghost;
         m.receiveShadow = !ghost;
       });
@@ -398,27 +620,23 @@ export class Rider extends THREE.Group {
     const hd = cloneOf('head');
     hd.rotation.x = 0.12;
     p.head.add(hd);
-    // limbs keep their IK; only the shape changes. Each limb becomes a group holding the model.
-    // parts are authored for the +X side (lateral = +X); the -X limb mirrors them
-    const swapLimb = (limb: Limb, name: string, side: number) => {
-      const g = cloneOf(name);
-      const holder = limb.mesh;
-      holder.geometry = new THREE.BufferGeometry();
-      holder.add(g);
-      g.scale.set(side, 1, 1);
+    // limbs keep their IK; the modelled leg and arm are skinned onto it. They are authored for the +X side
+    // (the rider's left); the right ones mirror them
+    const skinLimb = (limb: { thigh?: Limb; shin?: Limb; upper?: Limb; fore?: Limb; side: number; skin?: SkinnedLimb }, name: string, joint: number, l2: number, blend: number) => {
+      const s = new SkinnedLimb(cloneOf(name, limb.side), joint, l2, blend, limb.side);
+      for (const l of [limb.thigh, limb.shin, limb.upper, limb.fore]) if (l) l.mesh.visible = false;
+      this.body.add(s.group);
+      limb.skin = s;
     };
     for (const l of this.legs) {
-      swapLimb(l.thigh, 'thigh', l.side);
-      swapLimb(l.shin, 'shin', l.side);
+      skinLimb(l, 'leg', THIGH, SHIN, 0.05);
       l.foot.geometry = new THREE.BufferGeometry();
       const shoe = cloneOf('shoe');
       shoe.scale.x = l.side;
       l.foot.add(shoe);
     }
-    for (const a of this.arms) {
-      swapLimb(a.upper, 'upperarm', a.side);
-      swapLimb(a.fore, 'forearm', a.side);
-    }
+    for (const a of this.arms) skinLimb(a, 'arm', UPPER_ARM, FOREARM, 0.04);
+    this.update(0, 0, 0);
   }
 
   /**
@@ -484,8 +702,11 @@ export class Rider extends THREE.Group {
       const legHip = new THREE.Vector3(0.1 * leg.side, -0.03, 0.02).applyQuaternion(q).add(hip);
       const ankle = pedal.clone().add(new THREE.Vector3(0, 0.07, -0.03));
       const knee = twoBone(legHip, ankle, THIGH, SHIN, new THREE.Vector3(0.04 * leg.side, 0.3, 1));
-      leg.thigh.set(legHip, knee);
-      leg.shin.set(knee, ankle);
+      if (leg.skin) leg.skin.pose(legHip, knee, ankle);
+      else {
+        leg.thigh.set(legHip, knee);
+        leg.shin.set(knee, ankle);
+      }
       leg.foot.position.copy(pedal).add(new THREE.Vector3(0, 0.035, 0.02));
       leg.foot.rotation.set(-0.15 + Math.sin(a) * 0.2 - st * 0.12, 0, this.bike.rotation.z);
     }
@@ -494,9 +715,12 @@ export class Rider extends THREE.Group {
       // seated: tops/hoods; standing: hands forward on the hoods, gripping the rocking bike
       const handB = new THREE.Vector3(0.2 * arm.side, THREE.MathUtils.lerp(0.99, 0.97, st), THREE.MathUtils.lerp(0.53, 0.545, st));
       const hand = handB.applyMatrix4(bikeM);
-      const elbow = twoBone(sh, hand, 0.29, 0.29, new THREE.Vector3(0.6 * arm.side, -0.3 - st * 0.2, -0.6));
-      arm.upper.set(sh, elbow);
-      arm.fore.set(elbow, hand);
+      const elbow = twoBone(sh, hand, UPPER_ARM, FOREARM, new THREE.Vector3(0.6 * arm.side, -0.3 - st * 0.2, -0.6));
+      if (arm.skin) arm.skin.pose(sh, elbow, hand);
+      else {
+        arm.upper.set(sh, elbow);
+        arm.fore.set(elbow, hand);
+      }
     }
   }
 }

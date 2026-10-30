@@ -15,6 +15,10 @@ python3 scripts/blender/bl.py scripts/blender/b_formentor_mirador.py  # Talaia d
 python3 scripts/blender/bl.py scripts/blender/b_sacalobra_mirador.py # viewpoint shelter and P/WC sign at the Nus de sa Corbata
 ```
 
+Without Blender open, `python3 scripts/blender/bl.py --bpy <script>` runs a script in-process with the `bpy`
+module (`pip install bpy`, the 5.2 wheel wants Python 3.13; previews need a GPU-less EEVEE, so judge the result in
+the app).
+
 `b_rider.py` is split into `b_rider_bike.py` + `b_rider_body.py`, built with the lofting/sweep toolkit in `borg.py` (set `ONLY={'torso',...}` before the script to build single parts for preview).
 
 `bhelp.py` holds the shared helpers (materials, tube/box mesh builder, GLB export, EEVEE preview).

@@ -411,6 +411,9 @@ def ribbon_on(target, pts, width, offset=0.0012, per=5, nw=3, up_hint=None, mat=
     m.target = target
     m.wrap_method = 'NEAREST_SURFACEPOINT'
     m.offset = offset
+    # the offset goes out of the surface: points along the spline lie on chords under a curved target, and nearest-
+    # point mode would keep them that far under it, half-hidden
+    m.wrap_mode = 'ABOVE_SURFACE'
     dg = bpy.context.evaluated_depsgraph_get()
     me2 = bpy.data.meshes.new_from_object(ob.evaluated_get(dg))
     bpy.data.objects.remove(ob)

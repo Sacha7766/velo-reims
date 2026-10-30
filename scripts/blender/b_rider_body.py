@@ -7,114 +7,132 @@ def mk(*mats):
     return bmesh.new(), list(mats)
 
 
-# ====================================================================== thigh (hip → knee, 0.45 m)
-if want("thigh"):
-    bm, ms = mk(shorts, grip, skin)
-    L = 0.45
+# ====================================================================== leg (hip → knee → ankle, one skin)
+# One mesh from the hip (y = 0) through the knee (y = 0.45) to the ankle (y = 0.92): Rider.ts skins it to a
+# thigh and a shin bone (with a half-turned bone at the knee), so the knee bends without the seam two rigid parts
+# showed there.
+KNEE = 0.45
+LEG = 0.92
 
-    def thigh_mod(t, phi, c, s):
-        sc = 0.45 + 0.55 * smooth(0.58, 0.68, t)      # muscle shows more below the bib-short hem
-        k = 1.0
-        k += sc * (0.050 * agauss(phi, -0.75, 0.55) * bell(t, 0.45, 0.25)      # vastus lateralis
-                   + 0.040 * agauss(phi, -1.57, 0.30) * bell(t, 0.40, 0.22)    # rectus femoris
-                   + 0.075 * agauss(phi, -2.45, 0.32) * bell(t, 0.87, 0.09)    # vastus medialis teardrop
-                   + 0.035 * agauss(phi, 0.9, 0.5) * bell(t, 0.5, 0.25)        # biceps femoris
-                   + 0.030 * agauss(phi, 2.3, 0.5) * bell(t, 0.55, 0.25)       # semitendinosus
-                   - 0.028 * agauss(phi, -1.12, 0.12) * bell(t, 0.5, 0.3))     # groove between VL and RF
-        k += 0.055 * agauss(phi, -1.57, 0.26) * bell(t, 0.955, 0.03)             # patella
-        k += 0.02 * agauss(phi, math.pi, 0.5) * bell(t, 0.97, 0.03) + 0.02 * agauss(phi, 0, 0.5) * bell(t, 0.97, 0.03)  # condyles
-        k += 0.030 * bell(t, 0.63, 0.022) - 0.012 * bell(t, 0.69, 0.02)         # gripper band + skin squeeze
-        k += 0.012 * bell(t, 0.57, 0.03) * math.sin(phi * 9 + 1)                # fabric ripples above the hem
-        return k
 
-    def thigh_mat(t, phi):
-        return 0 if t < 0.60 else 1 if t < 0.655 else 2
+def thigh_mod(t, phi, c, s):
+    sc = 0.45 + 0.55 * smooth(0.58, 0.68, t)      # muscle shows more below the bib-short hem
+    k = 1.0
+    k += sc * (0.050 * agauss(phi, -0.75, 0.55) * bell(t, 0.45, 0.25)      # vastus lateralis
+               + 0.040 * agauss(phi, -1.57, 0.30) * bell(t, 0.40, 0.22)    # rectus femoris
+               + 0.075 * agauss(phi, -2.45, 0.32) * bell(t, 0.87, 0.09)    # vastus medialis teardrop
+               + 0.035 * agauss(phi, 0.9, 0.5) * bell(t, 0.5, 0.25)        # biceps femoris
+               + 0.030 * agauss(phi, 2.3, 0.5) * bell(t, 0.55, 0.25)       # semitendinosus
+               - 0.028 * agauss(phi, -1.12, 0.12) * bell(t, 0.5, 0.3))     # groove between VL and RF
+    k += 0.055 * agauss(phi, -1.57, 0.26) * bell(t, 0.955, 0.03)             # patella
+    k += 0.02 * agauss(phi, math.pi, 0.5) * bell(t, 0.97, 0.03) + 0.02 * agauss(phi, 0, 0.5) * bell(t, 0.97, 0.03)  # condyles
+    k += 0.030 * bell(t, 0.63, 0.022) - 0.012 * bell(t, 0.69, 0.02)         # gripper band + skin squeeze
+    k += 0.012 * bell(t, 0.57, 0.03) * math.sin(phi * 9 + 1)                # fabric ripples above the hem
+    return k
 
-    # +z is the back of the thigh (hamstring), -z the front (quadriceps / patella)
-    loft(bm, -L / 2, L / 2, dict(
-        rx=[(0, 0.082), (0.18, 0.090), (0.4, 0.088), (0.7, 0.070), (0.9, 0.056), (1, 0.052)],
-        rzf=[(0, 0.088), (0.25, 0.088), (0.6, 0.074), (0.9, 0.058), (1, 0.052)],
-        rzb=[(0, 0.080), (0.25, 0.084), (0.5, 0.078), (0.8, 0.064), (0.95, 0.056), (1, 0.052)],
-        n=[(0, 2.0), (1, 2.0)]),
-        M=46, N=32, mod=thigh_mod, matf=thigh_mat, caps=(False, False), rnd=(0.12, 0.10))
-    finish(obj("thigh", bm, ms), split=50)
 
-# ====================================================================== shin (knee → ankle, 0.47 m)
-if want("shin"):
-    bm, ms = mk(skin, sock, accent)
-    L = 0.47
+def shin_mod(t, phi, c, s):
+    k = 1.0
+    k += (0.065 * agauss(phi, 2.3, 0.42) * bell(t, 0.30, 0.13)              # gastrocnemius medial head
+          + 0.045 * agauss(phi, 0.85, 0.40) * bell(t, 0.31, 0.12)           # lateral head
+          + 0.035 * agauss(phi, 0.3, 0.6) * bell(t, 0.52, 0.14)             # soleus
+          - 0.030 * agauss(phi, 1.57, 0.10) * bell(t, 0.30, 0.18)           # calf groove
+          + 0.030 * agauss(phi, -0.9, 0.35) * bell(t, 0.34, 0.18)           # tibialis anterior
+          + 0.045 * agauss(phi, -1.57, 0.25) * bell(t, 0.5, 0.3)            # tibial crest
+          + 0.045 * agauss(phi, -1.57, 0.28) * bell(t, 0.035, 0.03))        # tibial tuberosity / knee
+    k += 0.10 * agauss(phi, math.pi, 0.4) * bell(t, 0.965, 0.022) + 0.07 * agauss(phi, 0, 0.4) * bell(t, 0.985, 0.02)  # malleoli
+    k += 0.016 * smooth(0.60, 0.64, t) * (1 - smooth(0.64, 0.68, t))          # sock cuff roll
+    k -= 0.012 * bell(t, 0.69, 0.02) * (1 if t > 0.62 else 0)
+    return k
 
-    def shin_mod(t, phi, c, s):
-        k = 1.0
-        k += (0.065 * agauss(phi, 2.3, 0.42) * bell(t, 0.30, 0.13)              # gastrocnemius medial head
-              + 0.045 * agauss(phi, 0.85, 0.40) * bell(t, 0.31, 0.12)           # lateral head
-              + 0.035 * agauss(phi, 0.3, 0.6) * bell(t, 0.52, 0.14)             # soleus
-              - 0.030 * agauss(phi, 1.57, 0.10) * bell(t, 0.30, 0.18)           # calf groove
-              + 0.030 * agauss(phi, -0.9, 0.35) * bell(t, 0.34, 0.18)           # tibialis anterior
-              + 0.045 * agauss(phi, -1.57, 0.25) * bell(t, 0.5, 0.3)            # tibial crest
-              + 0.045 * agauss(phi, -1.57, 0.28) * bell(t, 0.035, 0.03))        # tibial tuberosity / knee
-        k += 0.10 * agauss(phi, math.pi, 0.4) * bell(t, 0.965, 0.022) + 0.07 * agauss(phi, 0, 0.4) * bell(t, 0.985, 0.02)  # malleoli
-        k += 0.016 * smooth(0.60, 0.64, t) * (1 - smooth(0.64, 0.68, t))          # sock cuff roll
-        k -= 0.012 * bell(t, 0.69, 0.02) * (1 if t > 0.62 else 0)
-        return k
 
-    def shin_mat(t, phi):
-        return 0 if t < 0.62 else 2 if t < 0.665 else 1
+def joined(y, split, l1, l2, m1, m2, t, phi, c, s, w=0.02):
+    """two parts' displacement either side of a joint at `split`, cross-faded over ±w"""
+    a = m1(min(1.0, y / l1), phi, c, s)
+    b = m2(max(0.0, (y - split) / l2), phi, c, s)
+    return a + (b - a) * smooth(split - w, split + w, y)
 
-    loft(bm, -L / 2, L / 2, dict(
-        rx=[(0, 0.052), (0.1, 0.053), (0.3, 0.054), (0.5, 0.050), (0.7, 0.040), (0.9, 0.032), (1, 0.030)],
-        rzf=[(0, 0.052), (0.15, 0.062), (0.3, 0.070), (0.45, 0.062), (0.65, 0.042), (0.85, 0.033), (1, 0.030)],
-        rzb=[(0, 0.050), (0.2, 0.040), (0.5, 0.036), (0.8, 0.030), (1, 0.028)],
-        n=[(0, 2.0), (0.3, 2.2), (0.6, 2.4), (1, 2.0)]),
-        M=44, N=32, mod=shin_mod, matf=shin_mat, caps=(False, True), rnd=(0.10, 0.0))
-    finish(obj("shin", bm, ms), split=50)
 
-# ====================================================================== upper arm (shoulder → elbow, 0.29 m)
-if want("upperarm"):
-    bm, ms = mk(jersey, accent, skin)
-    L = 0.29
+def keys_at(keys, y0, l, total):
+    return [((y0 + t * l) / total, v) for t, v in keys]
 
-    def ua_mod(t, phi, c, s):
-        k = 1.0
-        k += (0.060 * agauss(phi, -1.57, 0.7) * bell(t, 0.66, 0.2)              # biceps
-              + 0.050 * agauss(phi, 1.57, 0.7) * bell(t, 0.58, 0.2)             # triceps
-              + 0.045 * agauss(phi, 0.0, 0.8) * bell(t, 0.12, 0.12))            # deltoid
-        k += 0.12 * agauss(phi, 1.57, 0.4) * bell(t, 0.975, 0.03)                # olecranon
-        k += 0.035 * bell(t, 0.36, 0.03) * (1 - bell(t, 0.43, 0.02)) - 0.02 * bell(t, 0.425, 0.014)   # flared sleeve edge / hem band
-        k += 0.010 * math.sin(phi * 7 + t * 14) * (1 - smooth(0.30, 0.40, t)) * smooth(0.1, 0.3, t)  # sleeve wrinkles
-        return k
 
-    def ua_mat(t, phi):
-        return 0 if t < 0.385 else 1 if t < 0.43 else 2
+if want("leg"):
+    bm, ms = mk(shorts, grip, skin, sock, accent)
+    SHIN = LEG - KNEE
 
-    loft(bm, -L / 2, L / 2, dict(
-        rx=[(0, 0.054), (0.15, 0.057), (0.4, 0.052), (0.7, 0.042), (0.95, 0.038), (1, 0.037)],
-        rzf=[(0, 0.052), (0.3, 0.052), (0.55, 0.046), (0.85, 0.040), (1, 0.037)],
-        rzb=[(0, 0.052), (0.35, 0.052), (0.6, 0.046), (0.85, 0.038), (1, 0.036)]),
-        M=34, N=28, mod=ua_mod, matf=ua_mat, caps=(False, False), rnd=(0.16, 0.10))
-    finish(obj("upperarm", bm, ms), split=50)
+    def leg_mat(t, phi):
+        y = t * LEG
+        if y < KNEE:
+            u = y / KNEE
+            return 0 if u < 0.60 else 1 if u < 0.655 else 2
+        u = (y - KNEE) / SHIN
+        return 2 if u < 0.62 else 4 if u < 0.665 else 3
 
-# ====================================================================== forearm + glove + hand (elbow → hand point, 0.29 m + fingers)
-if want("forearm"):
-    bm, ms = mk(skin, glove, glove_palm, accent)
-    y_el, y_wr = -0.145, 0.095
+    # +z is the back of the leg (hamstring, calf), -z the front (quadriceps, patella, shin)
+    loft(bm, 0.0, LEG, dict(
+        rx=keys_at([(0, 0.074), (0.1, 0.086), (0.22, 0.090), (0.4, 0.088), (0.7, 0.070), (0.9, 0.056)], 0, KNEE, LEG)
+        + keys_at([(0, 0.052), (0.1, 0.053), (0.3, 0.054), (0.5, 0.050), (0.7, 0.040), (0.9, 0.032), (1, 0.030)], KNEE, SHIN, LEG),
+        rzf=keys_at([(0, 0.078), (0.12, 0.086), (0.25, 0.088), (0.6, 0.074), (0.9, 0.058)], 0, KNEE, LEG)
+        + keys_at([(0, 0.052), (0.15, 0.062), (0.3, 0.070), (0.45, 0.062), (0.65, 0.042), (0.85, 0.033), (1, 0.030)], KNEE, SHIN, LEG),
+        rzb=keys_at([(0, 0.072), (0.12, 0.080), (0.25, 0.084), (0.5, 0.078), (0.8, 0.064), (0.95, 0.056)], 0, KNEE, LEG)
+        + keys_at([(0, 0.051), (0.2, 0.040), (0.5, 0.036), (0.8, 0.030), (1, 0.028)], KNEE, SHIN, LEG),
+        n=[(0, 2.0), (0.6, 2.2), (0.8, 2.4), (1, 2.0)]),
+        M=92, N=32, mod=lambda t, phi, c, s: joined(t * LEG, KNEE, KNEE, SHIN, thigh_mod, shin_mod, t, phi, c, s),
+        matf=leg_mat, caps=(False, True), rnd=(0.09, 0.0))
+    finish(obj("leg", bm, ms), split=50)
 
-    def fa_mod(t, phi, c, s):
-        k = 1.0
-        k += (0.060 * bell(t, 0.20, 0.20) * (0.6 + 0.4 * math.cos(phi - 1.2))        # muscle belly
-              + 0.040 * agauss(phi, 0.3, 0.5) * bell(t, 0.30, 0.2)                    # brachioradialis
-              + 0.030 * agauss(phi, -1.57, 0.5) * bell(t, 0.9, 0.1))                  # wrist tendons
-        k += 0.02 * agauss(phi, 1.57, 0.4) * bell(t, 0.02, 0.05)                      # elbow
-        k += 0.022 * bell(t, 0.83, 0.025) + 0.012 * bell(t, 0.96, 0.02)               # glove cuff + velcro tab
-        return k
+# ====================================================================== arm (shoulder → elbow → hand, one skin)
+# Shoulder at y = 0, elbow at 0.29, the hand's grip on the hood at 0.58; skinned like the leg.
+ELBOW = 0.29
+ARM = 0.58
 
-    def fa_mat(t, phi):
-        return 0 if t < 0.80 else 3 if 0.86 < t < 0.90 else 1
 
-    loft(bm, y_el, y_wr, dict(
-        rx=[(0, 0.039), (0.15, 0.044), (0.45, 0.040), (0.8, 0.031), (1, 0.029)],
-        rz=[(0, 0.040), (0.2, 0.042), (0.5, 0.035), (0.85, 0.026), (1, 0.024)]),
-        M=34, N=28, mod=fa_mod, matf=fa_mat, caps=(False, False), rnd=(0.08, 0.0))
+def ua_mod(t, phi, c, s):
+    k = 1.0
+    k += (0.060 * agauss(phi, -1.57, 0.7) * bell(t, 0.66, 0.2)              # biceps
+          + 0.050 * agauss(phi, 1.57, 0.7) * bell(t, 0.58, 0.2)             # triceps
+          + 0.045 * agauss(phi, 0.0, 0.8) * bell(t, 0.12, 0.12))            # deltoid
+    k += 0.12 * agauss(phi, 1.57, 0.4) * bell(t, 0.975, 0.03)                # olecranon
+    k += 0.035 * bell(t, 0.36, 0.03) * (1 - bell(t, 0.43, 0.02)) - 0.02 * bell(t, 0.425, 0.014)   # flared sleeve edge / hem band
+    k += 0.010 * math.sin(phi * 7 + t * 14) * (1 - smooth(0.30, 0.40, t)) * smooth(0.1, 0.3, t)  # sleeve wrinkles
+    return k
+
+
+def fa_mod(t, phi, c, s):
+    k = 1.0
+    k += (0.060 * bell(t, 0.20, 0.20) * (0.6 + 0.4 * math.cos(phi - 1.2))        # muscle belly
+          + 0.040 * agauss(phi, 0.3, 0.5) * bell(t, 0.30, 0.2)                    # brachioradialis
+          + 0.030 * agauss(phi, -1.57, 0.5) * bell(t, 0.9, 0.1))                  # wrist tendons
+    k += 0.02 * agauss(phi, 1.57, 0.4) * bell(t, 0.02, 0.05)                      # elbow
+    k += 0.022 * bell(t, 0.83, 0.025) + 0.012 * bell(t, 0.96, 0.02)               # glove cuff + velcro tab
+    return k
+
+
+if want("arm"):
+    bm, ms = mk(jersey, accent, skin, glove, glove_palm)
+    A_JER, A_ACC, A_SKIN, A_GLOVE, A_PALM = range(5)
+    WRIST = ELBOW + 0.24          # the old forearm's elbow → wrist
+    dy = ELBOW + 0.145            # old forearm frame (centred, elbow at -0.145) → arm frame
+    FORE = WRIST - ELBOW
+
+    def arm_mat(t, phi):
+        y = t * WRIST
+        if y < ELBOW:
+            u = y / ELBOW
+            return A_JER if u < 0.385 else A_ACC if u < 0.43 else A_SKIN
+        u = (y - ELBOW) / FORE
+        return A_SKIN if u < 0.80 else A_PALM if 0.86 < u < 0.90 else A_GLOVE        # (the cuff's tab)
+
+    loft(bm, 0.0, WRIST, dict(
+        rx=keys_at([(0, 0.054), (0.15, 0.057), (0.4, 0.052), (0.7, 0.042), (0.95, 0.038)], 0, ELBOW, WRIST)
+        + keys_at([(0, 0.039), (0.15, 0.044), (0.45, 0.040), (0.8, 0.031), (1, 0.029)], ELBOW, FORE, WRIST),
+        rzf=keys_at([(0, 0.052), (0.35, 0.052), (0.6, 0.046), (0.85, 0.038)], 0, ELBOW, WRIST)
+        + keys_at([(0, 0.040), (0.2, 0.042), (0.5, 0.035), (0.85, 0.026), (1, 0.024)], ELBOW, FORE, WRIST),
+        rzb=keys_at([(0, 0.052), (0.3, 0.052), (0.55, 0.046), (0.85, 0.040)], 0, ELBOW, WRIST)
+        + keys_at([(0, 0.040), (0.2, 0.042), (0.5, 0.035), (0.85, 0.026), (1, 0.024)], ELBOW, FORE, WRIST)),
+        M=70, N=28, mod=lambda t, phi, c, s: joined(t * WRIST, ELBOW, ELBOW, FORE, ua_mod, fa_mod, t, phi, c, s, 0.015),
+        matf=arm_mat, caps=(False, False), rnd=(0.09, 0.0))
 
     # glove palm + back of the hand: +z = palm (rests on the hood), -z = back of the hand
     def hand_mod(t, phi, c, s):
@@ -124,12 +142,13 @@ if want("forearm"):
         k += 0.04 * agauss(phi, 1.57, 0.8) * bell(t, 0.6, 0.2)                          # palm pad
         return k
 
-    loft(bm, y_wr - 0.004, 0.205, dict(
+    loft(bm, WRIST - 0.004, 0.205 + dy, dict(
         rx=[(0, 0.029), (0.25, 0.036), (0.65, 0.042), (1, 0.043)],
         rzf=[(0, 0.020), (0.5, 0.017), (1, 0.015)],
         rzb=[(0, 0.022), (0.5, 0.019), (1, 0.017)],
         cz=[(0, 0.004), (1, 0.004)], n=[(0, 2.0), (1, 2.6)]),
-        M=14, N=24, mod=hand_mod, matf=lambda t, phi: 2 if math.sin(phi) > 0.45 else 1, caps=(False, True), capmat=(1, 1))
+        M=14, N=24, mod=hand_mod, matf=lambda t, phi: A_PALM if math.sin(phi) > 0.45 else A_GLOVE, caps=(False, True),
+        capmat=(A_GLOVE, A_GLOVE))
 
     # fingers wrap over the hood: path centres in (y, z) with palm-down = +z; x = across the hand
     fx = (-0.0305, -0.0105, 0.0105, 0.0305)
@@ -140,16 +159,16 @@ if want("forearm"):
         pts = []
         for (y, z) in base:
             # shorter fingers stop earlier along the same curl
-            pts.append((fx[i] + 0.0015 * (i - 1.5) * ((y - 0.19) / 0.04), y, z))
+            pts.append((fx[i] + 0.0015 * (i - 1.5) * ((y - 0.19) / 0.04), y + dy, z))
         keep = 6 if fl[i] >= 1 else 5
         pts = pts[:keep]
         sizes = [(fr[i] * (1.04 if k == 1 else 1.0), fr[i] * (1.04 if k == 1 else 1.0)) for k in range(len(pts))]
-        sweep(bm, pts, sizes, sect='ellipse', N=10, per=4, mat=0, side=(1, 0, 0), caps=(False, True), rnd=(0, 0.18))
+        sweep(bm, pts, sizes, sect='ellipse', N=10, per=4, mat=A_SKIN, side=(1, 0, 0), caps=(False, True), rnd=(0, 0.18))
     # thumb: from the thenar pad round the inside of the hood
     tp = [(-0.034, 0.118, 0.004), (-0.045, 0.145, 0.012), (-0.047, 0.172, 0.028), (-0.040, 0.194, 0.044), (-0.031, 0.205, 0.056)]
-    sweep(bm, tp, [(0.0105, 0.0105), (0.0100, 0.0100), (0.0092, 0.0092), (0.0088, 0.0088), (0.0082, 0.0082)],
-          sect='ellipse', N=10, per=4, mat=0, side=(0, 0, 1), caps=(False, True), rnd=(0, 0.18))
-    finish(obj("forearm", bm, ms), split=50)
+    sweep(bm, [(x, y + dy, z) for x, y, z in tp], [(0.0105, 0.0105), (0.0100, 0.0100), (0.0092, 0.0092), (0.0088, 0.0088), (0.0082, 0.0082)],
+          sect='ellipse', N=10, per=4, mat=A_SKIN, side=(0, 0, 1), caps=(False, True), rnd=(0, 0.18))
+    finish(obj("arm", bm, ms), split=50)
 
 # ====================================================================== torso: hips → shoulders, bib shorts + jersey (centred; +Y hip→shoulder, chest +Z)
 if want("torso"):
@@ -180,15 +199,16 @@ if want("torso"):
         k += 0.035 * back * (bell(x, 0.075, 0.05) + bell(x, -0.075, 0.05)) * bell(y, 0.15, 0.06)
         k -= 0.018 * back * bell(x, 0.0, 0.015) * smooth(-0.15, 0.1, y) * (1 - smooth(0.2, 0.26, y))
         for xc in (-0.088, 0.0, 0.088):
-            px = 1 - smooth(0.030, 0.040, abs(x - xc))
-            py = smooth(-0.215, -0.20, y) * (1 - smooth(-0.075, -0.06, y))
-            k += 0.105 * px * py * back * (1.0 - 0.35 * smooth(-0.11, -0.065, y)) * above   # pocket with a sag
-        k += 0.018 * bell(y, -0.067, 0.008) * back * (1 - smooth(0.115, 0.125, abs(x))) * above  # pocket elastic band
+            px = 1 - smooth(0.022, 0.046, abs(x - xc))
+            py = smooth(-0.225, -0.195, y) * (1 - smooth(-0.085, -0.055, y))
+            k += 0.075 * px * py * back * (1.0 - 0.35 * smooth(-0.11, -0.065, y)) * above   # pocket with a sag
+        k += 0.018 * bell(y, -0.067, 0.008) * back * (1 - smooth(0.10, 0.14, abs(x))) * above  # pocket elastic band
         # fabric folds at the belly and where the jersey bunches at the hem when tucked forward
         k += 0.007 * max(0.0, s) * math.sin(y * 70 + x * 9) * bell(y, -0.12, 0.07) * above
         k += 0.006 * back * math.sin(y * 60 - x * 11) * bell(y, 0.0, 0.1) * above
-        # glutes under the bib shorts
-        k += 0.05 * (1 - above) * back * (bell(x, 0.07, 0.07) + bell(x, -0.07, 0.07)) * bell(y, -0.32, 0.07)
+        # glutes under the bib shorts, either side of the cleft, rounding off onto the saddle
+        k += 0.08 * (1 - above) * back * (bell(x, 0.065, 0.06) + bell(x, -0.065, 0.06)) * bell(y, -0.37, 0.06)
+        k -= 0.05 * (1 - above) * back * bell(x, 0.0, 0.016) * (1 - smooth(-0.32, -0.26, y))
         # lower front: bib shorts pelvis / hip crease
         k += -0.03 * (1 - above) * max(0.0, s) * bell(y, -0.30, 0.06)
         # collar roll
@@ -220,12 +240,11 @@ if want("torso"):
             return 1
         if abs(c) > 0.95 and y < 0.10:
             return 1                                                # side panels
-        if s < -0.3 and abs(c * 0.15) < 0.135 and -0.080 < y < -0.066:
-            return 1                                                # pocket elastic
         return 0
 
     loft(bm, Y0, Y1, dict(rx=RX, rzf=RF, rzb=RB, cz=CZ, n=[(0, 2.2), (1, 2.2)]),
-         M=MM, N=60, mod=torso_mod, matf=torso_mat, caps=(True, True), capmat=(2, 0), phi0=-math.pi / 2 + math.pi / 60, ymap=torso_y)
+         M=MM, N=60, mod=torso_mod, matf=torso_mat, caps=(True, True), capmat=(2, 0), phi0=-math.pi / 2 + math.pi / 60, ymap=torso_y,
+         rnd=(0.07, 0.0))
     o = obj("torso", bm, ms)
     finish(o, split=55)
     # zipper line (dark tape + pull) and bib-strap ridges shrink-wrapped onto the jersey
@@ -241,8 +260,9 @@ if want("torso"):
 
 # ====================================================================== head: face, neck, ears, sunglasses, helmet (origin = head centre, faces +Z)
 if want("head"):
-    HM = [skin, lips, hair, helmet, helmet_dark, strap, lens, lens2, rim_black, alu]
-    SK, LIPS, HAIR, HELM, HDARK, STRAP, LENS, LENS2, LFRAME, ALU = range(10)
+    # (helmet_dark again after the trim: the shell's solidify offsets each face's material by one for its inside)
+    HM = [skin, lips, hair, helmet, helmet_dark, strap, lens, lens2, rim_black, alu, helmet_trim, helmet_dark]
+    SK, LIPS, HAIR, HELM, HDARK, STRAP, LENS, LENS2, LFRAME, ALU, HTRIM = range(11)
     parts = []
     hp = math.pi / 2
 
@@ -272,7 +292,7 @@ if want("head"):
     def face_mat(t, phi):
         y = -0.125 + 0.233 * t
         a = abs(((phi - hp + math.pi) % TAU) - math.pi)          # angle from the front
-        if -0.071 < y < -0.058 and a < 0.22:
+        if -0.0695 < y < -0.0595 and a < 0.19:
             return LIPS
         if y > 0.052 - 0.125 * smooth(0.55, 1.9, a):
             return HAIR
@@ -280,13 +300,13 @@ if want("head"):
 
     loft(bm, -0.125, 0.108, dict(rx=face_rx, rzf=face_zf, rzb=face_zb, n=[(0, 2.2), (1, 2.2)]),
          M=44, N=40, mod=face_mod, matf=face_mat, caps=(True, False), rnd=(0.0, 0.14), phi0=math.pi / 40)
-    # nose
-    sweep(bm, [(0, 0.014, 0.094), (0, -0.010, 0.106), (0, -0.026, 0.1155)], [(0.0085, 0.0095), (0.0095, 0.0105), (0.0105, 0.0115)],
-          sect='ellipse', N=10, per=3, mat=SK, side=(1, 0, 0), caps=(False, True), rnd=(0, 0.25))
+    # nose: a narrow bridge to a rounded tip, the nostril wings tucked in beside it (two round balls read as a snout)
+    sweep(bm, [(0, 0.014, 0.093), (0, -0.008, 0.1035), (0, -0.024, 0.1135)], [(0.0062, 0.0080), (0.0074, 0.0092), (0.0094, 0.0102)],
+          sect='ellipse', N=10, per=3, mat=SK, side=(1, 0, 0), caps=(False, True), rnd=(0, 0.3))
     for sx in (-1, 1):
-        blob(bm, (0.0105 * sx, -0.0285, 0.1045), (0.0085, 0.0085, 0.0085), SK, rings=5, seg=8)
+        blob(bm, (0.0088 * sx, -0.0262, 0.1015), (0.0058, 0.0050, 0.0068), SK, rings=5, seg=8)
         # ears
-        blob(bm, (0.0765 * sx, -0.012, -0.012), (0.0085, 0.030, 0.021), SK, rings=7, seg=10,
+        blob(bm, (0.0755 * sx, -0.012, -0.012), (0.0065, 0.028, 0.020), SK, rings=7, seg=10,
              mod=lambda th, ph: 1 + 0.12 * math.sin(th) * math.cos(ph * 2))
         blob(bm, (0.0745 * sx, -0.040, -0.010), (0.0065, 0.008, 0.009), SK, rings=4, seg=8)      # lobe
         # hair: sideburns + nape
@@ -337,51 +357,104 @@ if want("head"):
         blob(bm, (0.0095 * sx, -0.003, 0.1015), (0.004, 0.009, 0.004), LFRAME, rings=4, seg=6)
     parts.append(finish(to_obj(bm, "head_frame", HM, col), split=60))
 
-    # --- helmet: dome shell with vents (cut cells), solidified, dark rim; retention system, straps
+    # --- helmet: S-Works Evade 4. A smooth aero shell, long, with a cut-off tail; a wide intake over the brow with
+    # two raked slots either side, a long slot down each flank, a port on top of the tail and the exhaust under it,
+    # the brow band and the tail's lower lip in the trim colour (red on the White/Red), a red V inside the exhaust
     bm = bmesh.new()
-    NH, MH = 64, 18
-    cy, ry, rxh, rzf_, rzb_, cz_ = 0.026, 0.108, 0.094, 0.120, 0.136, -0.012
+    NH, MH = 72, 22
+    cy, ry, rxh, rzf_, rzb_, cz_ = 0.018, 0.100, 0.102, 0.122, 0.190, -0.020
 
     def edge_y(ph):
         s_ = math.sin(ph)
-        return -0.006 + 0.044 * max(s_, 0.0) ** 1.5 - 0.046 * max(-s_, 0.0) ** 1.2 + 0.010 * bell(abs(math.cos(ph)), 1.0, 0.25) * 0
+        return -0.004 + 0.040 * max(s_, 0.0) ** 1.5 - 0.040 * max(-s_, 0.0) ** 1.4
 
-    hg = []
-    for j in range(NH):
-        ph = TAU * j / NH
+    def shell_pt(ph, u, k=1.0):
+        """a point of the shell: ph round the head (front = π/2), u from the crown (0) to the lower edge (1)"""
         ey = edge_y(ph)
-        thmax = math.acos(max(-1.0, min(1.0, (ey - cy) / ry)))
-        row = []
-        for i in range(MH + 1):
-            th = thmax * i / MH
-            s_ = math.sin(ph)
-            rz = rzf_ if s_ >= 0 else rzb_
-            # aero ridge along the centre line and a flatter side
-            kk = 1 + 0.025 * agauss(ph, hp, 0.25) * math.sin(th) + 0.02 * agauss(ph, -hp, 0.3) * math.sin(th)
-            row.append(bm.verts.new(T(rxh * math.sin(th) * math.cos(ph) * kk, cy + ry * math.cos(th) * (1 + 0.02 * math.sin(th)),
-                                      cz_ + rz * math.sin(th) * math.sin(ph) * kk)))
-        hg.append(row)
-    # vent cells: (centre angle from front, half width in cells-ish, row range)
+        th = math.acos(max(-1.0, min(1.0, (ey - cy) / ry))) * u
+        s_, c_ = math.sin(ph), math.cos(ph)
+        rz = rzf_ if s_ >= 0 else rzb_
+        back = max(0.0, -s_)
+        # a ridge along the crown; behind, the shell stays full up high, so the top runs level back past the ears
+        # to a tail that narrows and is cut off square
+        kk = 1 + 0.02 * agauss(ph, hp, 0.25) * math.sin(th)
+        sw = math.sin(th) ** (1 - 0.4 * back)
+        x = rxh * sw * c_ * kk * (1 - 0.13 * back ** 2)
+        z = rz * sw * s_ * kk
+        if z < -0.15:
+            z = -0.15 - 0.025 * math.tanh((-z - 0.15) / 0.025)
+        y = cy + ry * math.cos(th) * (1 + 0.02 * math.sin(th))
+        return Vector((x * k, cy + (y - cy) * k, cz_ + z * k))
+
+    def front_angle(j):
+        return abs(((TAU * (j + 0.5) / NH - hp + math.pi) % TAU) - math.pi)     # 0 at the front, π behind
+
     def is_vent(j, i):
-        a = ((TAU * (j + 0.5) / NH - hp + math.pi) % TAU) - math.pi          # angle from front, signed
-        aa = abs(a)
-        if i < 3 or i > MH - 3:
-            return False
-        for c_, w_, i0, i1 in ((0.24, 0.085, 4, 10), (0.62, 0.085, 4, 11), (1.02, 0.07, 5, 10),
-                               (2.55, 0.085, 7, 13), (2.95, 0.07, 6, 13), (math.pi - 0.0, 0.07, 6, 13), (2.15, 0.08, 6, 12), (1.6, 0.06, 7, 11)):
-            if abs(aa - c_) < w_ and i0 <= i < i1:
-                return True
+        a, u = front_angle(j), (i + 0.5) / MH
+        if a < 0.40 and 0.78 < u < 0.92:
+            return True                                                          # brow intake
+        if a > math.pi - 0.48 and 0.68 < u < 0.92:
+            return True                                                          # exhaust
+        if a > math.pi - 0.20 and 0.32 < u < 0.50:
+            return True                                                          # port on top of the tail
         return False
+
+    def shell_mat(j, i):
+        a, u = front_angle(j), (i + 0.5) / MH
+        if u > 0.91 and (a < 0.62 or a > math.pi - 0.55):
+            return HTRIM
+        return HELM
+
+    hg = [[bm.verts.new(T(*shell_pt(TAU * j / NH, i / MH))) for i in range(MH + 1)] for j in range(NH)]
     for j in range(NH):
         j2 = (j + 1) % NH
         for i in range(MH):
             if is_vent(j, i):
                 continue
-            bm.faces.new((hg[j][i], hg[j2][i], hg[j2][i + 1], hg[j][i + 1])).material_index = HELM
-    # the crown pole fan
+            bm.faces.new((hg[j][i], hg[j2][i], hg[j2][i + 1], hg[j][i + 1])).material_index = shell_mat(j, i)
     o_helm = to_obj(bm, "head_helm", HM, col)
     add_mod(o_helm, 'SOLIDIFY', thickness=0.011, offset=-1.0, use_rim=True, material_offset=1, material_offset_rim=1)
     parts.append(finish(o_helm, split=55))
+    # the dark liner seen through the vents, and the exhaust's red V
+    bm = bmesh.new()
+    # the raked slots beside the intake and the long one down each flank are curves across the cells, so they are
+    # drawn onto the shell (cut out of it, they came out as stairs)
+    taper = lambda u: 0.35 + 0.65 * math.sin(math.pi * u) ** 0.6
+    for sx in (-1, 1):
+        ph = lambda a: hp - sx * a
+        for a0, rake, w in ((0.53, 0.55, 0.012), (0.83, 0.5, 0.011)):
+            pts = [tuple(shell_pt(ph(a0 + rake * (0.90 - u)), u)) for u in (0.50, 0.60, 0.70, 0.80, 0.90)]
+            ribbon_on(o_helm, pts, w, offset=0.0008, per=6, nw=3, up_hint=taper, mat=HDARK, bm_out=bm)
+        pts = [tuple(shell_pt(ph(a), 0.75 - 0.09 * (a - 1.12))) for a in (1.10, 1.35, 1.6, 1.85, 2.1, 2.3)]
+        ribbon_on(o_helm, pts, 0.017, offset=0.0008, per=6, nw=3, up_hint=taper, mat=HDARK, bm_out=bm)
+    NL, ML = 36, 11
+    lg = [[bm.verts.new(T(*shell_pt(TAU * j / NL, 0.97 * i / ML, 0.86))) for i in range(ML + 1)] for j in range(NL)]
+    for j in range(NL):
+        for i in range(ML):
+            bm.faces.new((lg[j][i], lg[(j + 1) % NL][i], lg[(j + 1) % NL][i + 1], lg[j][i + 1])).material_index = HDARK
+    # the intake and the top port are shallow: a dark floor 4 mm in (through them the liner left the forehead showing)
+    for j in range(NH):
+        for i in range(MH):
+            a, u = front_angle(j), (i + 0.5) / MH
+            if is_vent(j, i) and a < math.pi - 0.48:
+                q = [bm.verts.new(T(*shell_pt(TAU * jj / NH, ii / MH, 0.965))) for jj, ii in ((j, i), (j + 1, i), (j + 1, i + 1), (j, i + 1))]
+                bm.faces.new(q).material_index = HDARK
+    for sx in (-1, 1):
+        ph0 = -hp + sx * 0.40
+        # (out to the tail's cut face, where it shows from the side as a red fin)
+        v = [shell_pt(ph0, 0.70, 0.99), shell_pt(-hp + sx * 0.2, 0.80, 0.98), shell_pt(-hp, 0.90, 0.97)]
+        sweep(bm, [tuple(p) for p in v], [(0.0055, 0.0055)] * 3, sect='ellipse', N=8, per=4, mat=HTRIM, side=(0, 1, 0), caps=(True, True))
+    o_lin = to_obj(bm, "head_liner", HM, col)
+    # (open strips and an open dome: face them all away from the head, which the normal recalculation can't tell)
+    c0 = T(0, cy, cz_)
+    b2 = bmesh.new()
+    b2.from_mesh(o_lin.data)
+    for f in b2.faces:
+        if f.normal.dot(f.calc_center_median() - c0) < 0:
+            f.normal_flip()
+    b2.to_mesh(o_lin.data)
+    b2.free()
+    parts.append(finish(o_lin, split=55))
     # retention cradle (dark band round the back of the skull), dial, chin straps and buckle
     bm = bmesh.new()
     cradle = [(-0.081, 0.002, -0.020), (-0.078, -0.022, -0.065), (-0.050, -0.044, -0.100), (0.0, -0.050, -0.108), (0.050, -0.044, -0.100),

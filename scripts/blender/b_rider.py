@@ -4,12 +4,12 @@
 #
 #   b_rider.py        materials, orchestration, export        (this file)
 #   b_rider_bike.py   frame, cockpit, drivetrain, wheel, crank
-#   b_rider_body.py   thigh, shin, upperarm, forearm+hand, torso+neck, head+helmet, shoe
+#   b_rider_body.py   leg, arm+hand, torso+neck, head+helmet, shoe
 #   borg.py           lofting / sweeping / revolve toolkit
 #
-# Limb parts are authored along +Y = proximal → distal (hip→knee, knee→ankle, shoulder→elbow,
-# elbow→hand), centred, lateral = +X (Rider.ts mirrors them for the -X side), the front of a leg or an
-# arm is -Z.  The torso is centred, +Y = hip → shoulder, chest = +Z.
+# Limbs are authored along +Y = proximal → distal from the hip or the shoulder (y = 0) through the knee or the
+# elbow, lateral = +X (the rider's left; Rider.ts mirrors them for the right side), the front of a leg or an arm
+# is -Z.  The torso is centred, +Y = hip → shoulder, chest = +Z.
 exec(open(SERPENTINE + "/scripts/blender/bhelp.py").read())
 exec(open(SERPENTINE + "/scripts/blender/borg.py").read())
 bell = gauss
@@ -44,7 +44,7 @@ accent = mat("accent", "#f4f1ea", 0.85)                     # tinted per rider
 shorts = mat("shorts", "#111215", 0.82)
 grip = mat("shorts_grip", "#3a3b40", 0.7)
 skin = mat("skin", "#c99a7c", 0.52, 0.0, emit="#d4623a", es=0.035)   # slight warm "subsurface" glow
-lips = mat("lips", "#b97466", 0.45)
+lips = mat("lips", "#b5806f", 0.45)
 hair = mat("hair", "#2e2119", 0.8)
 sock = mat("sock", "#f2f2f2", 0.92)
 shoe = mat("shoe", "#f1f1f1", 0.38)
@@ -52,6 +52,7 @@ shoe_dark = mat("shoe_dark", "#17181a", 0.5)
 sole = mat("shoe_sole", "#1b1c1f", 0.35, 0.2)
 helmet = mat("helmet", "#f4f4f4", 0.22)
 helmet_dark = mat("helmet_dark", "#121316", 0.7)
+helmet_trim = mat("helmet_trim", "#c8202b", 0.3)                 # tinted per helmet
 strap = mat("strap", "#0c0c0e", 0.85)
 lens = mat("lens", "#3b2a63", 0.06, 0.92)
 lens2 = mat("lens2", "#1f4a6b", 0.06, 0.92)
@@ -85,7 +86,7 @@ BB = (0, 0.27, -0.09)
 
 if want("bike") or want("wheel") or want("crank"):
     exec(open(SERPENTINE + "/scripts/blender/b_rider_bike.py").read())
-if any(want(n) for n in ("thigh", "shin", "upperarm", "forearm", "torso", "head", "shoe")):
+if any(want(n) for n in ("leg", "arm", "torso", "head", "shoe")):
     exec(open(SERPENTINE + "/scripts/blender/b_rider_body.py").read())
 
 stats = {n: tris(o) for n, o in objs.items()}

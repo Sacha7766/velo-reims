@@ -127,6 +127,16 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   kit coloured all three alike. Fix: the rider's materials are chosen per part and material name (`torso:accent`,
   `shin:accent`…), so an outfit dresses each part on its own; the shin's own skin carries the taller sock. Where:
   `Rider.upgrade`, `outfits.ts`.
+- **Knees and elbows read as a doll's ball joints (the rider model).** Each limb was two rigid parts meeting at the
+  joint; both rounded ends showed and the crease between them read as a ball. Fix: one modelled leg (hip, knee,
+  ankle) and one arm (shoulder, elbow, hand), skinned when loaded to three bones: the upper, the lower and one
+  turned half-way between them across a 4–5 cm band, so the bend keeps its volume. Both bones keep the limb's
+  lateral side towards +X (a shortest-arc turn from +Y twists a near-vertical shin), and the right limb is the left
+  one mirrored. Where: `b_rider_body.py` (`leg`, `arm`), `Rider.ts` `SkinnedLimb`.
+- **Lettering on the right-hand limb read backwards.** That limb is the left one mirrored, so a print mapped in the
+  part's own space comes out mirror-written there. Fix: a side uniform (+1 left, −1 right) turns the reading
+  direction, so the sleeves' and thighs' "PAS" read from outside on both sides; the lettering is drawn once into a
+  canvas and stamped in the kit's ink. Where: `Rider.ts` `DECALS`, `printed`.
 - **A shader that set `roughnessFactor` at `color_fragment` failed to compile.** MeshStandardMaterial declares it
   later, in `roughnessmap_fragment`. Fix: write it after that chunk. Where: `Rider.ts` `sockedShin`.
 - **The terrain read and graded the wide photo average for every pixel.** Only the ground within 180 m of the camera
@@ -290,6 +300,27 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   tint hashed the heading, which a cell's rows share. Fix: tint by position, height per segment, shoots above the
   trimmed top, a stake every 6 m standing above the leaves, a vine missing here and there. Where:
   `GroundCover.vineGeometry`, `postGeometry`, `vineRow`.
+
+- **The bib shorts read as a bucket from behind, and the saddle's tail came out of the seat.** The torso ended in a
+  flat cap, a dark disc from the chase camera, and the 27 cm saddle ran through the glutes. Fix: a domed seat, the
+  glutes either side of a cleft, a 24 cm short-nosed saddle. Where: `b_rider_body.py` torso, `b_rider_bike.py`.
+- **A helmet's raked vent slots came out as stairs.** Cut from the shell's 72 × 22 cells, a slot that crosses them
+  diagonally is a staircase. Fix: only openings that follow the cells (the brow intake, the exhaust, the top port)
+  are cut; the raked and flank slots are dark strips drawn onto the shell. Through the intake the liner let the
+  forehead show; a dark floor 4 mm in closes it (8 mm in, it fell behind the forehead). Where: `b_rider_body.py`
+  helmet.
+- **The helmet read as a round dome, the old one with new decals (avatar review, finding 1).** An ellipsoid shell
+  is as deep as it is long. Fix: lower (crown 1 cm over the scalp) and longer, the rear rows kept full up high
+  (`sin(th) ** (1 - 0.4 * back)`) so the top runs level back past the ears, the tail cut square 9 cm behind the
+  skull and the red V brought out to its cut face as a fin. Where: `b_rider_body.py` `shell_pt`.
+- **The jersey's pocket band came out as stairs.** The torso's rows follow the jersey's hem, which drops at the
+  back, so a band of faces chosen at one height crosses them on a slant; the pockets' 1 cm edges fell between ring
+  vertices too. Fix: no band material, the elastic is a bump, and the pockets' edges fade over 2–4 cm. Where:
+  `b_rider_body.py` torso.
+- **Strips shrink-wrapped onto a curved part sank into it.** Points along the spline lie on chords under the
+  surface, and the nearest-point wrap keeps each vertex on the side it came from, so the offset pushed half of them
+  inside: the helmet's slots showed in pieces. Fix: `wrap_mode = 'ABOVE_SURFACE'`. Where: `borg.ribbon_on` (the
+  jersey's zip and the bib straps use it too).
 
 ## Data and bakes
 
