@@ -137,7 +137,16 @@ const DECALS = {
  */
 function printed(
   m: THREE.MeshPhysicalMaterial,
-  opts: { tones?: [string, string, string]; decal?: string; tex?: THREE.Texture; tex2?: THREE.Texture; ink?: string; side?: number },
+  opts: {
+    tones?: [string, string, string];
+    /** The print unrolled round the part's long axis (a sleeve), not laid flat across it. */
+    round?: boolean;
+    decal?: string;
+    tex?: THREE.Texture;
+    tex2?: THREE.Texture;
+    ink?: string;
+    side?: number;
+  },
 ) {
   const prev = m.onBeforeCompile;
   m.onBeforeCompile = (shader, renderer) => {
@@ -165,7 +174,7 @@ function printed(
 ${
   tones
     ? `{
-  vec2 q = vec2(vKit.x + vKit.z * 0.7, vKit.y) / 0.042;
+  vec2 q = vec2(${opts.round ? 'atan(vKit.z, vKit.x) * 0.05' : 'vKit.x + vKit.z * 0.7'}, vKit.y) / 0.042;
   vec2 g = vec2(q.x - q.y * 0.57735, q.y * 1.1547);
   vec2 i = floor(g), f = fract(g);
   float up = step(1.0, f.x + f.y);
@@ -531,7 +540,7 @@ export class Rider extends THREE.Group {
         if (m.name === 'jersey') {
           const decal = part === 'torso' || part === 'arm' ? part : undefined;
           const j = cloth(kit.jersey, 0.72, 0.6, `rider:jersey:${decal ?? ''}:${kit.print ? 'print' : ''}`);
-          printed(j, { tones: kit.print, decal: decal && DECALS[decal], tex: pas(), tex2: chest(), ink: kit.ink, side });
+          printed(j, { tones: kit.print, round: part === 'arm', decal: decal && DECALS[decal], tex: pas(), tex2: chest(), ink: kit.ink, side });
           return j;
         }
         if (m.name === 'accent') {

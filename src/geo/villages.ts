@@ -1,0 +1,82 @@
+// The villages around Reims for building a route village to village (RouteBuilder): each one's name and a point on
+// its through road (lon, lat), written by scripts/villages.py from the OpenStreetMap extracts of 2026-10-29 and
+// 2026-10-30. A point on the main road rather than at the mairie, so a route passes through the village instead of
+// turning in and out of a side street.
+
+export interface Village {
+  name: string;
+  lon: number;
+  lat: number;
+}
+
+const DATA: [string, number, number][] = [
+  ['Aguilcourt', 3.96694, 49.40603], ['Alincourt', 4.34419, 49.40326], ['Anthenay', 3.73469, 49.14204],
+  ['Aougny', 3.72575, 49.18185], ['Aubilly', 3.85992, 49.21402], ['Auménancourt', 4.06814, 49.38449],
+  ['Aussonce', 4.32239, 49.35049], ['Baconnes', 4.33818, 49.15933], ['Baslieux-sous-Châtillon', 3.79581, 49.12182],
+  ['Bazancourt', 4.17203, 49.36262], ['Beaumont-sur-Vesle', 4.18435, 49.17325], ['Beine-Nauroy', 4.21571, 49.24941],
+  ['Belval-sous-Châtillon', 3.85437, 49.12178], ['Bergnicourt', 4.25616, 49.41954],
+  ['Berméricourt', 3.9931, 49.35733], ['Berru', 4.14922, 49.27062], ['Berry-au-Bac', 3.89926, 49.40295],
+  ['Bertricourt', 4.01019, 49.39537], ['Bétheniville', 4.36787, 49.2933], ['Bétheny', 4.05349, 49.28451],
+  ['Bezannes', 3.98552, 49.21925], ['Billy-le-Grand', 4.2321, 49.10822], ['Bligny', 3.86314, 49.19492],
+  ['Bouilly', 3.88869, 49.19918], ['Bouleuse', 3.84126, 49.22575], ['Boult-sur-Suippe', 4.14815, 49.37081],
+  ['Bourgogne-Fresne', 4.07134, 49.34912], ['Bouvancourt', 3.83432, 49.33776], ['Branscourt', 3.81963, 49.27069],
+  ['Breuil-sur-Vesle', 3.76655, 49.30989], ['Brienne-sur-Aisne', 4.05331, 49.4328], ['Brimont', 4.02555, 49.34041],
+  ['Caurel', 4.15275, 49.3033], ['Cauroy-lès-Hermonville', 3.92306, 49.34889],
+  ['Cernay-lès-Reims', 4.10503, 49.26278], ['Châlons-sur-Vesle', 3.91775, 49.28948],
+  ['Chambrecy', 3.82074, 49.18361], ['Chamery', 3.95709, 49.17382], ['Champfleury', 4.01318, 49.19854],
+  ['Champigny', 3.96789, 49.26949], ['Champlat-et-Boujacourt', 3.83385, 49.1543],
+  ['Châtillon-sur-Marne', 3.75731, 49.09901], ['Chaumuzy', 3.86311, 49.17429], ['Chenay', 3.9294, 49.2979],
+  ['Chigny-les-Roses', 4.0628, 49.15677], ['Condé-sur-Suippe', 3.9515, 49.41979], ['Cormicy', 3.89556, 49.37019],
+  ['Cormontreuil', 4.0537, 49.22369], ['Cormoyeux', 3.9137, 49.10896], ['Coulommes-la-Montagne', 3.91085, 49.22582],
+  ['Courcelles-Sapicourt', 3.84528, 49.26241], ['Courcy', 4.002, 49.32327], ['Courlandon', 3.73735, 49.31256],
+  ['Courmas', 3.90873, 49.19054], ['Courtagnon', 3.94794, 49.14271], ['Crugny', 3.73921, 49.25765],
+  ['Cuchery', 3.82305, 49.13089], ['Cuisles', 3.77367, 49.13079], ['Écueil', 3.95512, 49.18772],
+  ['Époye', 4.23804, 49.29051], ['Faverolles-et-Coëmy', 3.79286, 49.23434], ['Fleury-la-Rivière', 3.8829, 49.09779],
+  ['Fresne-lès-Reims', 4.09725, 49.33792], ['Germaine', 4.03009, 49.11336], ['Germigny', 3.86797, 49.24462],
+  ['Gueux', 3.90954, 49.25106], ['Guyencourt', 3.83744, 49.3569], ['Hauviné', 4.40089, 49.30314],
+  ['Hermonville', 3.90954, 49.33581], ['Heutrégiville', 4.26302, 49.32624], ['Houdilcourt', 4.12565, 49.42529],
+  ['Hourges', 3.76915, 49.28193], ['Isles-sur-Suippe', 4.19892, 49.35464], ['Janvry', 3.87659, 49.24555],
+  ['Jonchery-sur-Vesle', 3.81672, 49.2857], ['Jonquery', 3.7906, 49.14679], ['Jouy-lès-Reims', 3.92859, 49.21564],
+  ['Juniville', 4.38424, 49.39685], ["L'Écaille", 3.87852, 49.24605],
+  ['La Neuville en Chaillois', 4.10911, 49.12147], ['La Neuville-aux-Larris', 3.84149, 49.143],
+  ['La Neuville-en-Tourne-à-Fuy', 4.37514, 49.3467], ['Lagery', 3.74346, 49.2106], ['Lavannes', 4.17105, 49.31404],
+  ['Le Châtelet-sur-Retourne', 4.2776, 49.41711], ['Les Mesneux', 3.96341, 49.22068],
+  ['Les Petites-Loges', 4.22873, 49.13835], ['Les Venteaux', 3.7776, 49.30943], ['Lhéry', 3.76384, 49.2102],
+  ['Livry', 4.3071, 49.11416], ['Loivre', 3.97973, 49.34641], ['Louvercy', 4.31912, 49.10974],
+  ['Louvois', 4.11499, 49.10182], ['Ludes', 4.08, 49.15513], ['Macô', 3.94438, 49.28344],
+  ['Magneux', 3.7214, 49.30649], ['Mailly-Champagne', 4.11162, 49.15773], ['Marfaux', 3.89201, 49.16672],
+  ['Ménil-Lépinois', 4.28485, 49.37827], ['Menneville', 4.00467, 49.41961], ['Merfy', 3.94749, 49.29582],
+  ['Méry-Prémecy', 3.86155, 49.22692], ['Meurival', 3.76104, 49.35868], ['Montbré', 4.04141, 49.19233],
+  ['Montchenot', 4.01149, 49.16477], ['Montigny-sur-Vesle', 3.80102, 49.31387],
+  ['Mourmelon-le-Grand', 4.36543, 49.1374], ['Mourmelon-le-Petit', 4.31227, 49.1301], ['Muizon', 3.88915, 49.27599],
+  ['Muscourt', 3.74891, 49.36444], ['Nanteuil-la-Forêt', 3.92093, 49.13185],
+  ['Neufchâtel-sur-Aisne', 4.03407, 49.43174], ['Neuflize', 4.30485, 49.41067],
+  ["Nogent-l'Abbesse", 4.15717, 49.25409], ['Olizy', 3.75812, 49.14761], ['Orainville', 4.02228, 49.38142],
+  ['Ormes', 3.95663, 49.23816], ['Pargny-lès-Reims', 3.92502, 49.22011], ['Pévy', 3.84261, 49.31047],
+  ['Pignicourt', 4.03234, 49.41572], ['Poilcourt-Sydney', 4.10167, 49.42235], ['Poilly', 3.81908, 49.21611],
+  ['Pomacle', 4.14649, 49.33509], ['Pontfaverger-Moronvilliers', 4.31732, 49.2974], ['Pouillon', 3.9496, 49.31388],
+  ['Pourcy', 3.91534, 49.1578], ['Prosnes', 4.29325, 49.191], ['Prouilly', 3.85024, 49.29821],
+  ['Prunay', 4.18289, 49.1966], ['Puisieulx', 4.11396, 49.1931], ['Rilly-la-Montagne', 4.04459, 49.16357],
+  ['Roizy', 4.17598, 49.42579], ['Romain', 3.77058, 49.33054], ['Romery', 3.91537, 49.09633],
+  ['Romigny', 3.77009, 49.17235], ['Rosnay', 3.8622, 49.25386], ['Sacy', 3.94844, 49.19644],
+  ['Saint-Brice-Courcelles', 3.98671, 49.2621], ['Saint-Étienne-sur-Suippe', 4.09604, 49.38641],
+  ['Saint-Euphraise-et-Clairizet', 3.89242, 49.21266], ['Saint-Hilaire-le-Petit', 4.38918, 49.27388],
+  ['Saint-Imoges', 3.97503, 49.11033], ['Saint-Léonard', 4.09665, 49.22131],
+  ["Saint-Martin-l'Heureux", 4.40681, 49.24971], ['Saint-Masmes', 4.26386, 49.313],
+  ['Saint-Remy-le-Petit', 4.23999, 49.41441], ['Saint-Thierry', 3.96487, 49.30451], ['Sarcy', 3.8256, 49.20701],
+  ['Sault-Saint-Remy', 4.16168, 49.42662], ['Savigny-sur-Ardres', 3.78263, 49.24404], ['Selles', 4.28462, 49.30662],
+  ['Sept-Saulx', 4.25164, 49.15148], ['Sermiers', 3.98389, 49.15954], ['Serzy-et-Prin', 3.7653, 49.25108],
+  ['Sillery', 4.1312, 49.19757], ['Taissy', 4.09365, 49.2143], ['Thil', 3.9638, 49.31522],
+  ['Thillois', 3.95282, 49.2543], ['Tinqueux', 3.98766, 49.25042], ['Tramery', 3.80426, 49.22404],
+  ['Trépail', 4.18329, 49.105], ['Treslon', 3.8221, 49.24031], ['Trigny', 3.89525, 49.30268],
+  ['Trois-Puits', 4.0395, 49.20543], ['Val-de-Vesle', 4.21656, 49.17694], ['Vandeuil', 3.79071, 49.27998],
+  ['Vandières', 3.73621, 49.10733], ['Variscourt', 3.98503, 49.41747], ['Ventelay', 3.79909, 49.34092],
+  ['Verzenay', 4.14382, 49.15976], ['Verzy', 4.16413, 49.14643], ['Ville-Dommange', 3.93453, 49.20111],
+  ['Ville-en-Selve', 4.0814, 49.12602], ['Ville-en-Tardenois', 3.79931, 49.1815],
+  ['Villers-Allerand', 4.02462, 49.16598], ['Villers-aux-Nœuds', 3.99749, 49.19426],
+  ['Villers-Franqueux', 3.94524, 49.32854], ['Villers-Marmery', 4.19563, 49.13442],
+  ['Villers-sous-Châtillon', 3.79748, 49.09562], ['Vrigny', 3.91207, 49.23508], ['Warmeriville', 4.22124, 49.34998],
+  ['Witry-lès-Reims', 4.11804, 49.28876],
+];
+
+export const REIMS_VILLAGES: Village[] = DATA.map(([name, lon, lat]) => ({ name, lon, lat }));

@@ -133,6 +133,9 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
   turned half-way between them across a 4–5 cm band, so the bend keeps its volume. Both bones keep the limb's
   lateral side towards +X (a shortest-arc turn from +Y twists a near-vertical shin), and the right limb is the left
   one mirrored. Where: `b_rider_body.py` (`leg`, `arm`), `Rider.ts` `SkinnedLimb`.
+- **The Origami print made round red discs on the sleeve caps (avatar review round 2).** The triangle lattice was
+  laid flat across the part (x and z), which pinches to a point where a sleeve's round end faces along its axis.
+  Fix: on the arm the print is unrolled round the arm (angle × 5 cm, height). Where: `Rider.ts` `printed` (`round`).
 - **Lettering on the right-hand limb read backwards.** That limb is the left one mirrored, so a print mapped in the
   part's own space comes out mirror-written there. Fix: a side uniform (+1 left, −1 right) turns the reading
   direction, so the sleeves' and thighs' "PAS" read from outside on both sides; the lettering is drawn once into a
@@ -324,6 +327,20 @@ symptom (what it looked like), cause, fix and where. Newest at the bottom of eac
 
 ## Data and bakes
 
+- **A loop through a village list turned into spurs and doubled roads (2026-10-30 loops).** A point at each
+  village's place node sends BRouter into the centre and back out the same street wherever the centre is off the
+  through road (Écueil, Beaumont-sur-Vesle: 1.5–3 km spurs), and a list in map order can return along the road it
+  came out on (19 km doubled on a first Loivre–Bourgogne try). Fix: snap each village to the best-class road within
+  300 m (class rank × 90 m + distance, as `scripts/villages.py` does), order villages so the loop enters and leaves
+  each one by different roads, run the spur fixer (via point moved to the spur's base), and check doubled metres,
+  U-turns and the villages passed within 450 m before baking. Where a forest has no road across (the Petite
+  Montagne between Chamery and Courmas), split the list into two loops. Where: `scripts/bake-routes.mjs` presets.
+- **A route drawn village to village had no fields.** Parcels are baked per preset id, so a drawn route in the
+  Champagne fell back to the spring photo's guesses. Fix: when nothing is baked and the route starts in the
+  Champagne box, the parcels come from the IGN WFS (CORS open), a box every 3 km of road, four requests at a
+  time: about 1.4 s for a 29 km loop. Where: `src/geo/fields.ts` `fetchParcels`.
+- **The rider's road names don't always match OSM.** "The D 23 between Ludes and Ville-en-Selve" is tagged D 33 in
+  OSM; check refs against the extract and say which was used in the brief. Where: `docs/art/grands-crus.md`.
 - **Turnaround bake found no loop.** `shortestCycle` returned `[]`, which is not null. Fix: a simple-cycle DFS with
   an explicit null, entry at the nearest end, a spur-trim limit of 150 m, and tunnels recomputed after trimming.
   Where: `scripts/bake-turnarounds.mjs`.
