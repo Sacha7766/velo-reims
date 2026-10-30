@@ -29,7 +29,7 @@ export function Hud({
   onEnd: () => void;
 }) {
   const st = useSession(session);
-  const { controllable, devices } = useHub();
+  const { controllable, devices, simulator } = useHub();
   const route = session.route;
   // inside a turnaround s runs past the ends of the route
   const clampS = (v: number) => Math.min(route.length, Math.max(0, v));
@@ -52,8 +52,17 @@ export function Hud({
     };
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      // ⌘ and Ctrl combinations are the menu's (⌘H hides the app on a Mac)
+      if (e.metaKey || e.ctrlKey) return;
       const s = session.state;
-      switch (e.key) {
+      // letters whatever the case (Caps Lock); the camera digits by their key, not their character: on a French
+      // keyboard the top row types & é " ' ( without Shift
+      const cam = CAMERA_MODES.find((m) => e.code === `Digit${m.key}` || e.code === `Numpad${m.key}` || e.key === m.key);
+      if (cam) {
+        setCam(cam.id);
+        return;
+      }
+      switch (e.key.length === 1 ? e.key.toLowerCase() : e.key) {
         case ' ':
           e.preventDefault();
           if (s.status === 'ready') {
@@ -69,11 +78,15 @@ export function Hud({
           e.preventDefault();
           engine.steer(1.3);
           break;
+        // gears on the arrows (brackets need ⌥⇧ on a French Mac keyboard); with Shift the simulator's watts
         case 'ArrowUp':
-        case 'ArrowDown':
+        case 'ArrowDown': {
           e.preventDefault();
-          hub.simulator.nudge((e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 50 : 10));
+          const dir = e.key === 'ArrowUp' ? 1 : -1;
+          if (e.shiftKey) hub.simulator.nudge(dir * (e.altKey ? 50 : 10));
+          else feedback(session.shift(dir), dir);
           break;
+        }
         case 'e':
           session.toggleErg();
           break;
@@ -105,10 +118,6 @@ export function Hud({
         case 'Escape':
           setConfirmEnd((c) => !c);
           break;
-        default: {
-          const m = CAMERA_MODES.find((x) => x.key === e.key);
-          if (m) setCam(m.id);
-        }
       }
     };
     window.addEventListener('keydown', onKey);
@@ -360,10 +369,10 @@ export function Hud({
           <span>Space pause</span>
           {workout && <span>E erg</span>}
           {workout && <span>Tab skip interval</span>}
-          <span>[ ] gears</span>
-          <span>− = difficulty</span>
+          <span>↑ ↓ gears</span>
+          <span>− + difficulty</span>
           <span>← → steer</span>
-          <span>↑ ↓ simulator watts</span>
+          {simulator && <span>⇧ ↑ ↓ simulator watts</span>}
           <span>H hide</span>
           <button className="link" onClick={() => setConfirmEnd(true)}>
             End ride

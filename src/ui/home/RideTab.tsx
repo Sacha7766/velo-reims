@@ -9,7 +9,7 @@ import { lowBattery } from '../BatteryWarning.tsx';
 import { useBattery, useHub } from '../hooks.ts';
 import { WorkoutChart } from '../WorkoutChart.tsx';
 import {
-  CATEGORIES, CATEGORY_LABEL, matchesCategory, Profile, RouteShape, RouteStatsLine, SHOWCASE, useRouteStats, workoutMeta,
+  CATEGORIES, CATEGORY_LABEL, matchesCategory, Profile, RouteMap, RouteStatsLine, SHOWCASE, useRouteStats, workoutMeta,
   type RideMode, type RouteEntry,
 } from './shared.tsx';
 import { StravaSegments } from './StravaSegments.tsx';
@@ -315,7 +315,7 @@ function RouteHero({
           </label>
         )}
       </div>
-      <RouteShape entry={entry} size={168} />
+      <RouteMap entry={entry} />
       <Profile entry={entry} height={120} bins={70} className="hero-profile" />
     </section>
   );

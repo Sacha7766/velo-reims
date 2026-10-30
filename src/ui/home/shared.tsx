@@ -1,7 +1,8 @@
 // Pieces shared by the home tabs: route entries, workout grouping, small form fields, devices.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { hub } from '../../devices/index.ts';
+import { loadImageryTile, sourcesFor } from '../../geo/imagery.ts';
 import type { RouteData } from '../../geo/route.ts';
 import { RAMP_TEST_ID } from '../../training/rampTest.ts';
 import type { Workout } from '../../workouts/types.ts';
@@ -76,59 +77,120 @@ export function Profile({ entry, height, bins, className }: { entry: RouteEntry;
 }
 
 /** Route outline in plan view, coloured by gradient. */
-export function RouteShape({ entry, size = 150 }: { entry: RouteEntry; size?: number }) {
-  const ref = useCanvas(
-    (c) => {
-      const dpr = window.devicePixelRatio || 1;
-      const w = c.clientWidth;
-      const h = c.clientHeight;
-      if (!w) return;
-      c.width = w * dpr;
-      c.height = h * dpr;
-      const ctx = c.getContext('2d')!;
+/**
+ * The route over the aerial photo (the national orthophoto where there is one, Esri's elsewhere), framed to fit, its
+ * line in the gradient's colours and a dot at the start. Until the tiles arrive, or offline, the line alone.
+ */
+export function RouteMap({ entry, width = 380, height = 250 }: { entry: RouteEntry; width?: number; height?: number }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const [credit, setCredit] = useState('');
+  useEffect(() => {
+    const c = ref.current!;
+    const dpr = window.devicePixelRatio || 1;
+    c.width = Math.round(width * dpr);
+    c.height = Math.round(height * dpr);
+    const ctx = c.getContext('2d')!;
+    const pts = entry.data.coords;
+    // Web Mercator, in pixels of the 256 px world at zoom 0
+    const merc = (lon: number, lat: number): [number, number] => [
+      ((lon + 180) / 360) * 256,
+      ((1 - Math.asinh(Math.tan((lat * Math.PI) / 180)) / Math.PI) / 2) * 256,
+    ];
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const p of pts) {
+      const [x, y] = merc(p[0], p[1]);
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x);
+      y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+    }
+    const pad = 16;
+    const scale = Math.min((width - 2 * pad) / Math.max(x1 - x0, 1e-9), (height - 2 * pad) / Math.max(y1 - y0, 1e-9));
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    const P = (p: number[]): [number, number] => {
+      const [x, y] = merc(p[0], p[1]);
+      return [width / 2 + (x - cx) * scale, height / 2 + (y - cy) * scale];
+    };
+    const ground = () => {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const pts = entry.data.coords;
-      const lat0 = pts[0][1];
-      const kx = Math.cos((lat0 * Math.PI) / 180);
-      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-      for (const p of pts) {
-        x0 = Math.min(x0, p[0] * kx); x1 = Math.max(x1, p[0] * kx);
-        y0 = Math.min(y0, -p[1]); y1 = Math.max(y1, -p[1]);
-      }
-      const span = Math.max(x1 - x0, y1 - y0) || 1;
-      const sc = (Math.min(w, h) - 16) / span;
-      const ox = (w - (x1 - x0) * sc) / 2;
-      const oy = (h - (y1 - y0) * sc) / 2;
-      const P = (p: number[]) => [ox + (p[0] * kx - x0) * sc, oy + (-p[1] - y0) * sc];
+      ctx.fillStyle = '#16232b';
+      ctx.fillRect(0, 0, width, height);
+    };
+    const line = () => {
       const d = entry.profile.dist;
       const e = entry.profile.ele;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.lineWidth = 6;
-      ctx.strokeStyle = 'rgba(5,12,16,0.6)';
+      ctx.strokeStyle = 'rgba(5,12,16,0.7)';
       ctx.beginPath();
-      pts.forEach((p, i) => (i ? ctx.lineTo(...(P(p) as [number, number])) : ctx.moveTo(...(P(p) as [number, number]))));
+      pts.forEach((p, i) => (i ? ctx.lineTo(...P(p)) : ctx.moveTo(...P(p))));
       ctx.stroke();
-      ctx.lineWidth = 2.6;
+      ctx.lineWidth = 3;
       const stride = Math.max(1, Math.floor(pts.length / 300));
       for (let i = stride; i < pts.length; i += stride) {
         const a = i - stride;
-        const g = ((e[i] - e[a]) / Math.max(d[i] - d[a], 1)) * 100;
-        ctx.strokeStyle = gradeColor(g);
+        ctx.strokeStyle = gradeColor(((e[i] - e[a]) / Math.max(d[i] - d[a], 1)) * 100);
         ctx.beginPath();
-        ctx.moveTo(...(P(pts[a]) as [number, number]));
-        ctx.lineTo(...(P(pts[i]) as [number, number]));
+        ctx.moveTo(...P(pts[a]));
+        ctx.lineTo(...P(pts[i]));
         ctx.stroke();
       }
       const [sx, sy] = P(pts[0]);
       ctx.fillStyle = '#eef3f4';
+      ctx.strokeStyle = 'rgba(5,12,16,0.8)';
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+      ctx.arc(sx, sy, 5, 0, Math.PI * 2);
       ctx.fill();
-    },
-    [entry],
+      ctx.stroke();
+    };
+    ground();
+    line();
+    // the zoom whose tile pixels are at least as fine as the canvas's: about a dozen tiles
+    const z = Math.min(18, Math.max(1, Math.ceil(Math.log2(scale * dpr))));
+    const k = 2 ** z / 256;
+    const left = cx - width / 2 / scale, right = cx + width / 2 / scale;
+    const top = cy - height / 2 / scale, bottom = cy + height / 2 / scale;
+    const sources = sourcesFor(pts[0][0], pts[0][1]);
+    const ctrl = new AbortController();
+    const got: { bmp: ImageBitmap; x: number; y: number }[] = [];
+    const jobs: Promise<void>[] = [];
+    for (let x = Math.floor(left * k); x <= Math.floor(right * k); x++) {
+      for (let y = Math.floor(top * k); y <= Math.floor(bottom * k); y++) {
+        jobs.push(
+          loadImageryTile(sources, z, x, y, ctrl.signal)
+            .then((bmp) => void got.push({ bmp, x, y }))
+            .catch(() => undefined),
+        );
+      }
+    }
+    void Promise.all(jobs).then(() => {
+      if (ctrl.signal.aborted || !got.length) return;
+      ground();
+      const size = scale / k;
+      for (const t of got) {
+        const sx = width / 2 + (t.x / k - cx) * scale;
+        const sy = height / 2 + (t.y / k - cy) * scale;
+        // (a hair over a tile, so no seam shows between neighbours)
+        ctx.drawImage(t.bmp, sx, sy, size + 0.5, size + 0.5);
+        t.bmp.close();
+      }
+      // a veil, so the line reads over bright chalk and stubble
+      ctx.fillStyle = 'rgba(8,16,20,0.16)';
+      ctx.fillRect(0, 0, width, height);
+      line();
+      setCredit(sources[0].attribution);
+    });
+    return () => {
+      ctrl.abort();
+      for (const t of got) t.bmp.close();
+    };
+  }, [entry, width, height]);
+  return (
+    <figure className="route-map" style={{ width, height }}>
+      <canvas ref={ref} style={{ width, height }} aria-label={`${entry.data.name} on the aerial photo`} role="img" />
+      {credit && <figcaption>{credit}</figcaption>}
+    </figure>
   );
-  return <canvas ref={ref} className="route-shape" style={{ width: size, height: size }} aria-hidden />;
 }
 
 export function RouteStatsLine({ entry }: { entry: RouteEntry }) {

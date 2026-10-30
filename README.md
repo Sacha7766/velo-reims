@@ -35,7 +35,7 @@ Before pairing, quit Zwift and Zwift Companion. A trainer accepts only one contr
 - **HUD for the saddle:** sized to read from about 2 m and scaled with the screen height. Top left is your effort (power, W/kg, cadence, heart rate, gear), top right the climb (gradient, VAM over the last 30 s, km and hm to the top, altitude, hairpin count), along the bottom the ride totals.
 - **Nothing gets lost:** a ride in progress is kept in the browser every 5 s. If the laptop dies, the browser crashes or the page reloads, Home offers to carry on where you stopped, save the ride as it is, or discard it. While you ride the display stays awake, and leaving the page asks first. Unplugged at 20 % battery or less, a warning at the top of the screen (it stays when the HUD is hidden) tells you to plug in, with the time left, and a chime sounds at 20, 10 and 5 %.
 
-Keys: `1`–`5` camera (chase, drone, moto, rider, cinematic) · `Space` pause · `E` ERG on/off · `Tab` skip interval · `[` `]` gears · `−` `=` difficulty · `↑` `↓` simulator watts (Shift = ±50) · `H` hide HUD · `Esc` end ride.
+Keys: `1`–`5` camera (chase, drone, moto, rider, cinematic; the top row's keys, no Shift needed on a French keyboard) · `C` next camera · `Space` pause · `↑` `↓` gears (`[` `]` too) · `←` `→` steer · `−` `+` difficulty · `E` ERG on/off · `Tab` skip interval · `Shift` `↑` `↓` simulator watts (with `⌥`: ±50) · `H` hide HUD · `Esc` end ride.
 
 Zwift Ride: left hood shifts easier, right hood harder · D-pad up/down difficulty · D-pad left/right camera · A start / ERG · B pause · Y hide HUD · Z skip interval.
 
