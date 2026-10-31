@@ -22,7 +22,7 @@ export interface AppSettings extends RiderSettings {
   quality: 'low' | 'medium' | 'high';
   erg: boolean;
   ghost: boolean;
-  /** Virtual gears on the trainer (Zwift Ride shifters, [ ] keys). */
+  /** Virtual gears on the trainer (Zwift Ride shifters, ↑ ↓ keys). */
   gears: boolean;
   /** Watts for the "Hold watts" training mode. */
   holdWatts: number;

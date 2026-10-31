@@ -59,7 +59,7 @@ export function SettingsTab({
         </label>
         <label className="toggle">
           <input type="checkbox" checked={settings.gears} onChange={(e) => set('gears', e.target.checked)} />
-          <span>Virtual gears on the shifters or the [ and ] keys</span>
+          <span>Virtual gears on the shifters or the ↑ ↓ keys</span>
         </label>
         <label className="toggle">
           <input type="checkbox" checked={settings.erg} onChange={(e) => set('erg', e.target.checked)} />
