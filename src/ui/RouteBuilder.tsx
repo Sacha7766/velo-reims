@@ -1,5 +1,4 @@
-import * as maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
+import { MAP_STYLE, maplibregl } from './mapLib.ts';
 import { useEffect, useRef, useState } from 'react';
 import { hash } from '../geo/gpx.ts';
 import type { RouteData } from '../geo/route.ts';
@@ -42,7 +41,7 @@ export function RouteBuilder({ onClose, onSave }: { onClose: () => void; onSave:
   useEffect(() => {
     const m = new maplibregl.Map({
       container: mapEl.current!,
-      style: 'https://tiles.openfreemap.org/styles/liberty',
+      style: MAP_STYLE,
       center: [13.6, 47.7],
       zoom: 8,
       attributionControl: { compact: true },

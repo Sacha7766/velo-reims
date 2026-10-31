@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { TIMES } from '../../engine/atmosphere.ts';
 import { leadInLength } from '../../geo/leadIn.ts';
 import { getActivePlan, type AppSettings, type RideSummary } from '../../sim/storage.ts';
@@ -9,11 +9,14 @@ import { lowBattery } from '../BatteryWarning.tsx';
 import { useBattery, useHub } from '../hooks.ts';
 import { WorkoutChart } from '../WorkoutChart.tsx';
 import {
-  CATEGORIES, CATEGORY_LABEL, matchesCategory, Profile, RouteMap, RouteStatsLine, SHOWCASE, useRouteStats, workoutMeta,
+  CATEGORIES, CATEGORY_LABEL, matchesCategory, Profile, RouteStatsLine, SHOWCASE, useRouteStats, workoutMeta,
   type RideMode, type RouteEntry,
 } from './shared.tsx';
 import { StravaSegments } from './StravaSegments.tsx';
 import { WorkoutDetail, WorkoutList } from './WorkoutLibrary.tsx';
+
+// MapLibre only with the route panel, not in the first screen's bundle
+const RouteMap = lazy(() => import('./RouteMap.tsx').then((m) => ({ default: m.RouteMap })));
 
 export interface RideTabProps {
   routes: RouteEntry[];
@@ -50,7 +53,24 @@ export function RideTab(p: RideTabProps) {
     });
   }, []);
 
-  const list = p.routes.filter((r) => matchesCategory(r, cat));
+  const [byDistance, setByDistance] = useState(() => {
+    try {
+      return localStorage.getItem('serpentine.routesByDistance') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const sortByDistance = (on: boolean) => {
+    setByDistance(on);
+    try {
+      localStorage.setItem('serpentine.routesByDistance', on ? '1' : '0');
+    } catch {
+      // private mode: the order holds until the page closes
+    }
+  };
+  const length = (r: RouteEntry) => r.profile.dist[r.profile.dist.length - 1] ?? 0;
+  const filtered = p.routes.filter((r) => matchesCategory(r, cat));
+  const list = byDistance ? [...filtered].sort((a, b) => length(a) - length(b)) : filtered;
   const todayWorkout = today && today !== 'free' ? p.workouts.find((w) => w.id === today) : null;
   const showToday = todayWorkout && !(p.mode === 'workout' && p.workout?.id === todayWorkout.id);
 
@@ -76,6 +96,10 @@ export function RideTab(p: RideTabProps) {
             </button>
           ))}
         </div>
+        <label className="toggle routes-order">
+          <input type="checkbox" checked={byDistance} onChange={(e) => sortByDistance(e.target.checked)} />
+          <span>Shortest first</span>
+        </label>
         {p.error && <p className="error">{p.error}</p>}
         <ol className="route-rows">
           {list.map((r) => (
@@ -315,7 +339,9 @@ function RouteHero({
           </label>
         )}
       </div>
-      <RouteMap entry={entry} />
+      <Suspense fallback={<div className="route-map" style={{ width: 380, height: 250 }} />}>
+        <RouteMap entry={entry} />
+      </Suspense>
       <Profile entry={entry} height={120} bins={70} className="hero-profile" />
     </section>
   );
