@@ -342,7 +342,7 @@ function RouteHero({
       <Suspense fallback={<div className="route-map" style={{ width: 380, height: 250 }} />}>
         <RouteMap entry={entry} />
       </Suspense>
-      <Profile entry={entry} height={120} bins={70} className="hero-profile" />
+      <Profile entry={entry} height={120} bins={70} className="hero-profile" hover />
     </section>
   );
 }

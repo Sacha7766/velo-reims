@@ -1,12 +1,13 @@
 // Pieces shared by the home tabs: route entries, workout grouping, small form fields, devices.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { hub } from '../../devices/index.ts';
 import type { RouteData } from '../../geo/route.ts';
 import { RAMP_TEST_ID } from '../../training/rampTest.ts';
 import type { Workout } from '../../workouts/types.ts';
 import { int, km } from '../format.ts';
 import { useCanvas, useHub } from '../hooks.ts';
+import { hoverPoint, hoverText, setHover, useHover } from './hover.ts';
 import { climbStats, drawProfile, type ProfileData } from '../profile.ts';
 
 export interface RouteEntry {
@@ -70,9 +71,52 @@ export function useRouteStats(entry: RouteEntry | undefined) {
   return useMemo(() => (entry ? climbStats(entry.profile) : null), [entry]);
 }
 
-export function Profile({ entry, height, bins, className }: { entry: RouteEntry; height: number; bins?: number; className?: string }) {
+export function Profile({
+  entry, height, bins, className, hover,
+}: { entry: RouteEntry; height: number; bins?: number; className?: string; hover?: boolean }) {
   const ref = useCanvas((c) => drawProfile(c, entry.profile, { padTop: 4, minSpan: 120, bins }), [entry]);
-  return <canvas ref={ref} className={className} style={{ height }} />;
+  if (!hover) return <canvas ref={ref} className={className} style={{ height }} />;
+  return (
+    <ProfileHover entry={entry} height={height} className={className}>
+      <canvas ref={ref} style={{ height }} />
+    </ProfileHover>
+  );
+}
+
+/** The profile with a cursor: a line and a dot where the pointer is, the same place marked on the map. */
+function ProfileHover({ entry, height, className, children }: { entry: RouteEntry; height: number; className?: string; children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  const d = useHover();
+  const { dist, ele } = entry.profile;
+  const n = dist.length;
+  const d1 = dist[n - 1] || 1;
+  // the vertical scale drawProfile uses (padTop 4, minSpan 120)
+  const scale = useMemo(() => {
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < n; i++) { lo = Math.min(lo, ele[i]); hi = Math.max(hi, ele[i]); }
+    return { lo, span: Math.max(hi - lo, 120) };
+  }, [entry]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => setHover(null), [entry]);
+  const move = (e: React.PointerEvent) => {
+    const r = box.current!.getBoundingClientRect();
+    const f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    setHover(dist[0] + f * (d1 - dist[0]));
+  };
+  const p = d === null ? null : hoverPoint(entry, d);
+  const x = d === null ? 0 : ((d - dist[0]) / (d1 - dist[0] || 1)) * 100;
+  const y = p ? height - ((p.ele - scale.lo) / scale.span) * (height - 4) : 0;
+  return (
+    <div ref={box} className={`profile-hover ${className ?? ''}`} onPointerMove={move} onPointerDown={move} onPointerLeave={() => setHover(null)}>
+      {children}
+      {p && (
+        <>
+          <i className="ph-line" style={{ left: `${x}%` }} />
+          <i className="ph-dot" style={{ left: `${x}%`, top: y }} />
+          <span className={`ph-tip ${x > 70 ? 'left' : ''}`} style={{ left: `${x}%` }}>{hoverText(p)}</span>
+        </>
+      )}
+    </div>
+  );
 }
 
 /** Route outline in plan view, coloured by gradient. */
